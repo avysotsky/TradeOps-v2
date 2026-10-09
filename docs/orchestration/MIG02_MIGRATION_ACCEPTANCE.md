@@ -1,7 +1,7 @@
 # MIG-02 — Private v2 migration acceptance and public v1 freeze
 
 ## Status (2026-10-09)
-**CODE MIGRATION + PRIVATE CI + SOURCE-EQUIVALENT HTTP INTEROP VERIFIED. PUBLIC v1 ARCHIVE ACTION STILL PENDING.**
+**COMPLETE — private migration, CI, source-equivalent HTTP interoperability and Public+Archived verification passed.**
 
 ## Private repositories
 - TradeOps-v2: `avysotsky/TradeOps-v2`, private, canonical active development.
@@ -26,11 +26,10 @@
 - Portfolio summaries added at `ENGINEERING_SNAPSHOT_V1.md` and linked at top of README (documentation-only changes).
 - Public source SHAs and existing historical links were verified accessible.
 - Public source workflows/logs expire per GitHub retention; dated test results preserved in the public snapshot reports.
-- Before owner performs archive, verify `Repo → Settings → General → Danger Zone → Archive this repository`, then inspect both Public and Archived flags and deep links.
+- Owner archived both public v1 repositories. Live GitHub metadata confirmed `visibility=public` and `archived=true` for both; existing PR #72 (TradeOps), PR #9 (DocFlow), frozen commits and snapshot reports remain accessible. Public archive main: TradeOps `73fcd9c6fd825d352ce4550d917e026f73199109`, DocFlow `f8f0e05b7e923024c350b961e48ed2040f752400`.
 
 ## Security and next steps
 - No broker order placement, new executable signals, production LLM credentials, or private repo content pushed into public code.
-- Both v2 repos must remain private; any source export from v2 back to a public repo requires separate explicit publication approval.
+- Both v2 repos remain private; any source export from v2 back to a public repo requires separate explicit publication approval.
 - Evaluate private code scanning/CodeQL entitlement and protected branch policies under repository Security/Settings; do not assume old public setup carries over.
-- The GitHub integration's available actions **cannot change repository archived state**; archive toggle must be performed manually by repository owner through GitHub UI.
-- Once owner archives the v1 originals, re-read GitHub repository metadata and verify Public+Archived and old URLs. Mark MIG-02 fully completed only after that.
+- The GitHub owner completed the archive toggle; independent GitHub metadata and historical-link reads confirmed Public+Archived. MIG-02 is closed.

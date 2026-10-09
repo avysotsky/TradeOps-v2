@@ -6,7 +6,7 @@
 - 545 source-tracked files copied byte-for-byte from pinned v1 SHA. 34 historical documentation/obsolete Python embedding probe files intentionally omitted. Added private migration metadata.
 - Source-level audit: no missing or changed retained blobs; Git tree blob SHAs match exactly.
 - Private full build, unit tests, API/PostgreSQL smoke and Docker/deployment checks: [GitHub Actions 37910174501](https://github.com/avysotsky/TradeOps-v2/actions/runs/37910174501) **SUCCESS** (code snapshot, prior to this documentation commit).
-- Public v1 repo must **not** be archived until both v2 repos and cross-repository composition have been independently accepted; v1 URLs are to stay intact.
+- Public v1 was archived only after private build/test and source-equivalent cross-repo HTTP interoperability succeeded. Both original public URLs and checked deep links remain intact.
 
 ## Architecture decisions
 - Prefer native **C#/.NET**. Use Python only for quality/functionality that demonstrably exceeds supported .NET alternatives.
@@ -17,9 +17,9 @@
 - No live trading, no broker order placement, no embedded secrets, no public unauthenticated DocFlow server.
 
 ## Planned workstreams
-1. **MIG-01**: finish fresh-history private code migration, verify both CI suites and snapshot integrity (complete except v1 public archive).
-2. **MIG-02**: independent TradeOps ↔ DocFlow v2 smoke and operator/access/privacy review; tag public v1 source snapshots, freeze public READMEs, archive publicly only after evidence.
-3. **DF-V2-01**: extend native .NET normalization parity and strict schema validation in DocFlow-v2.
+1. **MIG-01**: COMPLETE — private fresh-history code import, integrity checks and CI.
+2. **MIG-02**: COMPLETE — private source-equivalent dual-service HTTP smoke `37912246018` SUCCESS; public v1 READMEs/evidence frozen and GitHub Public+Archived confirmed.
+3. **DF-V2-01**: COMPLETED in private DocFlow-v2 PR #2 — 58/58 normalized identity parity tests, strict ingress and UTF-8 hashes; still not full API parity.
 4. **DF-V2-02**: .NET schema-driven extraction / provider adapters retaining Python reference tests.
 5. **DF-V2-03**: `DocFlow.Api` thin ASP.NET Core host + safe service auth and versioned HTTP contracts.
 6. **TO-V2-01**: share native DocFlow .NET application code via versioned dependency/DI and implement TradeOps in-process port.
