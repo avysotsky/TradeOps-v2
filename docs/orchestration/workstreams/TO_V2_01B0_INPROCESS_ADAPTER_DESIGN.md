@@ -166,7 +166,9 @@ public async Task<DocFlowExtractionResult> ExtractAsync(
     RequireExplicitHostAndFactorySelection(selector); // no network in IsSupported
     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
     deadline.CancelAfter(approvedDeadline); // distinguish origin of cancellation
-    await concurrencyGate.AcquireAsync(deadline.Token);
+    // Acquire returns a disposable lease only after successful admission.
+    // Lease is never released for failed/aborted admission.
+    using var lease = await concurrencyGate.AcquireLeaseAsync(deadline.Token);
     try
     {
         var request = new RawExtractionRequest(raw, schema, selector, input.DocumentName);
@@ -182,11 +184,10 @@ public async Task<DocFlowExtractionResult> ExtractAsync(
     { throw SanitizedPortFailure("timeout"); }
     catch (Exception ex) when (IsExpectedFailure(ex))
     { throw ClassifySanitizeAndPreserveCorrelation(ex); }
-    finally { concurrencyGate.Release(); }
 }
 ~~~
 
-The skeleton is **illustrative**: implementer must ensure acquisition exceptions do **not** call Release without successful ownership and disposal covers a fail-before-entry branch (a boolean lease / `try/finally` inside acquired scope is required). `ValidateBoundedResponseEnvelope` checks JSON object shape, required `document_id`, `fingerprint` and `validation_status`, v1 envelope byte count ≤2,097,152; it is **not** a second schema validation or ID recomputation. Never modify a returned artifact to fit a limit. For exact HTTP parity, account for serialized wrapper `schemaVersion:1` and property names and request `documentName:null` when computing byte budgets; do not measure only raw field lengths. Distinguish `CallerCancellation` from local `DeadlineExceeded` and explicit provider `TimeoutException`. Do not rely on exception message text to classify remote provider failures.
+The skeleton is **illustrative**: §AcquireLeaseAsync§ is a proposed lease abstraction, not a shipped API; it must release its semaphore exactly once **only after successful admission**, including exception/cancellation paths. A failed/aborted acquisition must not release a slot. `ValidateBoundedResponseEnvelope` checks JSON object shape, required `document_id`, `fingerprint` and `validation_status`, v1 envelope byte count ≤2,097,152; it is **not** a second schema validation or ID recomputation. Never modify a returned artifact to fit a limit. For exact HTTP parity, account for serialized wrapper `schemaVersion:1` and property names and request `documentName:null` when computing byte budgets; do not measure only raw field lengths. Distinguish `CallerCancellation` from local `DeadlineExceeded` and explicit provider `TimeoutException`. Do not rely on exception message text to classify remote provider failures.
 
 **Ingress equivalence issue discovered in source:** `DocFlow.Api.Extraction.ExtractionRequestParser` is internal to `DocFlow.Api`, not packaged. It rejects duplicate JSON members *recursively*, trailing commas/comments, depth >32, >12,000 nodes, JSON envelope >1,048,576 UTF-8 bytes, schema envelope >262,144 bytes, >1,024 raw segments or >512 participants; it also validates exact v1 fields. The public facade does not implement **all** those transport quotas and `TextDocumentNormalizer.RequireKeys` does not by itself reject duplicate raw JSON members. Future TO-V2-01B **must implement the same bounded transport-shape policy at its own ingress or negotiate a reusable DocFlow-owned non-API ingress-policy package** with a separately gated contract. Do not import `DocFlow.Api` into the monolith or duplicate `SchemaSubset`. For ambiguous duplicate input already materialized as `JsonElement`, inspect all nested `EnumerateObject` members, fail closed; never use `TryGetProperty` alone to assume uniqueness.
 
