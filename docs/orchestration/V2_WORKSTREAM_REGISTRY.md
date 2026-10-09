@@ -48,3 +48,12 @@ Open separate worker chats using the assignment linked for #4, #5 and TradeOps-v
 - **DF-V2-02D next worker**: [draft PR #6](https://github.com/avysotsky/DocFlow-v2/pull/6) and `docs/workstreams/DF_V2_02D_ASSIGNMENT.md`, focused on normalized-document ingress and the remaining appointed blockers. Integration is not authorized before its CI and audit gates.
 - **Subsequent dependencies**: DF-V2-02E DocFlow facade/provider composition → DF-V2-03 authenticated DocFlow ASP.NET HTTP host → DF-V2-04 private package publication and verified consumer permission → TO-V2-01B direct TradeOps port adapter → monolith host/dual-topology parity; worker branches to be created when upstream contracts are ready, not prematurely.
 - **Safety**: v1 public repositories remain Public+Archived; v2 remains private; no live trading or broker mutation is approved.
+
+## Parallel planning after TO-V2-01A approval (2026-10-09)
+
+**Live checks:** TradeOps-v2 `main=dea68be61c05e3ae4850fa5eb12c456d7cb3a2b2` with post-merge CI runs `37921175907` and `37921256586` both SUCCESS. DocFlow-v2 `main=b7a6931bc9bc3d31ab28a8cc8dc7369f96bb92ce`, native/Python differential `37920526539` SUCCESS on main.
+
+- **DF-V2-02D — implementation, READY, no activity at verification:** private DocFlow-v2 draft [#6](https://github.com/avysotsky/DocFlow-v2/pull/6); registered HEAD `c5ac43ac31fa9e98b3e3438fc319d7751674c39e`. Owns normalized ingress/remediation and related native CI. Must complete/merge before implementing facade.
+- **DF-V2-02E0 — newly registered independent design-only RFC:** private DocFlow-v2 branch `DocFlow/df-v2-02e0-facade-contract-design`, draft [#7](https://github.com/avysotsky/DocFlow-v2/pull/7); registered HEAD `5fb179f0f8d1ffd4de8c2625ac6fb1ef885d0615`. Scope: **only** `docs/workstreams/DF_V2_02E0_ASSIGNMENT.md` and `docs/workstreams/DF_V2_02E0_FACADE_CONTRACT_DESIGN.md`. Designs shared DocFlow facade, normalized+structured envelope, API/in-process mapping, ownership and acceptance tests, conditional on D. Does not implement code, change D files or authorize production.
+- The two jobs may **run in parallel** with nonoverlapping file ownership. A worker runs only when a separate worker chat is started; registered draft PRs are not autonomous work.
+- Proposed integration sequence: D code+CI+audit clearance → review E0 RFC against actual D public contract → later DF-V2-02E implementation worker (new branch/owner) → DF-V2-03 native authenticated HTTP → pinned private package/DI integration and TO-V2-01B. Do not create implementer E while D unresolved.
