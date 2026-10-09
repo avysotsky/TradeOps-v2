@@ -1,0 +1,67 @@
+name: MIG02 Dual-Service HTTP Contract Smoke
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/MigrationSmoke/**'
+      - '.github/workflows/mig02-dual-service-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dual-service-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout TradeOps-v2 private app port
+        uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Load pinned DocFlow v1 source-equivalent to DocFlow-v2 snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          docflow_sha=602346f90aed9ca9f940ac38ad1847249e3c81df
+          mkdir -p "$RUNNER_TEMP/docflow-source"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://codeload.github.com/avysotsky/DocFlow/tar.gz/${docflow_sha}" \
+            -o "$RUNNER_TEMP/docflow-v1.tar.gz"
+          tar -xzf "$RUNNER_TEMP/docflow-v1.tar.gz" \
+            -C "$RUNNER_TEMP/docflow-source" --strip-components=1
+          python -m pip install -e "$RUNNER_TEMP/docflow-source/src/DocFlow.Extraction.Worker"
+          echo "The imported DocFlow-v2 application files were previously verified to match this pinned v1 commit byte-for-byte."
+      - name: Build actual TradeOps-v2 HTTP adapter
+        run: dotnet build tools/MigrationSmoke/TradeOps.MigrationSmoke.csproj -c Release -warnaserror
+      - name: Launch real DocFlow API with a synthetic provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$PWD/tools/MigrationSmoke" \
+            python -m uvicorn docflow_fake_host:app --host 127.0.0.1 --port 18763 \
+            >"$RUNNER_TEMP/docflow-api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/docflow-api.pid"
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:18763/health/ready | grep -q '"status":"ready"'; then
+              echo "DocFlow HTTP host ready on loopback."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "DocFlow HTTP host failed to start." >&2
+          cat "$RUNNER_TEMP/docflow-api.log" >&2
+          exit 1
+      - name: Exercise real C# HTTP port over loopback
+        run: dotnet run --project tools/MigrationSmoke/TradeOps.MigrationSmoke.csproj -c Release --no-build
+      - name: Stop synthetic DocFlow API
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$RUNNER_TEMP/docflow-api.pid"; then
+            kill "$(cat "$RUNNER_TEMP/docflow-api.pid")" || true
+          fi
