@@ -29,6 +29,7 @@ jobs:
           mkdir -p "$temp_dir/source"
           tar -xzf "$temp_dir/source.tar.gz" -C "$temp_dir/source" --strip-components=1
           rsync -a \
+            --exclude='.github/workflows/' \
             --exclude='.git/' \
             --exclude='MIGRATION_BASELINE.md' \
             --exclude='docs/HANDOFF_*' \
@@ -41,7 +42,6 @@ jobs:
             --exclude='.github/workflows/arch04-python-embed-probe.yml' \
             --exclude='tools/TradeOps.DocFlowInProcessProbe/' \
             "$temp_dir/source/" ./
-          rm -f .github/workflows/mig01-bootstrap.yml
           sed -i 's/Migration stage: \*\*bootstrap\*\*; source import and CI verification pending./Migration stage: **snapshot imported**; private CI verification pending./' MIGRATION_BASELINE.md
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
