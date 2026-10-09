@@ -1,0 +1,21 @@
+services:
+  api:
+    environment:
+      Integrations__TradingView__Enabled: "true"
+      Integrations__TradingView__GatewayKey: ${TRADEOPS_TRADINGVIEW_DEMO_GATEWAY_KEY:?TRADEOPS_TRADINGVIEW_DEMO_GATEWAY_KEY is required}
+      Integrations__TradingView__RequireGatewayIpAllowlist: "false"
+      OperatorApi__Authentication__Enabled: "true"
+      OperatorApi__Authentication__ApiKey: ${TRADEOPS_TRADINGVIEW_DEMO_OPERATOR_API_KEY:?TRADEOPS_TRADINGVIEW_DEMO_OPERATOR_API_KEY is required}
+
+  worker:
+    environment:
+      TradingViewHealth__Enabled: "true"
+      TradingViewHealth__EvaluationIntervalSeconds: "15"
+      TradingViewHealth__LookbackMinutes: "15"
+      TradingViewHealth__MinimumDeliveries: "3"
+      TradingViewHealth__CriticalFailureCount: "2"
+      TradingViewHealth__CriticalFailureRatePercent: "50"
+      TradingViewHealth__DegradedConflictRatePercent: "50"
+      TradingViewHealth__DegradedRiskRejectedRatePercent: "100"
+      TradingViewHealth__MaxAverageLatencyMilliseconds: "5000"
+      TradingViewHealth__NoSuccessfulDeliveryMinutes: "0"

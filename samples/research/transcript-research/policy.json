@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "strategyId": "sample-transcript-earnings-policy-v1",
+  "thresholds": {
+    "revenueGrowth": 0.05,
+    "dilutedEpsGrowth": 0.05,
+    "operatingMarginDelta": 0.01,
+    "minimumDirectionalSignals": 2
+  },
+  "targetWeights": {
+    "positive": 0.40,
+    "neutral": 0.20,
+    "negative": 0.00
+  }
+}

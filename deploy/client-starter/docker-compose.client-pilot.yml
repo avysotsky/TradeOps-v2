@@ -1,0 +1,9 @@
+services:
+  api:
+    environment:
+      OperatorApi__Authentication__Enabled: "true"
+      OperatorApi__Authentication__ApiKey: ${TRADEOPS_OPERATOR_API_KEY:?TRADEOPS_OPERATOR_API_KEY is required}
+
+  worker:
+    environment:
+      TradingViewHealth__Enabled: "true"

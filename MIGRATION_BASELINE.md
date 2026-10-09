@@ -7,4 +7,4 @@ This is a fresh-history private continuation of the original public repository, 
 - Original public repository remains unchanged until private CI and independent validation pass.
 - This migration metadata is private; do not publish private branch or feature details in the public v1 repository.
 
-Migration stage: **bootstrap**; source import and CI verification pending.
+Migration stage: **snapshot imported**; private CI verification pending.

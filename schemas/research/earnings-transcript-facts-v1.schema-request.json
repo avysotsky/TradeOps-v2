@@ -1,0 +1,331 @@
+{
+  "schema_name": "tradeops_earnings_transcript_facts_v1",
+  "schema_version": 1,
+  "json_schema": {
+    "type": "object",
+    "description": "TradeOps earnings transcript facts v1 data payload. Copy normalized DocFlow identity and evidence IDs exactly. Unsupported facts and guidance slots must be null.",
+    "additionalProperties": false,
+    "properties": {
+      "schema_version": {
+        "type": "integer",
+        "const": 1,
+        "description": "TradeOps earnings transcript facts schema version. Must be exactly 1."
+      },
+      "docflow_document_id": {
+        "type": "string",
+        "description": "Copy the exact document_id from the normalized DocFlow document. Do not translate, normalize, shorten, or rewrite this ID."
+      },
+      "docflow_fingerprint": {
+        "type": "string",
+        "description": "Copy the exact fingerprint from the normalized DocFlow document. Do not translate, normalize, shorten, or rewrite it."
+      },
+      "currency": {
+        "type": "string",
+        "description": "Currency explicitly supported by the transcript, normalized to uppercase. Monetary values must use this currency; downstream TradeOps validation checks it against the instrument."
+      },
+      "amount_scale": {
+        "type": "string",
+        "const": "base_units",
+        "description": "Monetary amount scale. Revenue and net income must be currency base units; diluted EPS must be currency per share."
+      },
+      "margin_scale": {
+        "type": "string",
+        "const": "fraction",
+        "description": "Margin scale. Return margins as decimal fractions, for example 0.42 for 42 percent."
+      },
+      "facts": {
+        "type": "object",
+        "description": "Supported current-period earnings facts. Every slot is present; use null when explicit transcript evidence does not support a fact.",
+        "additionalProperties": false,
+        "properties": {
+          "revenue": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Revenue in currency base units. Convert explicitly stated millions or billions to base units."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "diluted_eps": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Diluted earnings per share in currency per share."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "net_income": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Net income in currency base units. Convert explicitly stated millions or billions to base units."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "gross_margin": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Gross margin as a decimal fraction, for example 0.42 for 42 percent."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "operating_margin": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Operating margin as a decimal fraction, for example 0.18 for 18 percent."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          }
+        },
+        "required": [
+          "revenue",
+          "diluted_eps",
+          "net_income",
+          "gross_margin",
+          "operating_margin"
+        ]
+      },
+      "guidance": {
+        "type": "object",
+        "description": "Supported guidance facts. Every slot is present; use null when explicit transcript evidence does not support an item.",
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null unless the transcript explicitly supports a guidance direction.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": [
+                  "lowered",
+                  "maintained",
+                  "raised"
+                ],
+                "description": "Explicit guidance direction."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting the guidance direction. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "revenue_low": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Low end of revenue guidance in currency base units."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "revenue_high": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "High end of revenue guidance in currency base units."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "diluted_eps_low": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Low end of diluted EPS guidance in currency per share."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          },
+          "diluted_eps_high": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Return null when this fact is not supported by explicit transcript evidence.",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "High end of diluted EPS guidance in currency per share."
+              },
+              "evidence_segment_ids": {
+                "type": "array",
+                "description": "Exact normalized-document segment IDs supporting this value. Copy each ID verbatim; do not translate, normalize, or rewrite it.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "value",
+              "evidence_segment_ids"
+            ]
+          }
+        },
+        "required": [
+          "direction",
+          "revenue_low",
+          "revenue_high",
+          "diluted_eps_low",
+          "diluted_eps_high"
+        ]
+      }
+    },
+    "required": [
+      "schema_version",
+      "docflow_document_id",
+      "docflow_fingerprint",
+      "currency",
+      "amount_scale",
+      "margin_scale",
+      "facts",
+      "guidance"
+    ]
+  }
+}

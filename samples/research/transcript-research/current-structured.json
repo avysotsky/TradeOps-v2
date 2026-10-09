@@ -1,0 +1,32 @@
+{
+  "engine": "schema_driven_text_v1:sample_backend",
+  "document_type": "transcript",
+  "data": {
+    "schema_version": 1,
+    "docflow_document_id": "textdoc:sample-2026-q2",
+    "docflow_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "currency": "USD",
+    "amount_scale": "base_units",
+    "margin_scale": "fraction",
+    "facts": {
+      "revenue": {
+        "value": 110000000,
+        "evidence_segment_ids": ["textseg:sample-q2-1"]
+      },
+      "diluted_eps": {
+        "value": 2.20,
+        "evidence_segment_ids": ["textseg:sample-q2-2"]
+      },
+      "operating_margin": {
+        "value": 0.22,
+        "evidence_segment_ids": ["textseg:sample-q2-2"]
+      }
+    },
+    "guidance": {}
+  },
+  "confidence": 0.96,
+  "validation_status": "valid",
+  "validation": {
+    "status": "valid"
+  }
+}

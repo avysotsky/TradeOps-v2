@@ -1,0 +1,54 @@
+{
+  "title": "Synthetic Example Company Q1 2026 earnings call",
+  "document_type": "transcript",
+  "source": {
+    "provider": "synthetic-provider",
+    "source_uri": "https://example.test/transcripts/provider-demo-2026-q1",
+    "source_document_id": "provider-demo-2026-q1",
+    "source_timestamp": "2026-04-22T20:00:00-04:00",
+    "published_at": "2026-04-22T20:15:00-04:00",
+    "retrieved_at": "2026-04-23T01:00:00Z"
+  },
+  "participants": [
+    {
+      "participant_id": "operator",
+      "display_name": "Operator",
+      "role": "operator",
+      "organization": "Synthetic Example Company"
+    },
+    {
+      "participant_id": "executive-speaker",
+      "display_name": "Executive Speaker",
+      "role": "management",
+      "organization": "Synthetic Example Company"
+    },
+    {
+      "participant_id": "finance-speaker",
+      "display_name": "Finance Speaker",
+      "role": "finance",
+      "organization": "Synthetic Example Company"
+    }
+  ],
+  "segments": [
+    {
+      "sequence": 1,
+      "participant_id": "operator",
+      "text": "Welcome to the synthetic quarterly earnings call. All monetary figures in this transcript are stated in USD unless noted otherwise."
+    },
+    {
+      "sequence": 2,
+      "participant_id": "executive-speaker",
+      "text": "For the quarter, revenue was 100,000,000 USD and operating margin was 20%."
+    },
+    {
+      "sequence": 3,
+      "participant_id": "finance-speaker",
+      "text": "Diluted earnings per share were 2.00 USD per diluted share."
+    },
+    {
+      "sequence": 4,
+      "participant_id": "operator",
+      "text": "This concludes the synthetic prior-period call."
+    }
+  ]
+}

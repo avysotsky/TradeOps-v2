@@ -1,0 +1,21 @@
+services:
+  api:
+    environment:
+      Integrations__TradingView__Enabled: "true"
+      Integrations__TradingView__GatewayKey: ${TRADEOPS_TRADINGVIEW_GATEWAY_KEY:?TRADEOPS_TRADINGVIEW_GATEWAY_KEY is required}
+      Integrations__TradingView__RequireGatewayIpAllowlist: "false"
+
+  tradingview-gateway:
+    image: nginx:1.27-alpine
+    environment:
+      TRADEOPS_TRADINGVIEW_GATEWAY_KEY: ${TRADEOPS_TRADINGVIEW_GATEWAY_KEY:?TRADEOPS_TRADINGVIEW_GATEWAY_KEY is required}
+    volumes:
+      - ./deploy/tradingview-gateway/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${TRADEOPS_TRADINGVIEW_TLS_CERT:?TRADEOPS_TRADINGVIEW_TLS_CERT is required}:/etc/nginx/tls/fullchain.pem:ro
+      - ${TRADEOPS_TRADINGVIEW_TLS_KEY:?TRADEOPS_TRADINGVIEW_TLS_KEY is required}:/etc/nginx/tls/privkey.pem:ro
+    ports:
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "maxPositionSize": 50.0,
+  "maxOrderSize": 50.0,
+  "maxDailyLoss": 1000.0,
+  "maxOpenPositions": 5,
+  "allowedSymbols": [
+    "SAMP"
+  ],
+  "tradingEnabled": true,
+  "emergencyStop": false,
+  "emergencyStopReason": null,
+  "settlementCurrency": "USD",
+  "dailyNetRealizedPnL": 0.0,
+  "activePositionMismatchCount": 0,
+  "updatedAt": "2026-07-24T22:00:00Z"
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "instrument": {
+    "symbol": "SAMP",
+    "assetClass": "Stock",
+    "currency": "USD",
+    "exchange": "XNYS"
+  },
+  "issuerId": "sample-issuer",
+  "prior": {
+    "normalizedDocument": "prior-normalized.json",
+    "structuredExtraction": "prior-structured.json",
+    "fiscalPeriod": "FY2026-Q1",
+    "earningsEventAssociationId": "sample-earnings-2026-q1"
+  },
+  "current": {
+    "normalizedDocument": "current-normalized.json",
+    "structuredExtraction": "current-structured.json",
+    "fiscalPeriod": "FY2026-Q2",
+    "earningsEventAssociationId": "sample-earnings-2026-q2"
+  }
+}

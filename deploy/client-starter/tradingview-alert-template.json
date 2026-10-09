@@ -1,0 +1,6 @@
+{
+  "eventId": "{{timenow}}|{{ticker}}|{{strategy.order.id}}|{{strategy.order.action}}|{{strategy.order.contracts}}",
+  "symbol": "{{ticker}}",
+  "action": "{{strategy.order.action}}",
+  "quantity": {{strategy.order.contracts}}
+}

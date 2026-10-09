@@ -1,0 +1,30 @@
+# .NET build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local configuration and secrets
+.env
+.env.*
+appsettings.Development.json
+secrets.json
+deploy/client-starter/client-pilot.env
+pilot-evidence/
+
+# Local TLS material
+deploy/tradingview-gateway/tls/
+
+# Local TradeOps runtime snapshots/cache
+.tradeops/

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "instrument": {
+    "symbol": "SAMP",
+    "assetClass": "Stock",
+    "currency": "USD",
+    "exchange": "XNYS"
+  },
+  "historicalDailyMarketBars": [
+    {
+      "openTime": "2026-07-23T14:30:00Z",
+      "closeTime": "2026-07-23T21:00:00Z",
+      "open": 100.00,
+      "high": 103.00,
+      "low": 99.00,
+      "close": 102.00
+    },
+    {
+      "openTime": "2026-07-24T14:30:00Z",
+      "closeTime": "2026-07-24T21:00:00Z",
+      "open": 102.00,
+      "high": 105.00,
+      "low": 101.00,
+      "close": 104.00
+    }
+  ],
+  "initialCash": 10000.00,
+  "currentPortfolio": {
+    "baseCurrency": "USD",
+    "netAssetValue": 10000.00,
+    "cash": 9000.00,
+    "positions": [
+      {
+        "quantity": 10.00
+      }
+    ],
+    "asOf": "2026-07-24T22:00:00Z"
+  },
+  "currentReferencePrice": 100.00,
+  "currentRebalanceConstraints": {
+    "maxTargetWeight": 0.50
+  }
+}

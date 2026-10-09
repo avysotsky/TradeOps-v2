@@ -1,0 +1,36 @@
+{
+  "document_id": "textdoc:sample-2026-q1",
+  "title": "Sample Systems Q1 2026 earnings call",
+  "document_type": "transcript",
+  "source": {
+    "provider": "synthetic-sample",
+    "source_uri": "https://example.test/transcripts/sample-2026-q1",
+    "source_document_id": "sample-call-2026-q1",
+    "source_timestamp": "2026-04-22T20:00:00Z",
+    "published_at": "2026-04-22T20:30:00Z",
+    "retrieved_at": "2026-04-22T21:00:00Z"
+  },
+  "participants": [
+    {
+      "participant_id": "management-1",
+      "display_name": "Management Speaker",
+      "role": "management",
+      "organization": "Sample Systems"
+    }
+  ],
+  "segments": [
+    {
+      "sequence": 1,
+      "participant_id": "management-1",
+      "text": "Revenue for the quarter was 100 million dollars.",
+      "segment_id": "textseg:sample-q1-1"
+    },
+    {
+      "sequence": 2,
+      "participant_id": "management-1",
+      "text": "Diluted earnings per share were 2.00 and operating margin was 20 percent.",
+      "segment_id": "textseg:sample-q1-2"
+    }
+  ],
+  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
