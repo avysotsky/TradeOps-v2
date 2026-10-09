@@ -1,6 +1,6 @@
 # Development Orchestrator v2 — Worker Registry (PRIVATE)
 
-Status: **WORKSTREAMS REGISTERED — WORKER EXECUTION NOT YET STARTED**
+Status: **TO-V2-01A APPROVED / DF-V2-02B + DF-V2-02C INTEGRATED / DF-V2-02D REGISTERED**
 Recorded on 2026-10-09. GitHub is source of truth; stale SHAs require refresh before execution/merge.
 
 ## Role boundary — mandatory
@@ -9,8 +9,8 @@ The Development Orchestrator plans the architecture, creates and assigns isolate
 A new chat is a worker only after the user starts it with its assignment. Registering branches or opening draft PRs does **not** mean an autonomous worker is running.
 
 ## Repository invariants
-- `avysotsky/TradeOps-v2`: PRIVATE, main `ec3dc4aa51440aa38856bd8220492f57dd7df1ab`, full build run `37915153268` SUCCESS (576/576).
-- `avysotsky/DocFlow-v2`: PRIVATE, main `eb7280306785fe52c1228fe3829e415edd01fa8e`, .NET main CI `37917316950` SUCCESS; native subset PR CI `37917127649` SUCCESS.
+- `avysotsky/TradeOps-v2`: PRIVATE, TO-V2-01A docs-only design approved and merged in PR #2 at `56240235b7b7aa3bc40a30c68183d9490a2abeec`. Exact-head PR build `37920096539` SUCCESS (576/576, zero build warnings). Post-merge run `37921175907` triggered; check live conclusion before claiming it passed.
+- `avysotsky/DocFlow-v2`: PRIVATE, main `b7a6931bc9bc3d31ab28a8cc8dc7369f96bb92ce`. DF-V2-02B PR #4 merged (36/36 differential tests in main run `37920526539` SUCCESS); DF-V2-02C PR #5 merged (audit finding 3 BLOCKER / 10 MUST_FIX / 4 FOLLOW_UP on earlier 02A baseline). Post-merge Python `37920526536` and .NET `37920526551` both SUCCESS. Next DF-V2-02D is registered in draft PR #6, not yet accepted.
 - `avysotsky/TradeOps` and `avysotsky/DocFlow`: PUBLIC + ARCHIVED; previous URL and deep-link checks passed. Never push v2 content to v1 or make v2 public.
 - DocFlow-v2 PR #2: 58/58 normalization parity fixture checks SUCCESS; PR #3: restricted schema subset foundation merged. **Neither proves full Python Draft 2020-12 extraction parity.**
 - `DocFlow.sln` CI currently does not build the separately introduced `DocFlow.SchemaExtraction` project; a dedicated PR-only schema-gate workflow is the prior proof. This CI gap is an explicit review/repair item.
@@ -19,9 +19,9 @@ A new chat is a worker only after the user starts it with its assignment. Regist
 
 | ID | Repo | Worker branch | Draft PR | Assignment | Ownership | State |
 |---|---|---|---|---|---|---|
-| DF-V2-02B | DocFlow-v2 | `DocFlow/df-v2-02b-native-python-contract-diff` | [#4](https://github.com/avysotsky/DocFlow-v2/pull/4) | [DF_V2_02B_ASSIGNMENT.md](https://github.com/avysotsky/DocFlow-v2/blob/DocFlow/df-v2-02b-native-python-contract-diff/docs/workstreams/DF_V2_02B_ASSIGNMENT.md) | Native/Python differential test harness and limited application-core fixes | READY / not started |
-| DF-V2-02C | DocFlow-v2 | `DocFlow/df-v2-02c-contract-security-audit` | [#5](https://github.com/avysotsky/DocFlow-v2/pull/5) | [DF_V2_02C_AUDIT_ASSIGNMENT.md](https://github.com/avysotsky/DocFlow-v2/blob/DocFlow/df-v2-02c-contract-security-audit/docs/workstreams/DF_V2_02C_AUDIT_ASSIGNMENT.md) | Audit docs only, not code | READY / not started |
-| TO-V2-01A | TradeOps-v2 | `TradeOps/to-v2-01a-dual-topology-design` | [#2](https://github.com/avysotsky/TradeOps-v2/pull/2) | [TO_V2_01A_ASSIGNMENT.md](https://github.com/avysotsky/TradeOps-v2/blob/TradeOps/to-v2-01a-dual-topology-design/docs/orchestration/workstreams/TO_V2_01A_ASSIGNMENT.md) | Topology/packaging architecture docs only | READY / not started |
+| DF-V2-02B (MERGED) | DocFlow-v2 | `DocFlow/df-v2-02b-native-python-contract-diff` | [#4](https://github.com/avysotsky/DocFlow-v2/pull/4) | [DF_V2_02B_ASSIGNMENT.md](https://github.com/avysotsky/DocFlow-v2/blob/DocFlow/df-v2-02b-native-python-contract-diff/docs/workstreams/DF_V2_02B_ASSIGNMENT.md) | Native/Python differential test harness and limited application-core fixes | MERGED / validated subset |
+| DF-V2-02C (MERGED) | DocFlow-v2 | `DocFlow/df-v2-02c-contract-security-audit` | [#5](https://github.com/avysotsky/DocFlow-v2/pull/5) | [DF_V2_02C_AUDIT_ASSIGNMENT.md](https://github.com/avysotsky/DocFlow-v2/blob/DocFlow/df-v2-02c-contract-security-audit/docs/workstreams/DF_V2_02C_AUDIT_ASSIGNMENT.md) | Audit docs only, not code | MERGED / review follow-up required |
+| TO-V2-01A (MERGED) | TradeOps-v2 | `TradeOps/to-v2-01a-dual-topology-design` | [#2](https://github.com/avysotsky/TradeOps-v2/pull/2) | [TO_V2_01A_ASSIGNMENT.md](https://github.com/avysotsky/TradeOps-v2/blob/TradeOps/to-v2-01a-dual-topology-design/docs/orchestration/workstreams/TO_V2_01A_ASSIGNMENT.md) | Topology/packaging architecture docs only | APPROVED / MERGED |
 
 Exact registered draft PR branch HEADs at registration:
 - DF-V2-02B: `81ed9afe3a2376ad160970165800a35ca2b35a2b`, original unfinished worker code before task note `3620c128bf2986b63075777a0e57eac06a74c546`. This CLI references **missing FixtureBackend**. Two unmerged code files must be recovered, not presumed complete.
@@ -40,3 +40,11 @@ Each worker returns exact branch HEAD, compare against current main, per-file di
 
 ## Next orchestrator decision
 Open separate worker chats using the assignment linked for #4, #5 and TradeOps-v2 #2. They do not start automatically. Give highest priority to DF-V2-02B and DF-V2-02C; TO-V2-01A can proceed concurrently or after those if resources are limited.
+
+## 2026-10-09 integration update
+
+- **TO-V2-01A approved and merged**: design PR #2 at `56240235b7b7aa3bc40a30c68183d9490a2abeec`. The accepted ADR is `docs/orchestration/workstreams/TO_V2_01A_TOPOLOGY_DESIGN.md`: distributed authenticated DocFlow HTTP and local in-process DI use the *same* future native DocFlow extraction facade. Production shared modules are proposed via immutable private NuGet; local project references are for prototype. No runtime changes implemented or released in TO-V2-01A.
+- **DocFlow DF-V2-02B/C integrated** at main `b7a6931bc9bc3d31ab28a8cc8dc7369f96bb92ce`. The native differential suite verifies 36 synthetic subset cases only; full JSON Schema 2020-12 is not implemented. Audit findings need explicit remediation before production API.
+- **DF-V2-02D next worker**: [draft PR #6](https://github.com/avysotsky/DocFlow-v2/pull/6) and `docs/workstreams/DF_V2_02D_ASSIGNMENT.md`, focused on normalized-document ingress and the remaining appointed blockers. Integration is not authorized before its CI and audit gates.
+- **Subsequent dependencies**: DF-V2-02E DocFlow facade/provider composition → DF-V2-03 authenticated DocFlow ASP.NET HTTP host → DF-V2-04 private package publication and verified consumer permission → TO-V2-01B direct TradeOps port adapter → monolith host/dual-topology parity; worker branches to be created when upstream contracts are ready, not prematurely.
+- **Safety**: v1 public repositories remain Public+Archived; v2 remains private; no live trading or broker mutation is approved.
