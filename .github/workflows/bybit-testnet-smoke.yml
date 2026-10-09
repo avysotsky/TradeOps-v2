@@ -1,0 +1,76 @@
+name: bybit-testnet-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_order:
+        description: 'Place and then cancel one Bybit TESTNET limit order'
+        required: true
+        type: boolean
+        default: false
+      symbol:
+        description: 'TESTNET symbol used only when execute_order=true'
+        required: true
+        type: string
+        default: 'BTCUSDT'
+      side:
+        description: 'Order side used only when execute_order=true'
+        required: true
+        type: choice
+        options:
+          - Buy
+          - Sell
+        default: Buy
+      quantity:
+        description: 'Order quantity used only when execute_order=true'
+        required: true
+        type: string
+        default: '0.001'
+      limit_price:
+        description: 'Limit price used only when execute_order=true; choose a valid TESTNET price deliberately away from market if desired'
+        required: false
+        type: string
+        default: ''
+      confirmation:
+        description: 'Required only for execution: type TESTNET_ONLY'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bybit-testnet-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      BYBIT_TESTNET_API_KEY: ${{ secrets.BYBIT_TESTNET_API_KEY }}
+      BYBIT_TESTNET_API_SECRET: ${{ secrets.BYBIT_TESTNET_API_SECRET }}
+      BYBIT_SMOKE_EXECUTE_ORDER: ${{ inputs.execute_order }}
+      BYBIT_SMOKE_SYMBOL: ${{ inputs.symbol }}
+      BYBIT_SMOKE_SIDE: ${{ inputs.side }}
+      BYBIT_SMOKE_QUANTITY: ${{ inputs.quantity }}
+      BYBIT_SMOKE_LIMIT_PRICE: ${{ inputs.limit_price }}
+      BYBIT_SMOKE_CONFIRM: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore smoke tool
+        run: dotnet restore tools/TradeOps.BybitSmoke/TradeOps.BybitSmoke.csproj
+
+      - name: Build smoke tool
+        run: dotnet build tools/TradeOps.BybitSmoke/TradeOps.BybitSmoke.csproj --configuration Release --no-restore
+
+      - name: Run Bybit TESTNET smoke
+        run: dotnet run --project tools/TradeOps.BybitSmoke --configuration Release --no-build
