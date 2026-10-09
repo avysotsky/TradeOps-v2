@@ -117,3 +117,20 @@ This is an orchestration state note, not worker implementation or release approv
 - Following accepted packaging and private release gate: **TO-V2-01B** in-process TradeOps port adapter, **TO-V2-01C** monolith host, **TO-V2-01D** topology parity with zero broker/persistence mutation. No premature TradeOps worker until packages/contracts and ACL are ready.
 
 **Repository safety:** both v2 repositories PRIVATE, both original public v1 repositories remain PUBLIC+ARCHIVED, unchanged. TradeOps-v2 main before this registry update \`67ed2514026754724d7c025cdf69cb79a127464f\`; no open TradeOps-v2 PRs. Historical records above remain snapshots; THIS section supersedes earlier DF-V2-03 REGISTERED state.
+
+
+## 2026-10-09 parallel registration — TO-V2-01B0
+
+Live GitHub verification before worker registration:
+- \`TradeOps-v2 main=8f1963e1dad4d78fc81b9985e8b0f00531c9814c\`; exact push build [37940719498](https://github.com/avysotsky/TradeOps-v2/actions/runs/37940719498) SUCCESS and **no open TradeOps PR** before this new registration.
+- \`DocFlow-v2 main=0f009e79126a9beee5eef4b6eecbef1725937e12\`; PR #9 DF-V2-03 merged, exact main HTTP [37940276591](https://github.com/avysotsky/DocFlow-v2/actions/runs/37940276591) and .NET [37940276566](https://github.com/avysotsky/DocFlow-v2/actions/runs/37940276566) both SUCCESS.
+- Concurrent \`DF-V2-04\` package worker, DocFlow-v2 branch \`DocFlow/df-v2-04-private-dotnet-packaging\`, [Draft PR #10](https://github.com/avysotsky/DocFlow-v2/pull/10), registered HEAD \`4e95301ab07ee1cc6d5cd96d4933271de538394f\` **assignment only / not started at check**; no trusted private package release or consumer ACL yet.
+
+**New parallel independent Design/G3 preparation worker:**
+- \`TO-V2-01B0 — In-Process DocFlow Adapter Contract & Integration Design\`, in **private TradeOps-v2**. Existing assigned branch \`TradeOps/to-v2-01b0-inprocess-adapter-contract\`, baseline \`8f1963e1dad4d78fc81b9985e8b0f00531c9814c\`, assignment-only registered HEAD \`7666e2d878f23fed900b22d498f62f3d5a35539c\`. [Draft PR #3](https://github.com/avysotsky/TradeOps-v2/pull/3), **REGISTERED / NOT STARTED** (user must launch a dedicated worker chat).
+- Full task \`docs/orchestration/workstreams/TO_V2_01B0_ASSIGNMENT.md\`. Owns **only** \`TO_V2_01B0_ASSIGNMENT.md\`, \`TO_V2_01B0_INPROCESS_ADAPTER_DESIGN.md\` and \`TO_V2_01B0_STATUS.md\` under \`docs/orchestration/workstreams/\`. No production source/test/CI/deployment changes, no shared registry/ADR edits, no TradeOps+DocFlow package publishing. Docs-only PR may have no exact-head CI because of path filters: do not claim CI success without a real job.
+- Main deliverable: exact TradeOps \`IDocFlowExtractionPort\` to DocFlow \`IDocFlowExtractionFacade\` mapping, validated schema metadata, error/cancellation isolation, explicit in-process DI topology, offline test matrix, absence of any internal HTTP/Python fallback, package restore/access gate and downstream risk/dry-run non-mutation. Research/future live broker writes are excluded.
+- **Parallel-safe:** different repositories and disjoint file ownership from DF-V2-04. Actual \`TO-V2-01B\` **implementation remains BLOCKED** until a separate DF-V2-04 accepted package and read-only TradeOps-v2 private package ACL/locked restore proof, unless orchestrator makes a new explicit dependency decision.
+- Following approved RFC, package release and G3 worker: TO-V2-01C monolith composition and TO-V2-01D deterministic topology parity. DocFlow.Api has existing unauthenticated DocumentsController routes: **public whole-host rollout remains BLOCKED** and is NOT remedied by a design RFC or packages. Both v2 PRIVATE; both v1 PUBLIC+ARCHIVED.
+
+The worker must not create a duplicate branch or merge. Only Development Orchestrator reviews/merges and updates this registry.
