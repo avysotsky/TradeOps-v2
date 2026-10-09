@@ -7,4 +7,4 @@ This is a fresh-history private continuation of the original public repository, 
 - Original public repository remains unchanged until private CI and independent validation pass.
 - This migration metadata is private; do not publish private branch or feature details in the public v1 repository.
 
-Migration stage: **snapshot imported**; private CI verification pending.
+Migration stage: **source snapshot and CI verified**; integration/freeze acceptance pending.\n\nPrivate validation: full TradeOps build 37910174501 SUCCESS; retained source blobs match pinned public SHA.

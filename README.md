@@ -1,4 +1,4 @@
-# TradeOps
+> **TradeOps v2 — PRIVATE ACTIVE DEVELOPMENT.** This repository is the clean-history continuation of the public [TradeOps v1](https://github.com/avysotsky/TradeOps) snapshot. Future code and architecture changes are confidential. See [V2 active roadmap](docs/orchestration/V2_ACTIVE_ROADMAP.md). The v1 repository is intentionally retained publicly as a portfolio snapshot; archive transition is pending.\n\n# TradeOps
 
 C#/.NET trading execution and automation backend focused on reliable order handling rather than strategy research.
 
