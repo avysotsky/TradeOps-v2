@@ -1,0 +1,62 @@
+name: query-plan-evidence
+
+on:
+  push:
+    branches:
+      - 'TradeOps/**'
+    paths:
+      - '.github/workflows/query-plan-evidence.yml'
+      - 'tests/TradeOps.UnitTests/*QueryPlanPostgresTests.cs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  query-plan-evidence:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tradeops_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d tradeops_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore TradeOps.sln
+
+      - name: Build
+        run: dotnet build TradeOps.sln --configuration Release --no-restore
+
+      - name: Query-plan tests
+        run: >-
+          dotnet test tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj
+          --configuration Release
+          --no-build
+          --verbosity normal
+          --filter "FullyQualifiedName~QueryPlanPostgresTests"
+
+      - name: Upload query-plan reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: query-plan-reports-${{ github.sha }}
+          path: '*-query-plan-report.md'
+          if-no-files-found: error
+          retention-days: 30
