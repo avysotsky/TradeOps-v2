@@ -1,6 +1,6 @@
 # Development Orchestrator v2 — Worker Registry (PRIVATE)
 
-Status: **TO-V2-01A, DF-V2-02B/C/D/E0 MERGED; DF-V2-02E ACTIVE DRAFT — awaiting final worker handoff and exact-head review**
+Status: **TO-V2-01A, DF-V2-02B/C/D/E0/E MERGED; DF-V2-03 REGISTERED / NOT STARTED**
 Recorded on 2026-10-09. GitHub is source of truth; stale SHAs require refresh before execution/merge.
 
 ## Role boundary — mandatory
@@ -79,3 +79,21 @@ Live GitHub source-of-truth snapshot; **do not treat mutable worker HEAD below a
 - **Next:** integrate DF-V2-02E on acceptance; only then schedule DF-V2-03 (service-authenticated native ASP.NET HTTP extraction host) with a separate worker branch, full assignment and Draft PR. Follow approved DF-V2-04 → TO-V2-01B → TO-V2-01C → TO-V2-01D sequence. Full Draft 2020-12, service authorization and resource/security budgets remain unproven.
 
 This is an orchestration state note, not worker implementation or release approval.
+
+
+## 2026-10-09 integration acceptance — DF-V2-02E and registration — DF-V2-03
+
+**Completed upstream:**
+
+- Private DocFlow-v2 [DF-V2-02E PR #8](https://github.com/avysotsky/DocFlow-v2/pull/8) **APPROVED / SQUASH-MERGED** from \`DocFlow/df-v2-02e-extraction-facade-implementation\` exact worker HEAD \`30274e01aba0b3ae078db835ef92e6f7ad875750\`. Integrated main SHA \`6b2c8aab9d6170ba637672bc958e382ab678aacb\`.
+- Independent premerge gate: \`37931156298\` Facade **SUCCESS** 12 scenarios / 212 assertions, 46 native normalized-ingress, schema subset; \`37931156306\` .NET **SUCCESS**. Scope exactly 11 E-owned new application/test/CI/handoff files, no upstream normalization/schema changes, no Python/API/TradeOps production changes or forbidden v1 edits. Worker handoff recorded in \`docs/workstreams/DF_V2_02E_STATUS.md\`, PR body + final exact-HEAD comment.
+- **Post-merge exact DocFlow-v2 main SHA \`6b2c8aab9d6170ba637672bc958e382ab678aacb\`: [Facade run 37931582856](https://github.com/avysotsky/DocFlow-v2/actions/runs/37931582856) **SUCCESS**, [.NET CI run 37931582986](https://github.com/avysotsky/DocFlow-v2/actions/runs/37931582986) **SUCCESS**. This qualifies G1 **for the explicitly supported native schema subset only**, not public or full Draft 2020-12 service readiness.
+
+**Next worker independently registered:**
+
+- **DF-V2-03 — Secure ASP.NET Core Native HTTP Extraction Service**. Private repo \`avysotsky/DocFlow-v2\`, existing assigned branch \`DocFlow/df-v2-03-secure-http-extraction\`. Baseline SHA \`6b2c8aab9d6170ba637672bc958e382ab678aacb\`, registered assignment-only HEAD \`0ca5fdf3497945e2cceaaf8403f0ef9e2782edf2\`.
+- [Draft PR #9](https://github.com/avysotsky/DocFlow-v2/pull/9); full assignment \`docs/workstreams/DF_V2_03_ASSIGNMENT.md\`. **REGISTERED, NOT STARTED** until user launches separate worker chat. Do not create another branch or PR. Orchestrator must verify fresh HEAD, compare, file ownership, exact API-auth CI and reviews prior to any merge.
+- Ownership: \`src/DocFlow.Api/**\` secure extraction transport only, **new** \`tests/DocFlow.Api.Extraction.Tests/**\`, **new** \`.github/workflows/df-v2-03-http-extraction.yml\`, its own status+assignment files. Do not change \`DocumentsController\` behavior, normalized/schema/facade source, Python, TradeOps or public archived v1. No real LLM SDK or public deployment. Route should map existing Python v1 envelope to **the same** native facade, require real service authentication + \`docflow.extract\`, scoped resource limits and fail-closed boundaries. Native subset limitations and current unprotected persistence routes mean no whole-host public security approval.
+- **Next after accepted DF-V2-03**: DF-V2-04 private immutable .NET packages, verified ACL/restore → TO-V2-01B direct in-process port → TO-V2-01C monolith host → TO-V2-01D deterministic topology equivalence; do not leapfrog dependency gates.
+
+**Other live state at registration:** TradeOps-v2 PRIVATE \`main=fc5d5d0dbe475d551cbf996b875512c7c56183ba\`, push build \`37931093600\` SUCCESS; DocFlow-v2 PRIVATE, originals TradeOps/DocFlow PUBLIC+ARCHIVED unchanged.
