@@ -170,3 +170,16 @@ On DocFlow-v2 `main=c1d73adb40cd45a8686924fcc355e049f177f401`, **all five observ
 - DocFlow.Api has unauthenticated legacy DocumentsController routes and no authorized production LLM backend; a green HTTP extraction path does not approve publicly reachable whole-host. v2 repos PRIVATE, public v1 archives unchanged. TradeOps-v2/DocFlow-v2 broker orders/persistence mutations prohibited in forthcoming parity tests.
 
 **Source of truth:** prior history and snapshots above are not current branch statuses; this newest section records transitions from TO-V2-01B0 DRAFT to MERGED and DF-V2-05 registration.
+
+
+## 2026-10-09 critical operating override — GitHub Actions DISABLED by owner
+
+**Cost containment is a hard project-wide instruction that supersedes earlier exact-head CI/Actions mandates.** The owner disabled GitHub Actions for BOTH private repositories `avysotsky/TradeOps-v2` and `avysotsky/DocFlow-v2` after the included plan minutes were nearly exhausted (1,802 / 2,000 minutes used). **No agent/worker/orchestrator may enable, run, rerun, dispatch, create or edit GitHub Actions workflows, schedule cloud CI, or launch paid replacement CI without a separate explicit owner request.** A GitHub code push/PR is allowed only when current Actions remain disabled; verify that no new run was started. Do not claim exact-HEAD CI passes for new commits without actual evidence.
+
+**Alternative engineering gate:** reviewed GitHub source/diff and owned branch, locally executed deterministic offline tests tied to an exact commit/working tree, reproducible commands, SDK/OS/environment, redacted output, assertion counts and exit codes where local checkout is available. If local checkout or dependencies cannot execute, state `NOT RUN / NOT VERIFIED` and do not promote a runtime/security claim. Pre-disable historical green CI is evidence only for its exact old commit, not new branch SHAs. Manual owner/orchestrator risk acceptance of untested changes remains separate; no unconditional merges.
+
+**At switch:** TradeOps-v2 main `30e821f93611d3dc771a358090b8d502291b5018` last pre-disable build [37946112254](https://github.com/avysotsky/TradeOps-v2/actions/runs/37946112254) SUCCESS; DocFlow-v2 main `c1d73adb40cd45a8686924fcc355e049f177f401`, pre-disable package proof [37944356731](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356731) SUCCESS. Live read-only Actions listing after a DF-V2-05 branch assignment update showed no later workflow runs in either repository; GitHub installation does **not** expose Actions administration, so setting itself is accepted from the owner's confirmation.
+
+**DF-V2-05:** existing DocFlow-v2 branch `DocFlow/df-v2-05-private-nuget-release-readiness`, [Draft PR #11](https://github.com/avysotsky/DocFlow-v2/pull/11), updated assignment HEAD `3031f6deebfb4ae9e0fdfa8a7f5ac3d984d5d1d9`. New top-priority assignment replaces CI/workflow tasks with **locally runnable nonpublishing release gates** and Markdown-only protected publisher design; `PUBLISH BLOCKED` persists. No NuGet package publish, no provider/broker/database mutations.
+
+Every next worker prompt must state **ACTIONS OFF / NO WORKFLOW YAML / LOCAL TESTS ONLY** until owner explicitly reverses this instruction.
