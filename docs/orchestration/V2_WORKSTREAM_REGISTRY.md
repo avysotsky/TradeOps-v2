@@ -1,6 +1,6 @@
 # Development Orchestrator v2 — Worker Registry (PRIVATE)
 
-Status: **TO-V2-01A and DF-V2-02B/C/D/E0/E/03/04 MERGED; DF-V2-04 PACKAGES NOT PUBLISHED / PUBLISH BLOCKED; TO-V2-01B0 DESIGN ACTIVE DRAFT**
+Status: **TO-V2-01A/B0 and DF-V2-02B/C/D/E0/E/03/04 MERGED; DF-V2-05 RELEASE-READINESS REGISTERED; NUGET PUBLISH BLOCKED**
 Recorded on 2026-10-09. GitHub is source of truth; stale SHAs require refresh before execution/merge.
 
 ## Role boundary — mandatory
@@ -151,3 +151,22 @@ The worker must not create a duplicate branch or merge. Only Development Orchest
 On DocFlow-v2 `main=c1d73adb40cd45a8686924fcc355e049f177f401`, **all five observed post-merge GitHub Actions completed SUCCESS**: private package proof [37944356731](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356731) (three jobs: Windows and Ubuntu package-only consumer and Ubuntu strict differential), .NET [37944356920](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356920), authenticated HTTP [37944356852](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356852), facade [37944356959](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356959), native/Python differential [37944356864](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356864). This supersedes the earlier PENDING observation for precisely these runs.
 
 **Gate summary: source packaging and local isolated consumption ACCEPTED; PRIVATE PACKAGE PUBLICATION AND TRADEOPS-V2 AUTHENTICATED CONSUMPTION STILL BLOCKED.** No actual packages published, no explicit license approval, no GitHub Packages private-namespace/version or ACL verification. TO-V2-01B0 remains documentation-only; the next production integration decision requires release/security approvals or a separately scoped development prototype, never an unverified public/runtime package assumption.
+
+
+## 2026-10-09 design integration TO-V2-01B0 and DF-V2-05 registration
+
+**TO-V2-01B0 design accepted / merged**
+
+- Private TradeOps-v2 [PR #3](https://github.com/avysotsky/TradeOps-v2/pull/3) approved and **squash-merged**: worker exact head \`2c6cc9f0f601ec8e0b16b0521caa4ba754a6c7dd\` → main SHA \`269a1be6216af8c30495d05cfeeea64c6f56d0aa\`. Branch compare prior to merge **6 ahead / 3 behind** solely because three main-side orchestrator registry commits; **no overlap**: changed files only \`docs/orchestration/workstreams/TO_V2_01B0_{ASSIGNMENT,INPROCESS_ADAPTER_DESIGN,STATUS}.md\`. No production/tests/dependencies/CI touched.
+- Exact-head two TradeOps \`build\` check runs \`37945253273\` and \`37945262598\` **SUCCESS**; pre-merge current-main \`097418c...\` build \`37944728348\` SUCCESS. **Post-merge TradeOps main build [37945739621](https://github.com/avysotsky/TradeOps-v2/actions/runs/37945739621) PENDING at registration, verify before final integration CI claim**.
+- Design-only RFC establishes unchanged \`TradeOps.Application.Models.IDocFlowExtractionPort\`, mapping via \`RawExtractionRequest\` / \`SchemaExtractionRequest.Parse\` / \`BackendSelection\` → same \`IDocFlowExtractionFacade.ExtractRawAsync\`, preserving document IDs, hashes, provenance, validation status/diagnostics, confidence and lossless JSON. Exclusive HTTP-or-InProcess DI, no internal localhost HTTP / embedded Python or reimplementing DocFlow logic, cancellation/deadline/failure categories, backend lifecycle and zero broker/DB mutation. Fifteen future **proposed** G3 acceptance scenarios are not implemented runtime tests.
+- **Known blockers** for TO-V2-01B: private versioned NuGet packages \`DocFlow.Normalization\`, \`DocFlow.SchemaExtraction\`, \`DocFlow.Extraction.Application\` passed only *local-feed* packaging, **not a published immutable registry release**. TradeOps-v2 package-specific Actions \`packages:read\` ACL and authenticated locked restore unverified. Existing TradeOps HTTP adapter collapses non-2xx wire categories; native facade vs HTTP ingress quotas and duplicate-key checks differ; per-operation backend disposal contract unresolved; old TradeOps.Api startup executes DB migrations, so monolith zero-mutation tests cannot run standard production startup. Do not claim G3/G4/G5 runtime parity or live trading readiness.
+
+**Next independent DocFlow-v2 release preparation**
+
+- **DF-V2-05 — Private NuGet Release Readiness / Supply-Chain Gates & ACL Preflight**. Registered in private DocFlow-v2 on existing branch \`DocFlow/df-v2-05-private-nuget-release-readiness\` from \`main=c1d73adb40cd45a8686924fcc355e049f177f401\`, assignment-only head \`7d47aa7f31539a255ba590547a017a56b69a2f20\`; [Draft PR #11](https://github.com/avysotsky/DocFlow-v2/pull/11) **REGISTERED / NOT STARTED**. Full \`docs/workstreams/DF_V2_05_ASSIGNMENT.md\`.
+- Scope: new DF-V2-05 release check docs/tool/validation-only workflow with \`contents:read\`, no actual publish, no packages:write, no registry mutation. Verifies immutable IDs/dependency/metadata, evaluates proprietary redistribution/security/SourceLink and prepares owner UI instructions for GitHub Packages private visibility, version uniqueness, publisher rights and **TradeOps-v2 package-specific read-only ACL**. Missing external evidence must explicitly report \`PUBLISH BLOCKED\`; no worker may independently authorize publication.
+- **TO-V2-01B production worker remains BLOCKED** until future explicit orchestrator/owner approval of private release, actual approved immutable publication, authenticated locked read-only TradeOps-v2 restore, and any remaining G3 contract/lifetime conditions assigned/cleared. No auto fallback to public NuGet or source-vendoring.
+- DocFlow.Api has unauthenticated legacy DocumentsController routes and no authorized production LLM backend; a green HTTP extraction path does not approve publicly reachable whole-host. v2 repos PRIVATE, public v1 archives unchanged. TradeOps-v2/DocFlow-v2 broker orders/persistence mutations prohibited in forthcoming parity tests.
+
+**Source of truth:** prior history and snapshots above are not current branch statuses; this newest section records transitions from TO-V2-01B0 DRAFT to MERGED and DF-V2-05 registration.
