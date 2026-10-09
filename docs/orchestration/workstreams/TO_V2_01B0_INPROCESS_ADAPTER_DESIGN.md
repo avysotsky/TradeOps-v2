@@ -5,7 +5,7 @@
 **Date:** 2026-10-09 (Europe/Kyiv).  
 **Repositories:** PRIVATE `avysotsky/TradeOps-v2` and PRIVATE `avysotsky/DocFlow-v2`. Archived public v1 repositories are out of scope.  
 **Working branch:** `TradeOps/to-v2-01b0-inprocess-adapter-contract`; Draft [PR #3](https://github.com/avysotsky/TradeOps-v2/pull/3).  
-**Observed upstream:** TradeOps-v2 `main=2a2558e6e9b49cbc539b8b85bc59c82271fbcea7`; DocFlow-v2 `main=0f009e79126a9beee5eef4b6eecbef1725937e12`. Both must be revalidated by the implementer. DF-V2-04 candidate branch PR #10 HEAD `7c68bdbbecf07a0c160874e36dfe6adce1a13ff1`, not merged or published.
+**Latest recheck (2026-10-09):** TradeOps-v2 `main=097418c324cefbd5a2e35af16d0e752057cbf242`; DocFlow-v2 `main=c1d73adb40cd45a8686924fcc355e049f177f401` (**DF-V2-04 PR #10 merged**). DF-V2-04 package-preparation source HEAD `7c68bdbbecf07a0c160874e36dfe6adce1a13ff1`, **package publication and TradeOps read ACL still blocked/unverified**. Both refs must be revalidated by implementer.
 
 ## 0. Normative decisions, evidence and scope
 
@@ -18,7 +18,7 @@ This specification is executable guidance, **not evidence of an implemented adap
 - TradeOps `src/TradeOps.Application/Models/DocFlowExtractionContracts.cs`; `src/TradeOps.Infrastructure/DocFlow/{DocFlowHttpExtractionAdapter,DocFlowServiceCollectionExtensions}.cs`; `TradeOps.Infrastructure.csproj`; `TradeOps.Api/Program.cs`.
 - DocFlow `src/DocFlow.Extraction.Application/{IDocFlowExtractionFacade,DocFlowExtractionFacade,ExtractionRequests,ExtractionArtifacts,IExtractionBackendFactory}.cs`; `src/DocFlow.SchemaExtraction/{SchemaExtractionRequest,NativeExtractionService,IExtractionBackend,IRequestAwareExtractionBackend,IConfidentExtractionBackend,ExtractionResultFactory,ValidationOutcome}.cs`; `src/DocFlow.Normalization/{TextDocumentNormalizer,TextDocumentNormalizer.Normalized}.cs`; `src/DocFlow.Api/Extraction/{ExtractionHttpOptions,ExtractionRequestParser,ExtractionHttpEndpoint}.cs`.
 - `docs/orchestration/workstreams/TO_V2_01A_TOPOLOGY_DESIGN.md`, `DUAL_TOPOLOGY_ARCHITECTURE_PLAN.md`, `V2_WORKSTREAM_REGISTRY.md`, `WORKSTREAM_PROTOCOL.md`; DocFlow `DF_V2_02E_STATUS.md`, `DF_V2_03_STATUS.md` and DF-V2-04 branch `DF_V2_04_STATUS.md` / `docs/packaging/PRIVATE_NUGET_RELEASE_POLICY.md`. The older TO-V2-01A ADR inventory predates the *now merged* DocFlow native facade and secure HTTP endpoint; **live source above controls**.
-- TradeOps `main` was one registry-only commit ahead of this worker's registration baseline when inspected (branch initially 1 ahead / 1 behind, merge base `8f1963e1dad4d78fc81b9985e8b0f00531c9814c`). No rebase needed for this disjoint, documentation-only branch; orchestrator decides integration.
+- TradeOps `main` advanced by three registry-only commits after this worker's registration baseline (preflight was 1 behind; latest 3 behind), still with no path overlap; merge base `8f1963e1dad4d78fc81b9985e8b0f00531c9814c`. No rebase needed for this disjoint, documentation-only branch; orchestrator decides integration.
 
 ## 1. Exact port contract and mapping (G3)
 
@@ -223,7 +223,7 @@ No automatic retries or provider substitution in either topology. A cancellation
 
 ## 6. Private NuGet dependency gate (G5; DF-V2-04 is concurrent)
 
-As of checked DF-V2-04 Draft PR #10 HEAD `7c68bdbbecf07a0c160874e36dfe6adce1a13ff1`, the following **locally packed candidate set** passed its exact-HEAD Ubuntu/Windows isolated consumer proof; **no artifact is published and no package-read ACL has been demonstrated**:
+At **merged** DF-V2-04 `DocFlow-v2/main=c1d73adb40cd45a8686924fcc355e049f177f401` (former Draft PR #10; package source HEAD `7c68bdbbecf07a0c160874e36dfe6adce1a13ff1`), the following **locally packed candidate set** passed isolated consumer proof and the post-merge main packaging workflow [37944356731](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356731) **SUCCESS**; **no artifact is published and no package-read ACL has been demonstrated**:
 
 | Candidate ID | Target | Exact dependencies (candidate only) |
 |---|---|---|
@@ -235,7 +235,7 @@ As of checked DF-V2-04 Draft PR #10 HEAD `7c68bdbbecf07a0c160874e36dfe6adce1a13f
 
 **Release/consumer checklist (mandatory before TO-V2-01B starts):**
 
-1. Development Orchestrator reviews DF-V2-04 PR #10, exact final HEAD CI, appropriate license/proprietary redistribution/supply-chain/SourceLink/BOM policy, package ID/version collision checks and merges only when separately approved. Verify merged-main CI. Protected manual publisher separately authorized; **no publish on PR or normal push**.
+1. Development Orchestrator **has merged** DF-V2-04 PR #10; post-merge DocFlow main packaging [37944356731](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356731), secure HTTP [37944356852](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356852), facade [37944356959](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356959), differential [37944356864](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356864) and .NET [37944356920](https://github.com/avysotsky/DocFlow-v2/actions/runs/37944356920) are **SUCCESS**. This **does not** authorize publication. Separately approve license/proprietary redistribution/supply-chain/SourceLink/BOM policy, package ID/version collision checks and protected manual publisher; **no publish on PR or normal push**.
 2. Verify actual private GitHub Packages owner/registry (candidate `https://nuget.pkg.github.com/avysotsky/index.json`), visibility, permissions, immutable version existence and publisher ability; no overwrite or `--skip-duplicate` workaround. Grant `avysotsky/TradeOps-v2` **package-specific Actions read-only** access in each package's **Package settings → Manage Actions access → Add repository**, matching GitHub's supported access model. Repo privacy is not sufficient.
 3. First perform real authenticated package-only restore in an isolated TradeOps-v2 GitHub Actions runner with `permissions: contents: read; packages: read` and approved token mechanism. No PAT in git, artifacts or logs. Validate package source mapping `DocFlow.*` **only** to verified private registry, non-DocFlow package sources independently constrained; reject dependency confusion and unapproved transitive packages.
 4. Pin all three to the **actually published and verified same version**, exact resolved dependency graph in project/central package management, check in consumer `packages.lock.json` **with the actual released package content hashes** and require `dotnet restore --locked-mode` for CI/release. Record immutable publisher commit, SBOM/license decisions and artifact SHA-256. Qualify clean Windows/Linux/Docker net8.0 restore/runtime, RID-specific provider-native dependencies and environment-limited credentials; no implicit .NET 10 upgrade.
@@ -272,7 +272,7 @@ Use fixed, committed UTF-8 fixtures with known inputs and expected **structural*
 | Gate/workstream | Owner and prerequisite | Exit / prohibited shortcuts |
 |---|---|---|
 | DF-V2-02E / DF-V2-03 | DocFlow-v2 upstream; native facade and secure extraction HTTP already merged on current DocFlow main | Native API is available; HTTP host is **not** public-release approved and has no production backend factory. |
-| DF-V2-04 / G5 | DocFlow worker + Development Orchestrator | Exact-head package proof green, but **PUBLISH BLOCKED** until legal, registry visibility/immutability, package-specific TradeOps read ACL and real authenticated cross-repo restore; future B cannot bypass. |
+| DF-V2-04 / G5 | DocFlow worker + Development Orchestrator | PR #10 merged with post-merge green package CI, but **PUBLISH BLOCKED** until legal, registry visibility/immutability, package-specific TradeOps read ACL and real authenticated cross-repo restore; future B cannot bypass. |
 | **TO-V2-01B / G3** | Future independent TradeOps worker after G5 and B0 design approval | Implement isolated `IDocFlowExtractionPort` in-process adapter, package references, bounded ingress, DI/failure/cancellation, deterministic G3 matrix; do not change port/Application/Domain. |
 | **TO-V2-01C / G4** | Composition worker after G3 | Owns single-PID `TradeOps.Monolith.Host` and exclusive wiring, independent deployable services, startup migration safety and no hidden loopback; no real broker or DB mutations in tests. |
 | **TO-V2-01D / parity** | Topology equivalence worker after B/C | Controlled `DocFlow → ResearchDecision → RebalancePlan → RebalanceOrderIntent → risk preview → execution dry-run` fixture, identical frozen policy/snapshot, structurally equal semantic result and provenance; explicit `mutationPerformed=false`, `brokerRequestSent=false`, `persistencePerformed=false`. Fake broker/DB only; never submit orders. |
@@ -284,7 +284,7 @@ Use fixed, committed UTF-8 fixtures with known inputs and expected **structural*
 - [ ] Accept exact mapping, raw vs normalized path and schema/identity ownership; approve any requested transport ingress validation sharing without adding DocFlow.Api dependencies.
 - [ ] Decide typed sanitized error taxonomy and the HTTP error-code gap; do not assert full negative parity until a suitable contract exists.
 - [ ] Approve per-operation backend resource/disposal policy, immutable provider/model allowlist and bounded concurrency/timeout limits.
-- [ ] Confirm DF-V2-04 **actually publishes** reviewed immutable artifacts, licenses and privacy gates, grants TradeOps **read-only** package ACL, and proves authenticated locked restore in TradeOps.
+- [ ] After the already completed DF-V2-04 merge, confirm a **separately approved publication** of immutable licensed private artifacts, TradeOps **read-only** package ACL and authenticated locked restore in TradeOps.
 - [ ] Assign TO-V2-01B (then C, D) with exclusive ownership, deterministic no-mutation gates and new exact-head CI. No production deployment/trading or DB changes in B0.
 - [ ] Review this Draft PR's docs-only diff and merge **only** through Development Orchestrator.
 
