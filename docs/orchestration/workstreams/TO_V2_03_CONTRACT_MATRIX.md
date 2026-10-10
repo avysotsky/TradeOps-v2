@@ -2,7 +2,7 @@
 
 **Implementation:** tools/DualHttpContract/Program.cs, executed by
 scripts/to-v2-03-validate-local.ps1. **OWNER SOURCE-VERIFIED 8/8 HTTP PASS; 171 assertions; exit 0 on TradeOps 84fa7eaa + DocFlow 7e9dc589.**
-This is the contract inventory and evidence; it does not claim all tests pass.
+All eight source-linked HTTP scenarios passed in the owner's exact-head offline Windows validation. This is **not** a certification of public deployment, real external identity providers, brokers, databases, or NuGet distribution.
 
 ## Implementation boundaries
 
