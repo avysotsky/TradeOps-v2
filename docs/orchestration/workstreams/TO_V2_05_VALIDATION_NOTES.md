@@ -108,3 +108,7 @@ Owner should save the stdout transcript, the **six individually printed ARCHIVE 
 No workflow edit/dispatch, hosted substitute, registry publication, credentials/ACL changes, production adapter, public listener, real OIDC/LLM/provider, operational database, broker, testnet/order flow, new licensed dependency or TradeOps/DocFlow public-v1 update.
 
 Final decision belongs to Development Orchestrator. Only **exit 3 + owner-reviewed evidence** constitutes local candidate ABI research acceptance; it does not authorize any release or production integration.
+
+## Main-head drift discovered after implementation
+
+As of the worker's final GitHub recheck, DocFlow-v2 origin/main is **ced3bd5fd985634345b764e02ebb45d14f8341a6**, not the assigned immutable **62fa3c3c77134cf923233e51fcba7c4f08eb2ef7**. DF-V2-10 PR #16 was merged; compare from the pinned main changed six **test/document/script-only** files and no DocFlow library implementation. TradeOps-v2 main stayed unchanged. The TO-V2-05 script intentionally still checks the **old approved SHA** and therefore returns **exit 2** after a current fetch. The executable acceptance example above is **blocked until Development Orchestrator explicitly authorizes and registers a new read-only DocFlow-main baseline**. Do not workaround by changing local refs, bypassing the SHA guard or rebuilding/replacing the original six DF-V2-07 candidate ZIPs. GitHub Actions / NuGet publishing / licensing remain blocked.
