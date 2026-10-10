@@ -125,6 +125,12 @@ function InspectArchive([string]$path,[string]$id,[string]$kind,[string]$sha) {
       $readme -cne 'README.md' -or $null -eq $zip.GetEntry('README.md'))) {
     throw "Missing package authors/readme: $id"
    }
+   if($kind -eq 'nupkg') {
+    $readmeReader=[IO.StreamReader]::new($zip.GetEntry('README.md').Open(),[Text.Encoding]::UTF8)
+    try { $notice=$readmeReader.ReadToEnd() } finally { $readmeReader.Dispose() }
+    if(-not $notice.ToLowerInvariant().Contains('private') -or
+       -not $notice.Contains('DocFlow')) { throw "Private package README notice missing: $id" }
+   }
    if($null -ne $authors -and $authors -cne 'avysotsky') { throw "Wrong package authors: $id" }
    if($null -ne $owners -and $owners -cne 'avysotsky') { throw "Wrong package owners: $id" }
    if($null -ne $readme -and $readme -cne 'README.md') { throw "Wrong package readme: $id" }
