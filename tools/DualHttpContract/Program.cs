@@ -197,7 +197,9 @@ internal static class DualHttpContract
         using (response)
         {
             var body = await response.Content.ReadAsStringAsync();
-            Check((int)response.StatusCode == expected, "HTTP status mismatch: " + expected);
+            Check((int)response.StatusCode == expected,
+                "HTTP status mismatch: expected=" + expected +
+                " actual=" + (int)response.StatusCode);
             if (code != null)
                 Check(body == "{\"error\":\"" + code + "\"}", "safe HTTP error: " + code);
             Check(!body.Contains(Sentinel, StringComparison.Ordinal), "no provider secret in HTTP response");
@@ -424,29 +426,44 @@ internal static class DualHttpContract
 
     private static async Task DeadlineAndCancellation()
     {
-        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var backend = new DeterministicFactory
         {
             OnExtract = async token =>
             {
-                started.TrySetResult(true);
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
                 return Json("""{"category":"never"}""");
             }
         };
         using var host = new Host(backend, deadline: 750);
         using var client = Client(host, Token());
-        await Sanitized(() => Adapter(client).ExtractAsync(Input()), "server deadline");
-        Check(backend.Created == 1, "deadline no retry");
 
-        // Fresh instance so cancellation does not race the preceding deadline.
+        // Verify the *real endpoint* maps its deadline to HTTP 504.
+        // The production TradeOps adapter intentionally sanitizes any non-2xx
+        // status into DocFlowHttpExtractionException.
+        await Status(await RawPost(client, Wire(Input())), 504, "timeout");
+        await Sanitized(() => Adapter(client).ExtractAsync(Input()), "server deadline");
+        Check(backend.Created == 2, "deadline no retry");
+
+        // An in-memory HTTP transport can observe server-side HTTP 499 rather
+        // than throw OperationCanceledException after a request is aborted.
+        // Require direct proof that native backend received the cancellation
+        // in either outcome; never accept an unrelated early HTTP failure.
         var secondStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var second = new DeterministicFactory
         {
             OnExtract = async token =>
             {
                 secondStarted.TrySetResult(true);
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    secondCancelled.TrySetResult(true);
+                    throw;
+                }
                 return Json("""{"category":"never"}""");
             }
         };
@@ -456,37 +473,68 @@ internal static class DualHttpContract
         var pending = Adapter(secondClient).ExtractAsync(Input(), abort.Token);
         await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         abort.Cancel();
-        try
-        {
-            await pending.WaitAsync(TimeSpan.FromSeconds(5));
-            throw new CheckFailure("cancelled extraction returned success");
-        }
-        catch (OperationCanceledException) { Check(true, "cancellation propagated"); }
+        Check(abort.IsCancellationRequested, "explicit abort token set");
+        await CancellationOutcome(pending, secondCancelled.Task, "client cancellation");
         Check(second.Created == 1, "cancellation no retry");
 
-        // Real adapter + HttpClient timeout, no infinite unbounded wait.
+        // Real adapter + HttpClient timeout, no infinite unbounded wait. The
+        // native backend must also observe cancellation of this HTTP request.
         var thirdStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thirdCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var third = new DeterministicFactory
         {
             OnExtract = async token =>
             {
                 thirdStarted.TrySetResult(true);
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    thirdCancelled.TrySetResult(true);
+                    throw;
+                }
                 return Json("""{"category":"never"}""");
             }
         };
         using var thirdHost = new Host(third);
         using var thirdClient = Client(thirdHost, Token());
         thirdClient.Timeout = TimeSpan.FromMilliseconds(1500);
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
         var timed = Adapter(thirdClient).ExtractAsync(Input());
         await thirdStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await CancellationOutcome(timed, thirdCancelled.Task, "HttpClient timeout");
+        Check(startedAt.Elapsed >= TimeSpan.FromMilliseconds(1000),
+            "HttpClient timeout not premature");
+        Check(third.Created == 1, "HttpClient timeout no retry");
+    }
+
+    private static async Task CancellationOutcome(Task<DocFlowExtractionResult> pending,
+        Task observedNativeCancellation, string label)
+    {
         try
         {
-            await timed.WaitAsync(TimeSpan.FromSeconds(5));
-            throw new CheckFailure("HttpClient timeout returned success");
+            await pending.WaitAsync(TimeSpan.FromSeconds(5));
+            throw new CheckFailure(label + " unexpectedly succeeded");
         }
-        catch (OperationCanceledException) { Check(true, "HttpClient timeout propagated"); }
-        Check(third.Created == 1, "HttpClient timeout no retry");
+        catch (OperationCanceledException)
+        {
+            Check(true, label + " transport cancellation");
+        }
+        catch (DocFlowHttpExtractionException e)
+        {
+            // Only a cancellation observed in the *real native backend* can
+            // validate this branch. An unrelated 4xx/5xx will fail below.
+            Check(!e.Message.Contains(Sentinel, StringComparison.Ordinal),
+                label + " sanitized transport rejection");
+            Check(!e.Message.Contains("Привіт", StringComparison.Ordinal),
+                label + " no document leak");
+            Check(!e.Message.Contains("eyJ", StringComparison.Ordinal),
+                label + " no JWT leak");
+        }
+        await observedNativeCancellation.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(true, label + " observed by native backend");
     }
 
     private static async Task BoundedConcurrency()
