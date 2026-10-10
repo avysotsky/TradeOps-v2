@@ -282,8 +282,10 @@ internal static class DualHttpContract
         await Status(await RawPost(client, Wire(Input(raw: Json(Raw.Replace(
             "\"title\":\"Звіт – déjà vu 🚀\"", "\"title\":null"))))), 422, "invalid_request");
         Check(factory.Created == 0, "bad schemas and selections never dispatch");
-        await Sanitized(() => Adapter(client).ExtractAsync(Input(
-            raw: Json("""{"invalid":"document"}""")), "normalization error");
+        await Sanitized(
+            () => Adapter(client).ExtractAsync(
+                Input(raw: Json("""{"invalid":"document"}"""))),
+            "normalization error");
 
         // The adapter rejects oversized UTF-8 payloads before any SendAsync call.
         var replacement = new string('x', 1_048_577);
