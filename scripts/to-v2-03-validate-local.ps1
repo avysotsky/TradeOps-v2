@@ -47,6 +47,7 @@ function Ensure-Net10([string] $path) {
 $tempRoot = $null
 $previousDocflowRoot = [Environment]::GetEnvironmentVariable('TO_V2_03_DOCFLOW_ROOT')
 $previousDotnetRoot = [Environment]::GetEnvironmentVariable('DOTNET_ROOT')
+$previousTestContentRoot = [Environment]::GetEnvironmentVariable('ASPNETCORE_TEST_CONTENTROOT_DOCFLOW_API')
 try {
     foreach ($path in @($TradeOpsRoot,$DocFlowRoot)) {
         if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw "Missing checkout: $path" }
@@ -128,6 +129,15 @@ try {
         [Text.UTF8Encoding]::new($false))
     $env:DOTNET_ROOT = Split-Path -Parent $DotNetExe
     $env:TO_V2_03_DOCFLOW_ROOT = (Resolve-Path -LiteralPath $DocFlowRoot).Path
+    $nativeApiContentRoot = Join-Path $env:TO_V2_03_DOCFLOW_ROOT 'src\DocFlow.Api'
+    if (-not (Test-Path -LiteralPath (Join-Path $nativeApiContentRoot 'Program.cs') -PathType Leaf)) {
+        throw 'DocFlow.Api content root marker missing; TestServer bootstrap prohibited'
+    }
+    # Microsoft.AspNetCore.Mvc.Testing (10.x) searches *.sln next to the
+    # temporary harness binary unless ASPNETCORE_TEST_CONTENTROOT_<APP> is set.
+    # Pin it to the genuine read-only DocFlow.Api checkout before TestServer
+    # starts; this setting is restored in finally and does not bind any port.
+    $env:ASPNETCORE_TEST_CONTENTROOT_DOCFLOW_API = $nativeApiContentRoot
 
     # Approved package restore is read-only from public NuGet.org; there is no
     # private feed, package push, provider smoke, database connection or OIDC discovery.
@@ -137,6 +147,21 @@ try {
     Run-Checked 'temporary net10 Release build' {
         & $DotNetExe build $harnessProject -c Release --no-restore -warnaserror
     }
+    # WebApplicationFactory<DocFlow.Api.Program> requires the genuine web
+    # application's dependency manifest alongside the temporary test runner.
+    # SDK project references normally copy it; if absent, copy only built
+    # metadata from the source-linked project into the disposable sandbox.
+    $testBin = Join-Path $tempRoot 'bin\Release\net10.0'
+    $depsInSandbox = Join-Path $testBin 'DocFlow.Api.deps.json'
+    if (-not (Test-Path -LiteralPath $depsInSandbox -PathType Leaf)) {
+        $depsFromBuild = Join-Path $nativeApiContentRoot 'bin\Release\net10.0\DocFlow.Api.deps.json'
+        if (-not (Test-Path -LiteralPath $depsFromBuild -PathType Leaf)) {
+            throw 'Native DocFlow.Api dependency manifest is unavailable (TestServer cannot start)'
+        }
+        Copy-Item -LiteralPath $depsFromBuild -Destination $depsInSandbox
+        Write-Host 'OFFLINE TESTHOST: copied DocFlow.Api.deps.json to disposable sandbox'
+    }
+    Write-Host 'OFFLINE TESTHOST: pinned DocFlow.Api content root; in-memory TestServer only'
     Run-Checked 'in-memory dual-HTTP verification (8 cases)' {
         & $DotNetExe run --project $harnessProject -c Release --no-build --no-restore
     }
@@ -147,6 +172,7 @@ catch {
     exit 1
 }
 finally {
+    [Environment]::SetEnvironmentVariable('ASPNETCORE_TEST_CONTENTROOT_DOCFLOW_API', $previousTestContentRoot)
     [Environment]::SetEnvironmentVariable('TO_V2_03_DOCFLOW_ROOT', $previousDocflowRoot)
     [Environment]::SetEnvironmentVariable('DOTNET_ROOT', $previousDotnetRoot)
     if ($null -ne $tempRoot -and (Test-Path -LiteralPath $tempRoot)) {
