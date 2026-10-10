@@ -1,9 +1,54 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: TESTSERVER BOOTSTRAP MITIGATION SOURCE COMMITTED; NEW-HEAD VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
+**State: OWNER 6 PASS / 2 FAIL, 153 ASSERTIONS; CANCELLATION TEST UPDATED; NEW-HEAD NOT RUN — Draft PR #5 / DO NOT MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
-## 2026-10-10 — owner Windows TestServer bootstrap failure / worker isolation fix (latest)
+## 2026-10-10 — Owner TestServer run, 6 PASS / 2 FAIL (latest)
+
+Owner tested TradeOps-v2 a596a250c6646755969dd332be6145a84680f044
+with DocFlow-v2 3f09e91ba356fb367248ef1b48a56b19d9fdae97.
+SDK 10.0.401, exact checkout guards PASS, restore PASS (1.4s),
+all real .NET 10 project builds plus DualHttpContract build PASS (6.8s).
+TestServer health bootstrap PASS using genuine DocFlow.Api content root.
+
+| Scenario | Actual owner outcome at previous HEAD |
+|---|---|
+| canonical-native-parity-utf8 | PASS |
+| invalid-provider-data | PASS |
+| jwt-security-https | FAIL: HTTP status mismatch, expected 403 |
+| request-contract-and-bounds | PASS |
+| http-response-and-bounds | PASS |
+| backend-errors-and-routing | PASS |
+| deadline-and-cancellation | FAIL: DocFlowHttpExtractionException in adapter |
+| bounded-concurrency | PASS |
+| TOTAL | 6 PASS / 2 FAIL / 153 assertions / exit 1 |
+
+JWT failure is observed. Current native DocFlow-v2 allows nonempty
+client_id with proper scope but has no allowed-service identity pin.
+The harness still requires 403 for unapproved nonempty client_id.
+Development Orchestrator must decide separate upstream authorization change.
+
+Deadline case previously accepted only OperationCanceledException for
+caller cancellation and HttpClient timeout. In-memory TestServer may
+surface a cancelled native HTTP request as non-2xx, which the genuine
+TradeOps adapter maps to DocFlowHttpExtractionException.
+The previous log did not identify the exact substep.
+New test-only case first checks native HTTP 504 for server deadline;
+then validates sanitized adapter rejection without retries.
+Client cancellation and HttpClient timeout now require that the native
+fake backend independently observes its cancellation token signaled.
+Either transport cancellation or a sanitized HTTP rejection is valid
+only with that native observation; success or unrelated errors fail.
+Test also checks elapsed timeout, absence of retries and request safety.
+Failure messages now include only numerical expected/actual HTTP status.
+
+NEW HEAD: restore, build and eight HTTP scenarios NOT RUN.
+Passing/failing assertions at new HEAD unknown. Final SHA is in the
+latest PR #5 worker comment after this status commit.
+PR remains Draft. GitHub Actions OFF. No merge.
+
+---
+## 2026-10-10 — owner Windows TestServer bootstrap failure / worker isolation fix (prior)
 
 **State: BOOTSTRAP MITIGATION COMMITTED; NEW-HEAD WINDOWS RE-RUN REQUIRED; MERGE BLOCKED.**
 
