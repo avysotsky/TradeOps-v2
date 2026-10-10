@@ -1,9 +1,93 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: HARNESS CS1674 SOURCE FIXED AFTER OWNER TEST; NEW-HEAD VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
+**State: TESTSERVER BOOTSTRAP MITIGATION SOURCE COMMITTED; NEW-HEAD VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
-## 2026-10-10 — owner Windows compile CS1674 follow-up (latest)
+## 2026-10-10 — owner Windows TestServer bootstrap failure / worker isolation fix (latest)
+
+**State: BOOTSTRAP MITIGATION COMMITTED; NEW-HEAD WINDOWS RE-RUN REQUIRED; MERGE BLOCKED.**
+
+### Actual owner Windows execution: old TradeOps HEAD
+
+Reviewed source: TradeOps branch 158b069ce0eb46bb5935d3654da577b62a87d8c2,
+DocFlow-v2 read-only main 3f09e91ba356fb367248ef1b48a56b19d9fdae97,
+SDK 10.0.401.
+
+| Phase | Actual owner result |
+|---|---|
+| Exact SHA / SDK / 15-project / net10 guards | PASS |
+| Temporary NuGet restore | PASS (2.9 s) |
+| Native DocFlow and TradeOps dependency builds | PASS |
+| DualHttpContract temporary Release build | PASS (7.9 s overall build) |
+| Harness process | LAUNCHED |
+| Case report | **8 FAIL, 0 PASS, 0 assertions** |
+| Exception category | InvalidOperationException, redacted by older runner as unexpected test exception |
+| Validator exit code | **1 (FAIL)** |
+| Real HTTP endpoint / adapter / JWT / facade assertions | NOT EXERCISED: exception before any assertion |
+
+This is a common early TestServer failure, **not** proof of eight contract
+defects. Do not report success or passed assertions for this source.
+
+### Diagnosis (source-based, not a captured runtime stack)
+
+The executable harness runs from a new temporary directory outside
+either source solution. WebApplicationFactory normally discovers
+the content root via a test setting/assembly manifest or parent .sln;
+solution fallback cannot find a parent .sln from this scratch tree.
+It also expects DocFlow.Api.deps.json beside the temporary test runner.
+The previous exception handler erased the failure detail, so these are
+probable shared bootstrap blockers, **not a verified single exception
+message**.
+
+### Fix limited to test infrastructure
+
+- PowerShell pins ASPNETCORE_TEST_CONTENTROOT_DOCFLOW_API to the
+  absolute, verified DocFlow.Api directory for the TestServer lifetime.
+  Restores the previous environment setting in finally. This is **not
+  an HTTP listener binding**.
+- Checks that the temporary executable output contains the **real**
+  DocFlow.Api.deps.json dependency manifest. If missing, copies only
+  the built release manifest from the pinned, read-only DocFlow.Api
+  checkout into the disposable sandbox. Missing authentic metadata
+  remains fail-closed.
+- Harness now first calls the real DocFlow.Api /health/live route
+  inside an isolated TestServer. Failed bootstrap produces a dedicated
+  testhost-bootstrap message and summary bootstrap_failed=1,
+  not_run=8, exit 1; it does not fabricate eight HTTP case results.
+- SafeFailure classifies the known missing-solution, missing-deps
+  and configuration error families; unknown failure is reported only
+  by safe exception type and declaring-type origin, **not** by arbitrary
+  exception message, JWT, provider error, raw document or stack trace.
+- Eight business contract scenarios are unchanged, including the
+  unapproved nonempty client_id => HTTP 403 negative assertion. That
+  stricter requirement remains pending an upstream DocFlow-v2
+  policy decision by Development Orchestrator.
+- No production TradeOps or DocFlow source modification; no real
+  HTTP socket, broker/LLM, database, OIDC, GitHub Actions, workflow
+  YAML, NuGet publish, in-process adapter or merge.
+
+### Evidence at NEW HEAD
+
+Source edits and GitHub compare: DONE. The final post-status SHA is
+in the latest worker comment on the same Draft PR #5.
+SDK restore/build: **NOT RUN** on this new source.
+TestServer bootstrap: **NOT RUN**.
+Eight HTTP scenarios: **NOT RUN**, all outcomes unknown.
+Owner must run exact-HEAD local validation, capture the complete
+stdout/stderr, case totals and exit code, and submit for orchestrator
+review. An expected possible client-ID policy failure is not to be
+hidden or waived.
+
+Owner command, after updating/cleaning both pinned Git checkouts:
+
+    Set-Location D:\Projects\TradeOps-v2
+    & .\scripts\to-v2-03-validate-local.ps1 -ExpectedTradeOpsHead '<latest PR #5 head>'
+    $code = $LASTEXITCODE
+    if ($code -ne 0) { throw "TO-V2-03 VALIDATION FAILED" }
+
+---
+
+## 2026-10-10 — owner Windows compile CS1674 follow-up (prior compile failure)
 
 **Status: SOURCE FIX APPLIED / OWNER RERUN NEEDED / 8 HTTP SCENARIOS NOT RUN / DRAFT PR #5 — NO MERGE.**
 This section supersedes older owner evidence snapshots below. The exact final
