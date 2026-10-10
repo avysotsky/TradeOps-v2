@@ -1,9 +1,73 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: DF-V2-08 MAIN RE-PINNED; ISOLATED EARLY JSON JWT ALLOWLIST FIXTURE COMMITTED; NEW-HEAD 8 HTTP TESTS NOT RUN — Draft PR #5 / NO MERGE.**
+**State: OWNER WINDOWS SDK 10.0.401 VERIFIED 8/8 HTTP PASS, 171 ASSERTIONS, EXIT 0 — Draft PR #5 / ORCHESTRATOR REVIEW; NO MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
-## 2026-10-10 — DF-V2-08 merged; native JWT allowlist integration retest (LATEST)
+## 2026-10-10 — VERIFIED owner-local TO-V2-03 8/8 success (LATEST)
+
+**Owner Windows exact-source proof**, on BOTH pinned, clean private
+checkouts using SDK `10.0.401`, real source-linked Release compilation,
+the in-memory genuine DocFlow.Api TestServer, real TradeOps HTTP
+adapter, native extraction facade/normalizer, and synthetic external
+backend and JWT signing only:
+
+| Check / scenario | Observed owner evidence |
+|---|---|
+| TradeOps-v2 tested HEAD | `84fa7eaa080800b74f28cde50d1659a3eb3fbab0` |
+| DocFlow-v2 pinned main | `7e9dc58947797251ab3be188411f514a6b078ac3` |
+| Branch, clean tree, SDK10.0.401, 15 net10 TradeOps projects | **PASS** |
+| Temporary source-linked NuGet restore | **PASS**, 3.4 s |
+| Genuine DocFlow/TradeOps and DualHttpContract Release build | **PASS**, 10.3 s |
+| Real native TestServer `/health/live` | **PASS** (HTTP 200) |
+| canonical-native-parity-utf8 | **PASS** |
+| invalid-provider-data | **PASS** |
+| jwt-security-https | **PASS** |
+| request-contract-and-bounds | **PASS** |
+| http-response-and-bounds | **PASS** |
+| backend-errors-and-routing | **PASS** |
+| deadline-and-cancellation | **PASS** |
+| bounded-concurrency | **PASS** |
+| FINAL total | **8 PASS / 0 FAIL / 171 assertions / exit code 0** |
+
+**Critical DF-V2-08 JWT authorization was genuinely exercised.**
+Fixture diagnostics showed a unique temporary early-loaded JSON
+`AllowedClientIds` array with one indexed entry; the native app
+repeatedly reported `DF-V2-08 APP EARLY CONFIG: childCount=1 keys=[0]
+parentScalar=null`. Signed `client_id=tradeops-integration-test`
+received a successful authorized extraction, while the originally
+blocking signed `client_id=unapproved-service-client` returned
+**HTTP 403 before backend invocation** (the harness checks the
+backend invocation count). The real native JWT authorization policy
+was not mocked, weakened or overridden.
+
+Transport and extraction evidence includes deep UTF-8/native facade
+parity, invalid schema result, malformed/bounded requests, overlarge
+and malformed responses, backend 502/503 failures, disabled routing,
+native deadline HTTP 504, cancellation HTTP 499, bounded concurrency
+HTTP 429 and subsequent release without hidden retries.
+
+**Owner's final validator lines (observed):**
+
+    TO-V2-03 TOTAL cases=8 passed=8 failed=0 assertions=171
+    PASS TO-V2-03 exact TradeOps=84fa7eaa080800b74f28cde50d1659a3eb3fbab0 DocFlow=7e9dc58947797251ab3be188411f514a6b078ac3 SDK=10.0.401
+    TO-V2-03 exit code: 0
+    TO-V2-03 LOCAL VALIDATION PASSED
+
+**Disposition:** 8/8 owner-local source-linked integration requirement
+achieved at those exact source SHAs. Follow-up commits to this
+status and contract matrix are **documentation-only**, so those new
+documentation HEADs have NOT themselves been separately run;
+the tested harness and pinned script sources remain unchanged.
+Do not imply hosted CI ran or certify public deployment, real
+OIDC/LLM/broker/production DB, or private package publishing.
+
+Existing branch and Draft PR #5 maintained. Orchestrator owns final
+review/merge decision; this worker does **not** mark ready or merge.
+GitHub Actions OFF, workflow YAML untouched, NuGet not published,
+production TradeOps and read-only DocFlow-v2 sources not changed.
+
+---
+## 2026-10-10 — DF-V2-08 merged; native JWT allowlist integration retest (HISTORICAL plan before owner 8/8 proof)
 
 **New read-only DocFlow-v2 main SHA:**
 `7e9dc58947797251ab3be188411f514a6b078ac3`.
@@ -61,14 +125,15 @@ TradeOps projects, warn-as-error, public NuGet restore, source-linked
 temporary Release build, manifest and non-network TestServer guards
 remain enabled.
 
-**Actual TO-V2-03 evidence at NEW source graph:**
-restore **NOT RUN**; net10 Release compile **NOT RUN**;
-TestServer native early config **NOT RUN**; HTTP scenarios
-**NOT RUN (8 total)**, actual assertions unknown.
+**Historical pre-run evidence (superseded by verified 8/8 above):**
+At this earlier documentation point the new-graph restore, build,
+TestServer and eight scenarios were **NOT RUN**. The owner subsequently
+executed the exact source graph and obtained **8 PASS / 0 FAIL / 171
+assertions / exit 0**; see latest section.
 Previous 7 PASS / 1 FAIL, 168 assertions was at TradeOps
 `bd06bbacc46c1fbba4c06832d92984ba4aec6d9e` and OLD DocFlow
 `3f09e91ba356fb367248ef1b48a56b19d9fdae97`.
-Do not claim 8/8 until owner Windows run confirms it.
+This was an earlier requirement and has now been satisfied by the owner Windows run documented at the top.
 
 Owner run: update TradeOps existing branch with `git pull --ff-only`,
 DocFlow-v2 clean main with `git pull --ff-only`, then
