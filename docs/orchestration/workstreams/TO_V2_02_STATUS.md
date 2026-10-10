@@ -81,3 +81,18 @@ Worker changed only `src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj`
 Owner validation at `7eeaca50d5f5f1a1c451e46d0eb2b97f29e2246d`: solution restore `-warnaserror` **PASS**, solution Release build `-warnaserror` **PASS**, independent restore/build all **15/15 net10 csproj PASS** including MigrationSmoke. Infrastructure assets confirm EF Core Relational **10.0.12**; all seven Newtonsoft-bearing project assets resolve **Newtonsoft.Json 13.0.4**. No restore/build warnings or errors reported. Offline allowlist xUnit **79 total / 78 passed / 1 failed / 0 skipped**; three synthetic-key `HyperliquidL1SignerTests` **PASS**. Failing test: `DocFlowHttpExtractionAdapterTests.CancellationIsPropagatedWithoutNetwork`: already-cancelled token reached local fake HTTP handler, which threw InvalidOperationException rather than expected OperationCanceledException. Thus overall validator **FAILED**, not a migration completion PASS. No real external HTTP/broker or DB access occurred in reported test run.
 
 Worker fixed only `src/TradeOps.Infrastructure/DocFlow/DocFlowHttpExtractionAdapter.cs`: use `cancellationToken.ThrowIfCancellationRequested()` on entry and immediately before `_client.SendAsync`, guaranteeing pre-cancelled request never enters HTTP transport, without changing request/response DTO, existing validation, serialization, business logic or signatures. New-HEAD compile/test **NOT RUN** in worker environment, owner must rerun full validator and capture new test totals. PR remains Draft, GitHub Actions OFF, NuGet not published, no merge.
+
+## OWNER EXACT-HEAD WINDOWS VALIDATION ACCEPTANCE EVIDENCE — 2026-10-10
+
+**Validated source HEAD:** `4b8c37645a44c4bfcb0b19342e3f993b51a33eb4` (owner console output submitted in worker chat). Windows 10, `D:\Projects\TradeOps-v2`, `D:\DotNet\dotnet.exe` SDK 10.0.401. The validator completed successfully and printed `VALIDATION COMPLETED` for that exact SHA.
+
+- `dotnet restore TradeOps.sln -warnaserror`: **PASS**.
+- `dotnet build TradeOps.sln -c Release --no-restore -warnaserror`: **PASS**, 14 solution projects.
+- Restore and Release build each of **15/15 .csproj PASS**, including standalone MigrationSmoke; warning-as-error checks maintained. No warnings reported in supplied output.
+- Resolved `Microsoft.EntityFrameworkCore.Relational/10.0.12` Infrastructure assets assertion: **PASS**.
+- `Newtonsoft.Json/13.0.4` resolved-assets assertion: **PASS** for seven projects that consume it (API, Infrastructure, Worker, UnitTests, MigrationSmoke, BybitSmoke, IbkrPaperSmoke); remaining projects have no resolved Newtonsoft.Json entry.
+- Offline xUnit selected allowlist: **79 total, 79 passed, 0 failed, 0 skipped**. Includes all three deterministic Hyperliquid L1 EIP-712 signer-vector tests and `DocFlowHttpExtractionAdapterTests.CancellationIsPropagatedWithoutNetwork` **PASS**.
+- **NOT RUN:** full unconstrained xUnit suite, isolated PostgreSQL integration tests/query plans, Docker image builds, production API/Worker, broker smoke tools, actual provider/network integration and private DocFlow NuGet consumer restore. These are not implied to pass. DocFlow package publication and ACL remain blocked.
+- **Safety:** GitHub Actions OFF, no workflow edits, no NuGet publish, no live trading, no production DB migrations.
+
+Worker updates STATUS and existing Draft PR metadata **after** this successful owner check; these documentation-only changes create a newer branch HEAD which was NOT independently owner-validated, while the source+validator code at the above SHA was. Development Orchestrator must inspect documentation-only diff and decide merge. No worker merge.
