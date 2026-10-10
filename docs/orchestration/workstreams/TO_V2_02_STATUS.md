@@ -1,0 +1,98 @@
+# TO-V2-02 — Worker Status / Handoff
+
+**IMPLEMENTED, OWNER VALIDATION REQUIRED, DRAFT PR #4 — DO NOT MERGE.**
+Recorded 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
+
+## Live repository state at finalization
+- TradeOps-v2 PRIVATE main `7d6aa8b74d7e08fd0c4a7289e56948f5867a7287`; initial worker HEAD `f71f30dbe6f649aee3df660415863a48ff9693ad`.
+- DocFlow-v2 PRIVATE main `3f09e91ba356fb367248ef1b48a56b19d9fdae97`, source-only cross-repo reference, unmodified.
+- Assigned branch `TradeOps/to-v2-02-dotnet10-migration`; PR #4 open Draft.
+- Compare vs TradeOps main is diverged: main carries one orchestrator-only registration commit outside this branch. One commit behind; do not rewrite history or merge.
+- Branch HEAD: read the exact live SHA via `git rev-parse HEAD` or PR #4; update PR comment with final exact HEAD. Do not take this document's writing commit as proof of all subsequent writes.
+
+## 15-project migration matrix
+
+| Project | TFM | NuGet changed | In TradeOps.sln |
+|---|---|---|---|
+| src/TradeOps.Api/TradeOps.Api.csproj | net10.0 | Swashbuckle 10.2.3 retained | yes |
+| src/TradeOps.Application/TradeOps.Application.csproj | net10.0 | Microsoft.Extensions.Logging.Abstractions 10.0.12 | yes |
+| src/TradeOps.Domain/TradeOps.Domain.csproj | net10.0 | none | yes |
+| src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj | net10.0 | EF Core/Design 10.0.12, Config.Abstractions/Http 10.0.12, Npgsql EF 10.0.3; MessagePack/Nethereum unchanged | yes |
+| src/TradeOps.Worker/TradeOps.Worker.csproj | net10.0 | Microsoft.Extensions.Hosting/Http 10.0.12 | yes |
+| tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj | net10.0 | Microsoft.AspNetCore.Mvc.Testing 10.0.12; xunit/test SDK retained | yes |
+| tools/TradeOps.BybitSmoke/TradeOps.BybitSmoke.csproj | net10.0 | Extensions Http/Logging 10.0.12 | yes |
+| tools/TradeOps.SignedWebhookDemo/TradeOps.SignedWebhookDemo.csproj | net10.0 | none | yes |
+| tools/TradeOps.TradingViewDemo/TradeOps.TradingViewDemo.csproj | net10.0 | none | yes |
+| tools/TradeOps.PilotEvidence/TradeOps.PilotEvidence.csproj | net10.0 | none | yes |
+| tools/TradeOps.IbkrPaperSmoke/TradeOps.IbkrPaperSmoke.csproj | net10.0 | Extensions Http/Logging 10.0.12 | yes |
+| tools/TradeOps.PublicResearchDemo/TradeOps.PublicResearchDemo.csproj | net10.0 | none | yes |
+| tools/TradeOps.TranscriptResearchDemo/TradeOps.TranscriptResearchDemo.csproj | net10.0 | none | yes |
+| tools/TradeOps.ProviderTranscriptResearchDemo/TradeOps.ProviderTranscriptResearchDemo.csproj | net10.0 | none | yes |
+| tools/MigrationSmoke/TradeOps.MigrationSmoke.csproj | net10.0 | none direct | **NO — separately validated** |
+
+## Change inventory
+- 15 csproj TFM and compatible Microsoft package major versions; global.json SDK 10.0.401.
+- API/Worker Docker SDK+runtime 10.0. Deployment compose build-context paths remain valid, no compose edits needed.
+- Added `scripts/to-v2-02-validate-local.ps1` and this status and migration notes.
+- No production C# source, EF migrations/models, persistence schema, security thresholds, order state machine, public DTOs, DocFlow adapter, .github/workflows or other repo modified.
+
+## Evidence
+- GitHub source read and file writes: performed with connected private GitHub repository.
+- SDK version command: **NOT RUN — owner Windows required**.
+- dotnet restore/build 14-project solution and standalone 15 projects: **NOT RUN**.
+- xUnit risk, order, webhook signing, replay, HTTP DocFlow adapter, integrations: **NOT RUN**.
+- Docker build: **NOT RUN**; containers not started.
+- PostgreSQL isolated database tests: **NOT RUN**, excluded from unattended filter.
+- Cross-repo DocFlow private package restore/consumer: **NOT RUN / BLOCKED** (package publication and ACL approval).
+- GitHub Actions: OFF; no new runs requested, no workflow modifications.
+- Build warnings, test counts, failure and skip counts: **UNKNOWN — NOT RUN**, no claims of green CI.
+
+## Owner action / orchestrator handoff
+
+Owner: check out same branch in `D:\Projects\TradeOps-v2` with SDK `D:\DotNet\dotnet.exe`, then run `& .\scripts\to-v2-02-validate-local.ps1` and capture full logs with exact SHA, warning totals and test counts. Do not run smoke tools, compose up, API/Worker, or production DB migrations. TestServer/DB integration suites require a separate safety review and disposable DB.
+Orchestrator: independently verify final head, per-file compare, branch divergence, new-head owner evidence, no live CI run, contract and privacy invariants. Keep PR Draft pending acceptance. No merge.
+
+## Owner NU1903 failure and corrective patch — 2026-10-10
+
+Owner validation at exact prior HEAD `32fa8a2c3bac6c9508b8ab7d378d31b2ea0a5bf5` FAILED during `dotnet restore TradeOps.sln -warnaserror`: **five NU1903 errors** for resolved Newtonsoft.Json 11.0.2 (GHSA-5crp-9r3c-p9vr, CVE-2024-21907). Subsequent builds and tests were **NOT RUN**, rather than passed. Orchestrator comment in Draft PR #4 documents the failure.
+
+The published package metadata for direct dependency `Nethereum.Signer.EIP712 6.1.0` declares `Newtonsoft.Json >=11.0.2 && <14.0.0`, making it a strongly documented source. The *exact owner's assets graph* was not accessible in this worker environment, so it has **NOT** been independently inspected. Added a direct `Newtonsoft.Json` **13.0.4** reference only to TradeOps.Infrastructure to override the vulnerable lower bound without modifying Nethereum/EIP-712 implementation. Updated PowerShell validator to reject missing assets or any resolved Newtonsoft.Json version other than 13.0.4 in every project's `project.assets.json`, with an explicit Infrastructure assertion. `-warnaserror` and default NuGet Audit remain enabled; no warning suppression. EIP-712 signature/serialization regression remains **NOT RUN** and requires owner follow-up. No trading, APIs, EF migrations, or production code changed.
+
+**New-HEAD validation:** NOT RUN in worker environment. Owner must rerun full validator on current PR HEAD; compare `dotnet list` dependency resolution and test results. PR remains Draft and merge blocked.
+
+## Clean-checkout validator fix and offline EIP-712 regression — 2026-10-10
+
+Following Development Orchestrator PR #4 review, removed premature `Assert-Newtonsoft-Resolved $projects` after solution-only restore: `TradeOps.sln` contains 14 projects while `tools/MigrationSmoke` is the 15th and does not yet have `obj/project.assets.json` on clean checkout. The validator first restores and builds the solution with `-warnaserror`, then restores/builds each of all 15 csproj with `-warnaserror`, then asserts resolved Newtonsoft.Json 13.0.4 from all existing assets (including MigrationSmoke). Missing assets remain fail-closed. NuGet Audit stays enabled with zero suppressions.
+
+The offline xUnit allowlist now includes `HyperliquidL1SignerTests` (three deterministic tests using a synthetic fixed key and official expected hash/signature r,s,v values; test source reviewed, no network/real credential/database usage). No production crypto code, EIP-712 logic, other trading source, EF migrations, or workflows changed.
+
+**Evidence:** previous owner run at `32fa8a2c3bac6c9508b8ab7d378d31b2ea0a5bf5` failed 5 × NU1903 on Newtonsoft.Json 11.0.2. New validator/order plus patched 13.0.4 dependency have **NOT RUN** on owner's Windows machine yet. All new-HEAD restores, builds, tests (including 3 signer tests), warning counts and Docker checks require owner exact-HEAD execution. PR remains Draft; merge blocked. GitHub Actions OFF.
+
+## Owner Windows validation — EF Core Relational MSB3277 blocker (2026-10-10)
+
+Owner exact-HEAD run at `b7946d2c9d5f62f9e39c721abfc0d19198b58382`: `git` and SDK preflight PASS, **solution restore -warnaserror PASS** (3.6 s), confirming previous NU1903 no longer blocks this restore. `dotnet build TradeOps.sln -c Release --no-restore -warnaserror` **FAILED** with **5 × MSB3277**, conflicting `Microsoft.EntityFrameworkCore.Relational` assembly 10.0.4.0 (selected primary) vs 10.0.12.0 referenced by TradeOps.Infrastructure and downstream API/Worker/smoke/test projects. The reported compile step built individual project outputs but solution overall FAILED. Subsequent individual project restore/build, all selected offline tests including `HyperliquidL1SignerTests`, and final Newtonsoft assets checks: **NOT RUN** due to fail-fast. Docker: NOT RUN.
+
+Worker changed only `src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj` by adding direct `Microsoft.EntityFrameworkCore.Relational` **10.0.12** beside EF Core 10.0.12 and Npgsql 10.0.3. NuGet package documentation explicitly allows direct reference to select newer relational version over provider transitive minimum. Updated local validator to assert actual Infrastructure `obj/project.assets.json` resolves exactly `Microsoft.EntityFrameworkCore.Relational/10.0.12` after solution restore and before build. No suppressions, audit disabled flags, database schema, EF model/migrations, provider crypto or trading code modifications.
+
+**New HEAD restore/build/test status: NOT RUN in worker environment — owner must rerun exact-HEAD validator.** Keep PR #4 Draft; GitHub Actions OFF, no merge. If MSB3277 persists, owner should capture `project.assets.json` resolved Relational versions for the affected projects and return logs to worker.
+
+## Owner exact-HEAD Windows PASS builds / one offline DocFlow cancellation failure — 2026-10-10
+
+Owner validation at `7eeaca50d5f5f1a1c451e46d0eb2b97f29e2246d`: solution restore `-warnaserror` **PASS**, solution Release build `-warnaserror` **PASS**, independent restore/build all **15/15 net10 csproj PASS** including MigrationSmoke. Infrastructure assets confirm EF Core Relational **10.0.12**; all seven Newtonsoft-bearing project assets resolve **Newtonsoft.Json 13.0.4**. No restore/build warnings or errors reported. Offline allowlist xUnit **79 total / 78 passed / 1 failed / 0 skipped**; three synthetic-key `HyperliquidL1SignerTests` **PASS**. Failing test: `DocFlowHttpExtractionAdapterTests.CancellationIsPropagatedWithoutNetwork`: already-cancelled token reached local fake HTTP handler, which threw InvalidOperationException rather than expected OperationCanceledException. Thus overall validator **FAILED**, not a migration completion PASS. No real external HTTP/broker or DB access occurred in reported test run.
+
+Worker fixed only `src/TradeOps.Infrastructure/DocFlow/DocFlowHttpExtractionAdapter.cs`: use `cancellationToken.ThrowIfCancellationRequested()` on entry and immediately before `_client.SendAsync`, guaranteeing pre-cancelled request never enters HTTP transport, without changing request/response DTO, existing validation, serialization, business logic or signatures. New-HEAD compile/test **NOT RUN** in worker environment, owner must rerun full validator and capture new test totals. PR remains Draft, GitHub Actions OFF, NuGet not published, no merge.
+
+## OWNER EXACT-HEAD WINDOWS VALIDATION ACCEPTANCE EVIDENCE — 2026-10-10
+
+**Validated source HEAD:** `4b8c37645a44c4bfcb0b19342e3f993b51a33eb4` (owner console output submitted in worker chat). Windows 10, `D:\Projects\TradeOps-v2`, `D:\DotNet\dotnet.exe` SDK 10.0.401. The validator completed successfully and printed `VALIDATION COMPLETED` for that exact SHA.
+
+- `dotnet restore TradeOps.sln -warnaserror`: **PASS**.
+- `dotnet build TradeOps.sln -c Release --no-restore -warnaserror`: **PASS**, 14 solution projects.
+- Restore and Release build each of **15/15 .csproj PASS**, including standalone MigrationSmoke; warning-as-error checks maintained. No warnings reported in supplied output.
+- Resolved `Microsoft.EntityFrameworkCore.Relational/10.0.12` Infrastructure assets assertion: **PASS**.
+- `Newtonsoft.Json/13.0.4` resolved-assets assertion: **PASS** for seven projects that consume it (API, Infrastructure, Worker, UnitTests, MigrationSmoke, BybitSmoke, IbkrPaperSmoke); remaining projects have no resolved Newtonsoft.Json entry.
+- Offline xUnit selected allowlist: **79 total, 79 passed, 0 failed, 0 skipped**. Includes all three deterministic Hyperliquid L1 EIP-712 signer-vector tests and `DocFlowHttpExtractionAdapterTests.CancellationIsPropagatedWithoutNetwork` **PASS**.
+- **NOT RUN:** full unconstrained xUnit suite, isolated PostgreSQL integration tests/query plans, Docker image builds, production API/Worker, broker smoke tools, actual provider/network integration and private DocFlow NuGet consumer restore. These are not implied to pass. DocFlow package publication and ACL remain blocked.
+- **Safety:** GitHub Actions OFF, no workflow edits, no NuGet publish, no live trading, no production DB migrations.
+
+Worker updates STATUS and existing Draft PR metadata **after** this successful owner check; these documentation-only changes create a newer branch HEAD which was NOT independently owner-validated, while the source+validator code at the above SHA was. Development Orchestrator must inspect documentation-only diff and decide merge. No worker merge.
