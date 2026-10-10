@@ -100,11 +100,11 @@ internal static class DualHttpContract
 
     private static string Token(string? scope = "docflow.extract",
         bool client = true, string issuer = Issuer, string audience = Audience,
-        bool expired = false, SecurityKey? key = null)
+        bool expired = false, SecurityKey? key = null, string clientId = "tradeops-integration-test")
     {
         var claims = new List<Claim>();
         if (scope != null) claims.Add(new Claim("scope", scope));
-        if (client) claims.Add(new Claim("client_id", "tradeops-integration-test"));
+        if (client) claims.Add(new Claim("client_id", clientId));
         var jwt = new JwtSecurityToken(
             issuer: issuer, audience: audience, claims: claims,
             notBefore: DateTime.UtcNow.AddMinutes(expired ? -10 : -1),
@@ -238,6 +238,11 @@ internal static class DualHttpContract
         using var authorized = Client(host, Token());
         await Adapter(authorized).ExtractAsync(Input());
         Check(factory.Created == 1, "authorized request dispatches once");
+        // EXPECTED SECURITY BLOCKER until DocFlow.Api pins a trusted client identity.
+        // Current native policy only requires a nonempty client_id and may return 200.
+        await Status(await RawPost(authorized, Wire(Input()),
+            Token(clientId: "unapproved-service-client")), 403, "forbidden");
+        Check(factory.Created == 1, "unapproved service identity rejected before dispatch");
     }
 
     private static async Task RequestContractAndBounds()
