@@ -139,12 +139,12 @@ try {
     Write-Host "TO-V2-04 PIN TradeOps=$ExpectedTradeOpsHead main=$expectedTradeOpsMain"
     Write-Host "TO-V2-04 PIN DocFlow=$expectedDocFlowMain SDK=$sdk projects=15"
     foreach ($project in $projects) {
-        $relativeName = $project.FullName.Substring($TradeOpsRoot.TrimEnd('\','/').Length).TrimStart('\','/')
+        $relativeName = $project.FullName.Substring($TradeOpsRoot.TrimEnd([char[]]@('\','/')).Length).TrimStart([char[]]@('\','/'))
         Run-DotNet "restore $relativeName" @('restore',$project.FullName,
             '--source','https://api.nuget.org/v3/index.json','-warnaserror')
     }
     foreach ($project in $projects) {
-        $relativeName = $project.FullName.Substring($TradeOpsRoot.TrimEnd('\','/').Length).TrimStart('\','/')
+        $relativeName = $project.FullName.Substring($TradeOpsRoot.TrimEnd([char[]]@('\','/')).Length).TrimStart([char[]]@('\','/'))
         Run-DotNet "Release build $relativeName" @('build',$project.FullName,
             '-c','Release','--no-restore','--no-incremental','-warnaserror')
     }
