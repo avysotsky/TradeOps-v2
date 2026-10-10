@@ -7,7 +7,7 @@
 - Worker-owned private repo: `avysotsky/TradeOps-v2`.
 - Existing branch: `TradeOps/to-v2-05-offline-docflow-package-consumer-gate`.
 - Starting TradeOps main: `0b2a5216c5528cb49d41eb9f5a43870e935da3ef`, .NET 10 SDK 10.0.401; current 15 tracked .csproj inventory MUST NOT expand.
-- **Read-only** DocFlow-v2 current main: `62fa3c3c77134cf923233e51fcba7c4f08eb2ef7`; approved DF-V2-07 **local candidate source SHA `927eddee08d084e7759eef1b0a67404711d2b3b1`** is DISTINCT from present DocFlow main. Never repin staged six artifacts to the current main merely because docs have since merged.
+- **Read-only** DocFlow-v2 current main: `ced3bd5fd985634345b764e02ebb45d14f8341a6 (DF-V2-10 test-only security characterization merged; production `src/**` and DF-V2-07 candidate artifact SHA unchanged)`; approved DF-V2-07 **local candidate source SHA `927eddee08d084e7759eef1b0a67404711d2b3b1`** is DISTINCT from present DocFlow main. Never repin staged six artifacts to the current main merely because docs have since merged.
 - Concurrent **DF-V2-10** works only in DocFlow-v2 Draft PR #16 on TestServer security characterization (`tests/DocFlow.Api.WholeHost.Security.Tests/`, `scripts/df-v2-10-validate-local.ps1`). Separate repo, no file overlap.
 - Owner PC: Windows, TradeOps `D:\Projects\TradeOps-v2`, DocFlow `D:\Projects\DocFlow-v2`, SDK `D:\DotNet\dotnet.exe` 10.0.401, previously staged candidate example `D:\DocFlowCandidates\DF-V2-07-20261010-193712`. Stage location is operator supplied; **never assume it exists** or silently locate new archives. Do not ask for credentials.
 
