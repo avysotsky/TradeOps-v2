@@ -25,7 +25,7 @@ real OIDC, deployed service endpoint, trading operation or NuGet publication.
 |---|---|---|---|
 | canonical-native-parity-utf8 | Yes | Full JSON deep equivalence against direct facade for normalized and structured output; document_id, fingerprint, ordered segment_id, participants, provenance, confidence, schemaVersion 1, validation status and Unicode/emoji; one backend invocation; no stored file | NOT RUN |
 | invalid-provider-data | Yes | Schema-invalid well-formed output remains HTTP 200 / validation_status=invalid and full direct facade parity | NOT RUN |
-| jwt-security-https | Yes | Missing/malformed/expired/wrong issuer/audience/key JWT -> 401; wrong scope and absent client ID -> 403; HTTP request scheme -> 403; pre-dispatch rejection; valid synthetic JWT accepted | NOT RUN |
+| jwt-security-https | Yes | Missing/malformed/expired/wrong issuer/audience/key JWT -> 401; wrong scope and absent client ID -> 403; unapproved nonempty client ID **must also be rejected** (known upstream blocker); HTTP request scheme -> 403; pre-dispatch rejection; valid synthetic JWT accepted | NOT RUN |
 | request-contract-and-bounds | Yes | HTTP wrong version, duplicate key, unsupported schema, bad normalization -> 422; unsupported selection -> 503; oversized request rejected by adapter before send, and HTTP -> 413 | NOT RUN |
 | http-response-and-bounds | Host for oversized native response; fake external handler for adapter-only cases | Native oversized output -> 502; adapter rejects non-2xx, malformed JSON, version mismatch, missing fields, >2 MiB response; error strings never echo provider sentinel | NOT RUN |
 | backend-errors-and-routing | Yes | Backend exception -> 502, transport exception -> 503, disabled HTTP route -> 404, missing backend -> 503, no retries | NOT RUN |
@@ -35,6 +35,20 @@ real OIDC, deployed service endpoint, trading operation or NuGet publication.
 The harness is intended to emit per-case PASS/FAIL and:
 TO-V2-03 TOTAL cases=8 passed=N failed=M assertions=K,
 returning exit code 1 for one or more failures. **N/M/K are unknown until executed.**
+
+## Source-discovered security blocker (requires upstream decision)
+
+The current READ-ONLY DocFlow.Api policy (ExtractionHttpEndpoint.cs) checks for
+a **nonempty** client_id/azp/appid claim and scope=docflow.extract, but it does
+**not** bind the identity claim to an approved TradeOps client ID. A differently
+named client carrying a valid signature/scope is therefore accepted by the
+current predicate. The jwt-security-https scenario now contains an explicit
+403 expectation for an unapproved nonempty client ID. From source inspection
+this expectation is **likely to FAIL (HTTP 200)** when the owner executes it.
+This is not a tested failure count (test execution remains NOT RUN).
+We deliberately do not override auth policy in TestServer or silently weaken
+this assertion. A separately authorized DocFlow security change, or a formally
+reviewed contract decision, is required before this gate can be accepted.
 
 ## Contract distinctions and residual gaps
 
