@@ -1,67 +1,84 @@
 # TO-V2-04 — Current-main .NET 10 dual-HTTP qualification status
 
-**Worker delivery: implementation committed in existing branch; independent owner Windows acceptance PENDING; Draft PR #6; NO MERGE.**
+**WORKER IMPLEMENTATION COMPLETE. OWNER WINDOWS EXACT-CODE ACCEPTANCE: PASS. PENDING INDEPENDENT DEVELOPMENT ORCHESTRATOR REVIEW. PR #6 OPEN / DRAFT; WORKER NO MERGE.**
 
-## Source of truth at assignment start — 2026-10-10
+## Latest owner Windows acceptance — 2026-10-10
 
-| Subject | Verified GitHub state |
+Owner supplied full PowerShell output of the NEW TO-V2-04 script, launched from D:\Projects\TradeOps-v2. The source pair and execution were verified by the script, and the log ended with both native and wrapper success summaries followed by exit 0.
+
+| Exact source / gate | Owner-observed result |
 |---|---|
-| TradeOps-v2 PRIVATE main | 7fab8a4e862c7fbdc2d717941a189308cd69fc18 |
-| DocFlow-v2 PRIVATE main | 22741d73a67112eae929d65337818b9b53629c8e |
-| Existing worker branch | TradeOps/to-v2-04-current-main-http-qualification |
-| Registered initial worker HEAD | fd04b411b5b726afe0e6b7db0c9ca839a3317ba6 |
-| Registered compare | 1 ahead / 0 behind; assignment only |
-| Workstream PR | TradeOps-v2 #6 OPEN / DRAFT |
-| Other open PRs | None observed in either private repo at preflight |
-| Orchestrator instruction | PR #6 issue comment 6100000474 read in full |
-| Workstream registry | Historical snapshot; live main and PR refs take precedence |
+| TradeOps-v2 **CODE SHA EXECUTED** | a688b13839c99c0d3d7fe2cea3e8f8651ace4d02 |
+| TradeOps-v2 approved main / origin/main | 7fab8a4e862c7fbdc2d717941a189308cd69fc18 |
+| DocFlow-v2 exact clean main / origin/main | 22741d73a67112eae929d65337818b9b53629c8e |
+| Required branch, origin tracking, clean trees, exact HEAD / baseline pins | PASS (validator reached/cleared all preflight and postflight gates) |
+| Both global.json SDK declarations and actual SDK | 10.0.401 / PASS |
+| TradeOps projects | 15 enumerated, all net10.0; MigrationSmoke included despite absence from solution |
+| 15 project restores, -warnaserror | **15/15 PASS** |
+| 15 project Release builds, -warnaserror --no-incremental | **15/15 PASS** |
+| Disposable source-linked real TradeOps + DocFlow harness restore | PASS |
+| Real TradeOps + DocFlow dependent net10 Release build | PASS; **0 Warning(s), 0 Error(s)** |
+| In-memory native DocFlow.Api TestServer bootstrap | PASS; real /health/live HTTP 200 |
+| Eight HTTP contract scenarios | **8/8 PASS; 0 FAIL** |
+| Counted HTTP assertions | **171** |
+| Existing underlying harness summary | TO-V2-03 TOTAL cases=8 passed=8 failed=0 assertions=171 |
+| New source-exact wrapper summary | TO-V2-04 TOTAL cases=8 passed=8 failed=0 assertions=171 |
+| Final PowerShell exit | **0** |
+| GitHub Actions | OFF; NOT RUN |
 
-Both expected main SHAs matched GitHub before any worker code changes; no baseline-change escalation was required.
+Eight owner-verified per-case PASS results:
 
-## Delivered changes
+1. canonical-native-parity-utf8
+2. invalid-provider-data
+3. jwt-security-https
+4. request-contract-and-bounds
+5. http-response-and-bounds
+6. backend-errors-and-routing
+7. deadline-and-cancellation
+8. bounded-concurrency
 
-1. **scripts/to-v2-03-validate-local.ps1:** add optional expected branch, TradeOps main and DocFlow main parameters, with original TO-V2-03 defaults unchanged. The pre-existing exact-source checks, 15-project inventory guard, temporary source links, restore/build, real TestServer implementation and output remain unchanged.
-2. **scripts/to-v2-04-validate-local.ps1:** new Windows entry point. Checks GitHub origin, exact branch and upstream/origin tracking, two reviewed main refs, passed-in exact worker HEAD, both clean trees, SDK and global.json 10.0.401, all 15 net10.0 TradeOps projects. Restores and builds all 15 projects in Release with warnings-as-errors, then calls the original eight-case TestServer harness with explicitly pinned current-main source refs. Requires eight unique expected PASS lines, one complete 8/8 total and at least 171 counted assertions.
-3. **docs/orchestration/workstreams/TO_V2_04_VALIDATION_NOTES.md:** exact-head owner runbook and fail-closed acceptance ledger.
-4. This status file.
-5. Existing Draft PR #6 body and handoff comment to be updated; no new branch or PR.
+The real native JWT configuration is loaded early in the TestServer. The owner log shows an allowlisted correctly signed identity reaching the actual extraction route with HTTP 200 and a correctly signed / scoped disallowed client returning HTTP 403. Unchanged harness assertions additionally verified **no extra backend dispatch** after rejection. This is native DocFlow.Api authorization, not a policy stub.
 
-**Inventory detail:** TradeOps.sln contains 14 of the 15 existing .csproj files. tools/MigrationSmoke/TradeOps.MigrationSmoke.csproj is not included. The new script enumerates all 15 rather than assuming a solution build covers everything.
+The owner log also shows native deadline HTTP 504, cancellation HTTP 499, bounded concurrency HTTP 429, rejected oversized bodies HTTP 413, valid exact-limit requests HTTP 200 and other required failures, with all scenario assertions PASS. The literal HTTP requests to localhost in output are **in-memory TestServer**; no public socket or deployed host was used.
 
-## Historical results versus new results
+## Tested code SHA versus later documentation commits
 
-| Phase | Historical TO-V2-03 owner proof | New TO-V2-04 current-main |
+**Do not relabel the owner-tested code SHA.** Exact executed TradeOps branch HEAD was a688b13839c99c0d3d7fe2cea3e8f8651ace4d02. This status and the accompanying validation-notes evidence update are subsequent **docs-only** commits and were not part of the owner-run HEAD. Development Orchestrator must confirm live PR diff contains no implementation changes after the tested commit before accepting this evidence. If any validator, Program.cs, project, production or dependency source changes, rerun required on the new exact source graph. Merely writing evidence documents does not generate another test pass.
+
+The final evidence-document HEAD is tracked in the live PR #6 and the worker handoff comment, not embedded self-referentially in this file.
+
+## Source baselines and implementation
+
+- Private TradeOps-v2 approved main remained 7fab8a4e862c7fbdc2d717941a189308cd69fc18 during preflight and latest GitHub reread.
+- Private DocFlow-v2 main remained 22741d73a67112eae929d65337818b9b53629c8e.
+- Existing branch: TradeOps/to-v2-04-current-main-http-qualification. Initial assignment HEAD: fd04b411b5b726afe0e6b7db0c9ca839a3317ba6.
+- Existing PR #6 remains Draft. No other open PRs observed at initial preflight.
+- scripts/to-v2-03-validate-local.ps1: historical defaults and underlying validation engine preserved; optional branch/main/dependency pins added.
+- scripts/to-v2-04-validate-local.ps1: exact branch/origin/clean source gate, all-15 net10.0 restore/build, child source-linked native TestServer run and strict one-total/eight-case/171-assertion result gate.
+- docs/orchestration/workstreams/TO_V2_04_VALIDATION_NOTES.md: owner-run command, evidence and retained boundaries.
+- This TO_V2_04_STATUS.md: exact owner evidence and distinction between source code and later documentation edits.
+- Original docs/orchestration/workstreams/TO_V2_04_ASSIGNMENT.md: registered assignment file, not altered by worker.
+
+TradeOps.sln contains 14 projects but tools/MigrationSmoke/TradeOps.MigrationSmoke.csproj is the fifteenth. All 15 were individually restored and built.
+
+## Historical evidence remains separate
+
+| Proof | Historical TO-V2-03 | NEW TO-V2-04 owner Windows |
 |---|---|---|
-| TradeOps SHA actually tested | 84fa7eaa080800b74f28cde50d1659a3eb3fbab0 | NOT RUN (must pass new PR HEAD to validator) |
-| DocFlow SHA actually tested | 7e9dc58947797251ab3be188411f514a6b078ac3 | Target 22741d73a67112eae929d65337818b9b53629c8e; NOT RUN |
-| Windows SDK 10.0.401 | PASS on historical pair | **NOT RUN** |
-| Source-linked NuGet restore | PASS on historical pair | **NOT RUN** |
-| Release build warnings-as-errors | PASS on historical pair | **NOT RUN** |
-| Native DocFlow.Api/TestServer bootstrap | PASS on historical pair | **NOT RUN** |
-| Eight genuine HTTP scenarios | **8/8 PASS** on historical pair | **NOT RUN** |
-| Counted HTTP assertions | **171** on historical pair | **NOT RUN / UNKNOWN** |
-| Validator exit code | **0** on historical pair | **NOT RUN / UNKNOWN** |
-| GitHub Actions | OFF | OFF / NOT RUN |
+| TradeOps executable code | 84fa7eaa080800b74f28cde50d1659a3eb3fbab0 | a688b13839c99c0d3d7fe2cea3e8f8651ace4d02 |
+| DocFlow main | 7e9dc58947797251ab3be188411f514a6b078ac3 | 22741d73a67112eae929d65337818b9b53629c8e |
+| SDK | 10.0.401 PASS | 10.0.401 PASS |
+| Source-linked restore/build | PASS | PASS |
+| Native HTTP TestServer | 8/8 PASS | 8/8 PASS |
+| Assertions | 171 | 171 |
+| Exit | 0 | 0 |
 
-Historical TO-V2-03 evidence was subsequently integrated. It is **not** proof for current DocFlow main, nor for the new branch.
+These are **two separate owner runs against different source pairs**, not a duplicated or transferred result. Neither constitutes exhaustive production security review, live broker/LLM/provider integration testing, full unit-test execution or NuGet distribution approval.
 
-## Eight scenarios preserved, unchanged source
+## Boundaries and next reviewer action
 
-- canonical-native-parity-utf8
-- invalid-provider-data
-- jwt-security-https
-- request-contract-and-bounds
-- http-response-and-bounds
-- backend-errors-and-routing
-- deadline-and-cancellation
-- bounded-concurrency
+The harness exercises genuine TradeOps.Infrastructure.DocFlowHttpExtractionAdapter, native DocFlow.Api endpoint and DocFlow.Extraction.Application.DocFlowExtractionFacade; fake dependencies are limited to test JWT issuer and external provider/backend, filesystem/storage and DB isolation. No production src/, tools/DualHttpContract/Program.cs, DocFlow-v2 code, workflows, public listeners or trading endpoints were changed.
 
-The genuine tools/DualHttpContract/Program.cs still requires a signed allowlisted tradeops-integration-test client to succeed (native HTTP 200) and a correctly signed, properly scoped unapproved-service-client to receive **HTTP 403 before backend dispatch**. The native DocFlow.Api, DocFlowExtractionFacade and real TradeOps DocFlowHttpExtractionAdapter are exercised. Only external provider/backend, JWT signing and storage/database edges use isolated synthetic fixtures; the native authorization policy is not mocked or bypassed.
+**GitHub Actions OFF; NuGet PUBLISH BLOCKED; LICENSE APPROVAL BLOCKED.** No workflow YAML edits, package publish, external OIDC/LLM, production DB, real broker API, in-process NuGet adapter, public rollout or worker merge.
 
-## Blockers and handoff
-
-**Implementation reviewed at GitHub source level only.** PowerShell parsing, SDK, 15-project restore/build, cross-repo TestServer bootstrap, eight scenario outcomes, assertions and process exit must be independently executed on the owner's Windows machine. Record **NOT RUN** until that happens.
-
-No production src/, tools/DualHttpContract/Program.cs, DocFlow-v2 source, workflows, private NuGet artifacts, package ACLs, public listeners, external identity/model/broker/production DB services changed or ran. GitHub Actions OFF. **NuGet PUBLISH BLOCKED; LICENSE APPROVAL BLOCKED; worker NO MERGE.**
-
-Owner runs the instructions in TO_V2_04_VALIDATION_NOTES.md and provides complete per-phase console evidence. Development Orchestrator must review exact refs, source diff, new 8/8 and actual assertion count before any merge decision. Final branch HEAD must be read from live PR #6 or worker handoff; it cannot be embedded in its own HEAD-producing status commit.
+Next: Development Orchestrator independently review PR #6, compare post-tested documentation-only changes with owner-executed HEAD, inspect the strict JWT 403-before-backend and eight native cases, then decide whether the proof meets the merge gate. Worker explicitly leaves PR #6 OPEN / DRAFT.
