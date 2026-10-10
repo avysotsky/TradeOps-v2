@@ -68,6 +68,15 @@ function Assert-Newtonsoft-Resolved([System.IO.FileInfo[]]$projectFiles) {
     }
 }
 Run-Checked 'Solution restore with warnings as errors' { & $dotnet restore TradeOps.sln -warnaserror }
+# Fail closed on an EF Core Relational graph mismatch before the Release build.
+$infraAssetsPath = 'src/TradeOps.Infrastructure/obj/project.assets.json'
+if (-not (Test-Path -LiteralPath $infraAssetsPath)) { throw "Missing restored assets: $infraAssetsPath" }
+$infraAssets = Get-Content -Raw -Encoding UTF8 -LiteralPath $infraAssetsPath | ConvertFrom-Json
+$efRelational = @($infraAssets.libraries.PSObject.Properties | Where-Object { $_.Name -like 'Microsoft.EntityFrameworkCore.Relational/*' })
+if ($efRelational.Count -ne 1 -or $efRelational[0].Name -ne 'Microsoft.EntityFrameworkCore.Relational/10.0.12') {
+    throw "EF Core Relational must resolve exactly 10.0.12 in Infrastructure; got: $(@($efRelational | ForEach-Object { $_.Name }) -join ', ')"
+}
+Write-Host 'DEPENDENCY PASS Infrastructure: Microsoft.EntityFrameworkCore.Relational/10.0.12'
 Run-Checked 'Solution Release build with warnings as errors' { & $dotnet build TradeOps.sln -c Release --no-restore -warnaserror }
 foreach ($project in $projects) {
     Run-Checked "Restore $($project.FullName)" { & $dotnet restore $project.FullName -warnaserror }
