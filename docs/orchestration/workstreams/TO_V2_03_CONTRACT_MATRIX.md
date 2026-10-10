@@ -1,7 +1,7 @@
 # TO-V2-03 — .NET 10 native HTTP contract matrix
 
 **Implementation:** tools/DualHttpContract/Program.cs, executed by
-scripts/to-v2-03-validate-local.ps1. **NEW DOCFLOW MAIN 7e9dc589: ALL 8 TO-V2-03 SCENARIOS NOT RUN; prior 7/8 against OLD main is historical.**
+scripts/to-v2-03-validate-local.ps1. **OWNER SOURCE-VERIFIED 8/8 HTTP PASS; 171 assertions; exit 0 on TradeOps 84fa7eaa + DocFlow 7e9dc589.**
 This is the contract inventory and evidence; it does not claim all tests pass.
 
 ## Implementation boundaries
@@ -19,7 +19,60 @@ This is the contract inventory and evidence; it does not claim all tests pass.
 Neither TradeOps.Api nor TradeOps.Worker starts. No broker, LLM, Postgres,
 real OIDC, deployed service endpoint, trading operation or NuGet publication.
 
-## DF-V2-08 post-merge contract matrix — NEW SOURCE GRAPH (2026-10-10)
+## VERIFIED owner Windows dual-service test results (LATEST, 2026-10-10)
+
+**Exact source graph tested with Windows .NET SDK 10.0.401:**
+TradeOps-v2 `84fa7eaa080800b74f28cde50d1659a3eb3fbab0`
+and read-only DocFlow-v2 `7e9dc58947797251ab3be188411f514a6b078ac3`.
+Source-linked public NuGet restore **PASS** (3.4s), real
+DocFlow-v2/TradeOps-v2 temporary .NET10 Release build **PASS**
+(10.3s), native in-memory TestServer bootstrap **PASS**.
+
+| HTTP case | ACTUAL owner-tested status |
+|---|---|
+| canonical-native-parity-utf8 | **PASS** |
+| invalid-provider-data | **PASS** |
+| jwt-security-https | **PASS** |
+| request-contract-and-bounds | **PASS** |
+| http-response-and-bounds | **PASS** |
+| backend-errors-and-routing | **PASS** |
+| deadline-and-cancellation | **PASS** |
+| bounded-concurrency | **PASS** |
+| **TOTAL** | **8 passed / 0 failed / 171 assertions / exit 0** |
+
+Repeated live native early-bootstrap configuration diagnostics:
+`DF-V2-08 APP EARLY CONFIG: childCount=1 keys=[0]
+parentScalar=null`. Each real WebApplicationFactory loaded the
+isolated fixture JSON allowlist at early minimal-host startup.
+
+**JWT regression is closed for this exact source graph:**
+the authorized synthetic `tradeops-integration-test` identity
+succeeded (native HTTP 200), while the signed, scoped
+`unapproved-service-client` was denied **HTTP 403 before backend**;
+the harness verified no additional backend creation. Missing JWT,
+wrong signature/issuer/audience/expiry, wrong scope, missing
+client identity and plaintext transport remain rejected.
+
+The seven other cases prove canonical UTF-8 and native extraction
+parity; invalid provider schema output; request/response size and
+shape limits; backend faults/routing; server HTTP 504 deadline and
+client cancellation (native HTTP 499); and concurrency HTTP 429.
+Tests use the real application stack in TestServer, with isolated
+synthetic external provider and JWT signer only.
+
+**This 8/8 result supersedes the pre-run NOT RUN status** in the
+historical plan below, and the previous 7/8 failure against older
+DocFlow-v2 `3f09e91ba356fb367248ef1b48a56b19d9fdae97`.
+Only documentation was updated after the tested TradeOps SHA;
+any new documentation commit is not independently re-executed.
+
+Local integration objective MET; submit to Development Orchestrator
+for independent review/merge decision. Existing Draft PR #5 kept
+Draft; GitHub Actions OFF, workflows untouched, production sources
+unchanged, no public deployment, private NuGet publication or merge.
+
+---
+## DF-V2-08 post-merge contract matrix — NEW SOURCE GRAPH (HISTORICAL pre-run plan)
 
 Read-only DocFlow-v2 main PIN:
 `7e9dc58947797251ab3be188411f514a6b078ac3`.
@@ -45,14 +98,15 @@ WebApplication.CreateBuilder(args) from an isolated temporary
 contentRoot avoids that projection. The new JSON config owns
 `AllowedClientIds=["tradeops-integration-test"]`.
 
-Expected genuine DF-V2-08 Testing-only diagnostic for every enabled
-host: `DF-V2-08 APP EARLY CONFIG: childCount=1 keys=[0] parentScalar=null`.
-This is a required inspection on owner Windows, NOT yet observed
-by TO-V2-03. No token/client ID values should appear in logs.
+Genuine DF-V2-08 Testing-only diagnostic for enabled hosts:
+`DF-V2-08 APP EARLY CONFIG: childCount=1 keys=[0] parentScalar=null`.
+It was subsequently observed repeatedly during the successful owner
+Windows run; see verified latest section above. No token/client ID values should appear in logs.
 
-**NEW source-linked Windows verification:** .NET SDK 10.0.401
-restore **NOT RUN**; Release build **NOT RUN**; native TestServer
-startup and all 8 HTTP scenarios **NOT RUN**; assertion total unknown.
+**HISTORICAL pre-run status (superseded):** Before the owner executed
+the exact source graph, SDK 10.0.401 restore/build/TestServer and all
+8 scenarios were NOT RUN. The subsequent run **PASSED 8/8 with
+171 assertions and exit 0**, as recorded in the latest section.
 Previous 7 PASS / 1 FAIL / 168 assertions / exit 1 was against
 TradeOps-v2 bd06bbacc46c1fbba4c06832d92984ba4aec6d9e
 and DocFlow-v2 OLD main 3f09e91ba356fb367248ef1b48a56b19d9fdae97.
@@ -164,21 +218,21 @@ Historical 6/8 is not acceptance of the updated code. No merge.
 
 ---
 
-## Eight test cases implemented (NEW source graph: all NOT RUN)
+## Eight test cases implemented (owner Windows: ALL PASS at pinned source graph)
 
 | Case | Genuine DocFlow endpoint/facade? | Expected contract checked | Evidence |
 |---|---|---|---|
-| canonical-native-parity-utf8 | Yes | Full JSON deep equivalence against direct facade for normalized and structured output; document_id, fingerprint, ordered segment_id, participants, provenance, confidence, schemaVersion 1, validation status and Unicode/emoji; one backend invocation; no stored file | NOT RUN (new DocFlow pin) |
-| invalid-provider-data | Yes | Schema-invalid well-formed output remains HTTP 200 / validation_status=invalid and full direct facade parity | NOT RUN (new DocFlow pin) |
-| jwt-security-https | Yes | Missing/malformed/expired/wrong issuer/audience/key JWT -> 401; wrong scope and absent client ID -> 403; unapproved nonempty client ID **must also be rejected** (known upstream blocker); HTTP request scheme -> 403; pre-dispatch rejection; valid synthetic JWT accepted | NOT RUN (new DocFlow pin) |
-| request-contract-and-bounds | Yes | HTTP wrong version, duplicate key, unsupported schema, bad normalization -> 422; unsupported selection -> 503; oversized request rejected by adapter before send; DocFlow HTTP -> 413 for Content-Length and chunked input; malformed JSON and invalid UTF-8 -> 422; inclusive **exactly 1,048,576-byte** native request -> 200 | NOT RUN (new DocFlow pin) |
-| http-response-and-bounds | Host for oversized native response; fake external handler for adapter-only cases | Native oversized output -> 502; adapter rejects non-2xx, malformed JSON, version mismatch, missing fields, >2 MiB response; error strings never echo provider sentinel | NOT RUN (new DocFlow pin) |
-| backend-errors-and-routing | Yes | Backend exception -> 502, transport exception -> 503, disabled HTTP route -> 404, missing backend -> 503, no retries | NOT RUN (new DocFlow pin) |
-| deadline-and-cancellation | Yes | Real native HTTP 504 for server deadline and sanitized adapter rejection; caller cancellation and HttpClient.Timeout must cause actual native backend cancellation, allowing transport OCE or sanitized non-2xx only with that proof; no retry | NOT RUN (new DocFlow pin) |
-| bounded-concurrency | Yes | Maximum concurrency=1: second request -> 429 before backend dispatch, adapter sanitizes failure, initial request completes after release | NOT RUN (new DocFlow pin) |
+| canonical-native-parity-utf8 | Yes | Full JSON deep equivalence against direct facade for normalized and structured output; document_id, fingerprint, ordered segment_id, participants, provenance, confidence, schemaVersion 1, validation status and Unicode/emoji; one backend invocation; no stored file | **PASS (owner)** |
+| invalid-provider-data | Yes | Schema-invalid well-formed output remains HTTP 200 / validation_status=invalid and full direct facade parity | **PASS (owner)** |
+| jwt-security-https | Yes | Missing/malformed/expired/wrong issuer/audience/key JWT -> 401; wrong scope and absent client ID -> 403; unapproved nonempty client ID **must also be rejected** (known upstream blocker); HTTP request scheme -> 403; pre-dispatch rejection; valid synthetic JWT accepted | **PASS (owner)** |
+| request-contract-and-bounds | Yes | HTTP wrong version, duplicate key, unsupported schema, bad normalization -> 422; unsupported selection -> 503; oversized request rejected by adapter before send; DocFlow HTTP -> 413 for Content-Length and chunked input; malformed JSON and invalid UTF-8 -> 422; inclusive **exactly 1,048,576-byte** native request -> 200 | **PASS (owner)** |
+| http-response-and-bounds | Host for oversized native response; fake external handler for adapter-only cases | Native oversized output -> 502; adapter rejects non-2xx, malformed JSON, version mismatch, missing fields, >2 MiB response; error strings never echo provider sentinel | **PASS (owner)** |
+| backend-errors-and-routing | Yes | Backend exception -> 502, transport exception -> 503, disabled HTTP route -> 404, missing backend -> 503, no retries | **PASS (owner)** |
+| deadline-and-cancellation | Yes | Real native HTTP 504 for server deadline and sanitized adapter rejection; caller cancellation and HttpClient.Timeout must cause actual native backend cancellation, allowing transport OCE or sanitized non-2xx only with that proof; no retry | **PASS (owner)** |
+| bounded-concurrency | Yes | Maximum concurrency=1: second request -> 429 before backend dispatch, adapter sanitizes failure, initial request completes after release | **PASS (owner)** |
 
 The harness is intended to emit per-case PASS/FAIL and:
-TO-V2-03 TOTAL cases=8 passed=N failed=M assertions=K. On OLD DocFlow main with tested TradeOps bd06bba: **N=7, M=1, K=168, exit code=1**. For NEW pinned DocFlow 7e9dc589: **N/M/K NOT RUN**.
+TO-V2-03 TOTAL cases=8 passed=N failed=M assertions=K. On OLD DocFlow main with TradeOps bd06bba: **N=7, M=1, K=168, exit 1** (historical). On NEW pinned DocFlow 7e9dc589 and TradeOps 84fa7eaa: **N=8, M=0, K=171, exit 0** (owner verified).
 
 ## Source-discovered security blocker (requires upstream decision)
 
@@ -189,7 +243,7 @@ named client carrying a valid signature/scope is therefore accepted by the
 current predicate. The jwt-security-https scenario now contains an explicit
 403 expectation for an unapproved nonempty client ID. From source inspection
 this expectation is **likely to FAIL (HTTP 200)** when the owner executes it.
-At tested bd06bba against OLD DocFlow: **HTTP 200**, expected 403. Upstream DF-V2-08 is now merged with an actual allowlist and independent 9/9 native HTTP proof; TO-V2-03 must still demonstrate real 403 and no dispatch on the NEW pinned source.
+At tested bd06bba against OLD DocFlow: **HTTP 200**, expected 403 (historical). With DF-V2-08 merged and pinned, owner Windows TO-V2-03 retest now confirms the actual signed unapproved-client **403 and no backend dispatch**. The prior blocker is resolved for the tested graph.
 We deliberately do not override auth policy in TestServer or silently weaken
 this assertion. A separately authorized DocFlow security change, or a formally
 reviewed contract decision, is required before this gate can be accepted.
