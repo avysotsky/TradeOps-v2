@@ -51,3 +51,11 @@ Recorded 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
 Owner: check out same branch in `D:\Projects\TradeOps-v2` with SDK `D:\DotNet\dotnet.exe`, then run `& .\scripts\to-v2-02-validate-local.ps1` and capture full logs with exact SHA, warning totals and test counts. Do not run smoke tools, compose up, API/Worker, or production DB migrations. TestServer/DB integration suites require a separate safety review and disposable DB.
 Orchestrator: independently verify final head, per-file compare, branch divergence, new-head owner evidence, no live CI run, contract and privacy invariants. Keep PR Draft pending acceptance. No merge.
+
+## Owner NU1903 failure and corrective patch — 2026-10-10
+
+Owner validation at exact prior HEAD `32fa8a2c3bac6c9508b8ab7d378d31b2ea0a5bf5` FAILED during `dotnet restore TradeOps.sln -warnaserror`: **five NU1903 errors** for resolved Newtonsoft.Json 11.0.2 (GHSA-5crp-9r3c-p9vr, CVE-2024-21907). Subsequent builds and tests were **NOT RUN**, rather than passed. Orchestrator comment in Draft PR #4 documents the failure.
+
+The published package metadata for direct dependency `Nethereum.Signer.EIP712 6.1.0` declares `Newtonsoft.Json >=11.0.2 && <14.0.0`, making it a strongly documented source. The *exact owner's assets graph* was not accessible in this worker environment, so it has **NOT** been independently inspected. Added a direct `Newtonsoft.Json` **13.0.4** reference only to TradeOps.Infrastructure to override the vulnerable lower bound without modifying Nethereum/EIP-712 implementation. Updated PowerShell validator to reject missing assets or any resolved Newtonsoft.Json version other than 13.0.4 in every project's `project.assets.json`, with an explicit Infrastructure assertion. `-warnaserror` and default NuGet Audit remain enabled; no warning suppression. EIP-712 signature/serialization regression remains **NOT RUN** and requires owner follow-up. No trading, APIs, EF migrations, or production code changed.
+
+**New-HEAD validation:** NOT RUN in worker environment. Owner must rerun full validator on current PR HEAD; compare `dotnet list` dependency resolution and test results. PR remains Draft and merge blocked.
