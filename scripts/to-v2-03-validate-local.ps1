@@ -8,14 +8,20 @@ param(
     [string] $ExpectedTradeOpsHead,
     [string] $TradeOpsRoot = 'D:\Projects\TradeOps-v2',
     [string] $DocFlowRoot = 'D:\Projects\DocFlow-v2',
-    [string] $DotNetExe = 'D:\DotNet\dotnet.exe'
+    [string] $DotNetExe = 'D:\DotNet\dotnet.exe',
+    # Original TO-V2-03 defaults are intentional; TO-V2-04 passes explicit refs.
+    [string] $ExpectedTradeOpsBranch = 'TradeOps/to-v2-03-dotnet10-dual-http-contract',
+    [ValidatePattern('^[0-9a-f]{40}$')]
+    [string] $ExpectedTradeOpsMain = 'bab7b5c48bbb30677f7747fe2445c2673fd663c5',
+    [ValidatePattern('^[0-9a-f]{40}$')]
+    [string] $ExpectedDocFlowMain = '7e9dc58947797251ab3be188411f514a6b078ac3'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$expectedBranch = 'TradeOps/to-v2-03-dotnet10-dual-http-contract'
-$expectedTradeOpsMain = 'bab7b5c48bbb30677f7747fe2445c2673fd663c5'
-$expectedDocFlow = '7e9dc58947797251ab3be188411f514a6b078ac3'
+$expectedBranch = $ExpectedTradeOpsBranch
+$expectedTradeOpsMain = $ExpectedTradeOpsMain
+$expectedDocFlow = $ExpectedDocFlowMain
 $expectedSdk = '10.0.401'
 
 function Git-Exact([string] $root, [string[]] $gitArgs) {
