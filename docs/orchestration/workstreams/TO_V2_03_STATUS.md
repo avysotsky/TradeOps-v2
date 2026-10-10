@@ -1,9 +1,56 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: SOURCE FIXED FOLLOWING OWNER CS1026 FAILURE; NEW-HEAD VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
+**State: HARNESS CS1674 SOURCE FIXED AFTER OWNER TEST; NEW-HEAD VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
-## 2026-10-10 — owner Windows compile failure and worker syntax correction (latest)
+## 2026-10-10 — owner Windows compile CS1674 follow-up (latest)
+
+**Status: SOURCE FIX APPLIED / OWNER RERUN NEEDED / 8 HTTP SCENARIOS NOT RUN / DRAFT PR #5 — NO MERGE.**
+This section supersedes older owner evidence snapshots below. The exact final
+post-STATUS commit HEAD is recorded in PR #5 because the document cannot
+truthfully contain the SHA of its own writing commit.
+
+**Actual owner Windows test on TradeOps head
+`0f9f4d1a3c95d3129d173dc682fee1b467d917f3`, DocFlow-v2 read-only
+main `3f09e91ba356fb367248ef1b48a56b19d9fdae97`, SDK 10.0.401:**
+
+| Check | Owner result on previous head |
+|---|---|
+| Branch/main/clean checkout and SDK preflight | PASS |
+| Temporary cross-repo NuGet restore | **PASS** (3.0s) |
+| Real DocFlow and TradeOps dependent project Release builds | **PASS** (net10.0) |
+| DualHttpContract harness Release compilation | **FAIL: 2 × CS1674** |
+| First error | Program.cs(187,9): test-only DeterministicFactory used with `using` but does not implement IDisposable |
+| Second error | Program.cs(222,9): same test-only DeterministicFactory used with `using` but does not implement IDisposable |
+| All eight TestServer integration scenarios | **NOT RUN** (harness did not compile) |
+| Validator exit code | **1 (FAIL)** |
+
+The additional `Write-Host "TO-V2-03 LOCAL VALIDATION PASSED"` displayed in
+owner's transcript was a **separate manually entered command following a
+PowerShell throw**; it does not overturn the actual build failure or exit 1.
+
+**Worker corrective change (test-only source):** In
+`tools/DualHttpContract/Program.cs`, replaced both `using var directFactory`
+declarations with ordinary `var directFactory` local variables. The
+`DeterministicFactory` owns no disposable resources and is not modified.
+Remaining `using var` targets were inspected by source; they are test hosts,
+HTTP clients/messages, JsonDocument and CancellationTokenSource instances.
+The eight cases, real production adapter/facade, and strict negative JWT
+assertion for `client_id="unapproved-service-client"` remain unchanged.
+No changes to production TradeOps, read-only DocFlow-v2, GitHub Actions,
+workflows, private NuGet, broker/provider networks, or merger state.
+
+**Corrected new-head execution evidence:** NuGet restore **NOT RUN**; net10
+Release compilation **NOT RUN**; eight HTTP scenarios **NOT RUN**, with
+unknown passed/failed/assertion totals. Prior successful dependency builds
+do not prove new-head acceptance. Independent Development Orchestrator
+review remains required, especially for the existing upstream identity
+allowlist issue. See latest PR #5 worker comment for the new exact HEAD and
+full PowerShell repeat command.
+
+---
+
+## 2026-10-10 — owner Windows compile failure and worker syntax correction (prior CS1026)
 
 **Current state: HARNESS SOURCE FIXED; NEW-HEAD BUILD / ALL EIGHT HTTP
 SCENARIOS NOT RUN; PR #5 STILL DRAFT, MERGE BLOCKED.** This update
