@@ -19,7 +19,30 @@ This is the inventory of implemented assertions, not a claim of passing tests.
 Neither TradeOps.Api nor TradeOps.Worker starts. No broker, LLM, Postgres,
 real OIDC, deployed service endpoint, trading operation or NuGet publication.
 
-## Eight test cases implemented (all NOT RUN)
+## Owner evidence and TestServer bootstrap gate (2026-10-10)
+
+- At **old TradeOps HEAD 158b069ce0eb46bb5935d3654da577b62a87d8c2**
+  with DocFlow-v2 main 3f09e91ba356fb367248ef1b48a56b19d9fdae97,
+  SDK 10.0.401: NuGet restore **PASS**, real net10 dependencies and
+  temporary DualHttpContract **BUILD PASS**.
+- **8/8 cases FAILED immediately with InvalidOperationException;
+  assertions=0; exit code=1.** The old harness suppressed exception
+  details; this is a common TestServer bootstrap failure before real
+  HTTP assertions, not 8 independent negative contract results.
+- New runner checks actual DocFlow.Api.deps.json, pins test content
+  root outside the scratch .sln tree, and performs an explicit real
+  TestServer /health/live bootstrap probe. Failure of that bootstrap
+  yields bootstrap_failed=1, not_run=8 with redacted diagnostics and
+  nonzero exit. **New-head restore/build/test execution NOT RUN**.
+- In the original case matrix below, each NOT RUN status applies to
+  the **current unverified head**; the previous old-head attempts did
+  execute but failed before reaching those scenario assertions.
+- The intentionally strict JWT rejection of another nonempty client_id
+  remains unchanged; it has not yet been exercised by the owner's run.
+
+---
+
+## Eight test cases implemented (new HEAD: all NOT RUN)
 
 | Case | Genuine DocFlow endpoint/facade? | Expected contract checked | Evidence |
 |---|---|---|---|
