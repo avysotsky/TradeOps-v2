@@ -31,3 +31,7 @@ The validator performs Git branch and remote SHA checks, validates exactly 15 ne
 ## Acceptance blockers
 
 Owner must supply exact-HEAD offline restore/build results, test passed/failed/skipped counts, all compile warnings, and any EF/Npgsql breaking behavior findings. Current worker environment has not executed dotnet or Docker. Do not merge until orchestrator independently reviews and owner validates. GitHub Actions OFF; no workflow changes, NuGet publication, real trading or production data writes.
+
+## 2026-10-10 — NU1903 security remediation
+
+First owner Windows restore at original head `32fa8a2c3bac6c9508b8ab7d378d31b2ea0a5bf5` failed with 5 × NU1903 on Newtonsoft.Json 11.0.2. Published `Nethereum.Signer.EIP712 6.1.0` dependency metadata allows Newtonsoft.Json `>=11.0.2 && <14`; NuGet chose the vulnerable lower bound. Directly pinning `Newtonsoft.Json 13.0.4` in Infrastructure is compatible with that advertised version range, but owner-local full resolved graph and compile/run compatibility **require revalidation**. Validate all 15 `project.assets.json` through the updated script; do not suppress NU1903 or disable NuGet Audit. Repeat offline signing and serialization regression tests before approval, and retain immutable EIP-712 signature behavior. No provider egress or production DB activity is authorized.
