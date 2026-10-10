@@ -1,9 +1,68 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: OWNER 6 PASS / 2 FAIL, 153 ASSERTIONS; CANCELLATION TEST UPDATED; NEW-HEAD NOT RUN — Draft PR #5 / DO NOT MERGE.**
+**State: OWNER .NET10 RESTORE+BUILD PASS; HTTP 7 PASS / 1 BLOCKING JWT AUTH FAIL; 168 ASSERTIONS — Draft PR #5 / DO NOT MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
-## 2026-10-10 — Owner TestServer run, 6 PASS / 2 FAIL (latest)
+## 2026-10-10 — Windows full HTTP verification at bd06bba (latest)
+
+**Verified SOURCE HEAD:** TradeOps-v2 bd06bbacc46c1fbba4c06832d92984ba4aec6d9e;
+read-only DocFlow-v2 main 3f09e91ba356fb367248ef1b48a56b19d9fdae97;
+Windows SDK 10.0.401; source trees, pinned branches, net10.0 TFM
+and 15-project inventory passed local preflight.
+
+| Stage / scenario | Actual owner evidence |
+|---|---|
+| Temporary NuGet restore | **PASS** (1.2 seconds) |
+| All genuine DocFlow-v2/TradeOps-v2 graph and DualHttpContract Release builds | **PASS** (4.5 seconds) |
+| In-memory DocFlow.Api /health/live bootstrap | **PASS** |
+| canonical-native-parity-utf8 | **PASS** |
+| invalid-provider-data | **PASS** |
+| jwt-security-https | **FAIL** — HTTP **200**, expected **403** for unapproved nonempty client_id |
+| request-contract-and-bounds | **PASS** |
+| http-response-and-bounds | **PASS** |
+| backend-errors-and-routing | **PASS** |
+| deadline-and-cancellation | **PASS** (native server deadline/cancellation and timeout exercised) |
+| bounded-concurrency | **PASS** |
+| Total | **7 PASS / 1 FAIL / 168 assertions; validator exit 1** |
+
+**Classification: source-confirmed authorization-contract mismatch,
+now independently reproduced in genuine native HTTP TestServer.**
+The current DocFlow.Api extraction policy requires a correctly signed,
+valid token with docflow.extract scope and a nonempty
+client_id / azp / appid, but does **not** restrict that identity to an
+approved TradeOps service principal. A correctly signed, in-scope
+JWT bearing client_id=unapproved-service-client is accepted with HTTP
+200 where TO-V2-03's deliberately stricter isolation requirement
+expects HTTP 403. This is **not** an invalid token under the existing
+DocFlow-v2 policy: the requirement represents an additional
+authorization boundary for shared identity providers.
+
+**Do not weaken or skip the negative test**, change the test-only
+issuer to force 401, bypass the test or declare full green.
+Address the identity pinning via a separate, orchestrator-approved
+DocFlow-v2 security workstream: choose explicit allowed client IDs
+(with secure deployment configuration and fail-closed behavior),
+retain issuer/audience/signature/lifetime/scope validation, and
+verify both allowed and disallowed signed service tokens against
+the genuine HTTP endpoint. If the security contract is reconsidered
+instead, the orchestrator must explicitly document the risk decision.
+
+After any approved DocFlow-v2 change, update the pinned DocFlow
+commit in the TO-V2-03 validator and docs only through orchestrator
+review, then rerun all eight HTTP scenarios with the new pinned
+source graph. The seven successes were measured **only** against
+the exact source SHAs above; a documentation-only follow-up commit
+is not a new runtime execution.
+
+**Worker disposition:** No changes required to the working
+deadline-and-cancellation harness or TradeOps production adapter.
+This follow-up updates only STATUS, CONTRACT_MATRIX and the existing
+Draft PR #5, preserving the unapproved client_id => 403 assertion.
+GitHub Actions OFF, no workflow YAML edits, no real OIDC/LLM/broker/DB,
+no NuGet publishing and **no merge**. Handoff to Development Orchestrator.
+
+---
+## 2026-10-10 — Owner TestServer run, 6 PASS / 2 FAIL (previous owner evidence)
 
 Owner tested TradeOps-v2 a596a250c6646755969dd332be6145a84680f044
 with DocFlow-v2 3f09e91ba356fb367248ef1b48a56b19d9fdae97.
