@@ -18,6 +18,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -293,8 +294,8 @@ internal static class DualHttpContract
         using var authorized = Client(host, Token());
         await Adapter(authorized).ExtractAsync(Input());
         Check(factory.Created == 1, "authorized request dispatches once");
-        // EXPECTED SECURITY BLOCKER until DocFlow.Api pins a trusted client identity.
-        // Current native policy only requires a nonempty client_id and may return 200.
+        // DF-V2-08 genuine native policy requires allowlisted service identity.
+        // Preserve the explicit denied-client 403 and zero backend-dispatch gate.
         await Status(await RawPost(authorized, Wire(Input()),
             Token(clientId: "unapproved-service-client")), 403, "forbidden");
         Check(factory.Created == 1, "unapproved service identity rejected before dispatch");
@@ -565,55 +566,78 @@ internal static class DualHttpContract
     private sealed class Host : WebApplicationFactory<global::Program>
     {
         private readonly IExtractionBackendFactory? backend;
-        private readonly bool enabled;
-        private readonly int deadline;
-        private readonly int concurrency;
-        public string StorageRoot { get; } =
-            Path.Combine(Path.GetTempPath(), "to-v2-03-" + Guid.NewGuid().ToString("N"));
+        private readonly string bootstrapRoot;
+        public string StorageRoot { get; }
 
         public Host(IExtractionBackendFactory? backend, bool enabled = true,
             int deadline = 30_000, int concurrency = 4)
         {
             this.backend = backend;
-            this.enabled = enabled;
-            this.deadline = deadline;
-            this.concurrency = concurrency;
+
+            // DF-V2-08 proven minimal-host bootstrap: a unique early-loaded
+            // appsettings.json per WebApplicationFactory, never nested host
+            // settings / deferred ConfigureAppConfiguration. In particular,
+            // DeferredHostBuilder.AsEnumerable() -> AddCommandLine() projects
+            // a null AllowedClientIds parent to an invalid empty scalar.
+            bootstrapRoot = Path.Combine(Path.GetTempPath(),
+                "to-v2-03-config-" + Guid.NewGuid().ToString("N"));
+            StorageRoot = Path.Combine(bootstrapRoot, "storage");
+            Directory.CreateDirectory(StorageRoot);
+
+            var extraction = new JsonObject
+            {
+                ["Enabled"] = enabled,
+                ["Authority"] = Issuer,
+                ["Audience"] = Audience,
+                ["DeadlineMilliseconds"] = deadline,
+                ["MaxConcurrency"] = concurrency,
+                ["AllowedSelections"] = new JsonArray(new JsonObject
+                {
+                    ["Provider"] = "groq",
+                    ["Model"] = "model-test"
+                }),
+                // Explicit allowlist is required whenever extraction is enabled.
+                // This is a synthetic, test-only service identity; no production ID.
+                ["AllowedClientIds"] = new JsonArray("tradeops-integration-test")
+            };
+            var config = new JsonObject
+            {
+                ["ExtractionHttp"] = extraction,
+                ["FileStorage"] = new JsonObject { ["RootPath"] = StorageRoot },
+                ["ConnectionStrings"] = new JsonObject
+                {
+                    ["DocFlowDbContext"] =
+                        "Host=127.0.0.1;Port=1;Database=blocked;Username=nobody;Timeout=1"
+                }
+            };
+            File.WriteAllText(Path.Combine(bootstrapRoot, "appsettings.json"),
+                config.ToJsonString(), new UTF8Encoding(false));
+            // Shape-only diagnostics. Never output any ID values or JWTs.
+            Console.WriteLine("TO-V2-03 FIXTURE CONFIG: enabled=" + enabled +
+                " clientChildCount=1 keys=[0] source=json-array (values omitted)");
+        }
+
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            // Only flat host configuration flows into minimal hosting args.
+            // The real DocFlow.Api reads our JSON array itself during
+            // WebApplication.CreateBuilder(args), before Options.Read.
+            builder.ConfigureHostConfiguration(config =>
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["contentRoot"] = bootstrapRoot,
+                    ["environment"] = "Testing"
+                }));
+            return base.CreateHost(builder);
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            var root = Environment.GetEnvironmentVariable("TO_V2_03_DOCFLOW_ROOT")
-                ?? throw new InvalidOperationException("Missing test content root.");
-            builder.UseContentRoot(Path.Combine(root, "src", "DocFlow.Api"));
+            builder.UseContentRoot(bootstrapRoot);
             builder.UseEnvironment("Testing");
-            // Minimal hosting reads builder.Configuration early: bootstrap + host config.
-            builder.UseSetting("ExtractionHttp:Enabled", enabled.ToString());
-            builder.UseSetting("ExtractionHttp:Authority", Issuer);
-            builder.UseSetting("ExtractionHttp:Audience", Audience);
-            builder.UseSetting("ExtractionHttp:AllowedSelections:0:Provider", "groq");
-            builder.UseSetting("ExtractionHttp:AllowedSelections:0:Model", "model-test");
-            builder.UseSetting("ExtractionHttp:DeadlineMilliseconds", deadline.ToString());
-            builder.UseSetting("ExtractionHttp:MaxConcurrency", concurrency.ToString());
-            builder.UseSetting("FileStorage:RootPath", StorageRoot);
-            builder.UseSetting("ConnectionStrings:DocFlowDbContext",
-                "Host=127.0.0.1;Port=1;Database=blocked;Username=nobody;Timeout=1");
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["ExtractionHttp:Enabled"] = enabled.ToString(),
-                    ["ExtractionHttp:Authority"] = Issuer,
-                    ["ExtractionHttp:Audience"] = Audience,
-                    ["ExtractionHttp:AllowedSelections:0:Provider"] = "groq",
-                    ["ExtractionHttp:AllowedSelections:0:Model"] = "model-test",
-                    ["ExtractionHttp:DeadlineMilliseconds"] = deadline.ToString(),
-                    ["ExtractionHttp:MaxConcurrency"] = concurrency.ToString(),
-                    ["FileStorage:RootPath"] = StorageRoot,
-                    ["ConnectionStrings:DocFlowDbContext"] =
-                        "Host=127.0.0.1;Port=1;Database=blocked;Username=nobody;Timeout=1"
-                }));
             builder.ConfigureTestServices(services =>
             {
-                // DB resolution is forbidden in this fixture, not just configured to fail.
+                // DB resolution is forbidden in this fixture.
                 services.RemoveAll<DocFlowDbContext>();
                 services.RemoveAll<DbContextOptions<DocFlowDbContext>>();
                 if (backend != null) services.AddSingleton(backend);
@@ -634,8 +658,8 @@ internal static class DualHttpContract
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            if (Directory.Exists(StorageRoot))
-                Directory.Delete(StorageRoot, recursive: true);
+            if (Directory.Exists(bootstrapRoot))
+                Directory.Delete(bootstrapRoot, recursive: true);
         }
     }
 
