@@ -129,13 +129,26 @@ internal static class DualHttpContract
     private static DocFlowHttpExtractionAdapter Adapter(HttpClient client) => new(client);
 
     private static async Task<HttpResponseMessage> RawPost(HttpClient client, string raw,
-        string? token = null)
+        string? token = null, bool chunked = false)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, Route);
         request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(raw));
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        if (chunked)
+        {
+            request.Headers.TransferEncodingChunked = true;
+            request.Content.Headers.ContentLength = null;
+        }
         if (token != null)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> RawPostBytes(HttpClient client, byte[] bytes)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, Route);
+        request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         return await client.SendAsync(request);
     }
 
@@ -251,6 +264,10 @@ internal static class DualHttpContract
         using var host = new Host(factory);
         using var client = Client(host, Token());
         await Status(await RawPost(client, Wire(Input(), 2)), 422, "invalid_request");
+        await Status(await RawPost(client, "{\"schemaVersion\":1,"), 422, "invalid_request");
+        await Status(await RawPostBytes(client, new byte[] {
+            (byte)'{', (byte)'\"', 0xff, (byte)'\"', (byte)'}'
+        }), 422, "invalid_request");
         await Status(await RawPost(client, Wire(Input()).Replace(
             "\"model\":\"model-test\"", "\"model\":\"model-test\",\"unknown\":true")),
             422, "invalid_request");
@@ -284,6 +301,19 @@ internal static class DualHttpContract
         }
         Check(factory.Created == 0, "client-side rejection before backend dispatch");
         await Status(await RawPost(client, Wire(oversized)), 413, "request_too_large");
+        await Status(await RawPost(client, Wire(oversized), chunked: true), 413, "request_too_large");
+
+        // The inclusive native request boundary should remain usable.
+        const string marker = "BOUNDARY";
+        var seedRaw = Json(Raw.Replace("Привіт, München! | поле", marker));
+        var seedLength = Encoding.UTF8.GetByteCount(Wire(Input(raw: seedRaw)));
+        var textLength = 1_048_576 - seedLength + marker.Length;
+        Check(textLength > 0, "positive boundary text length");
+        var exactRaw = Json(Raw.Replace("Привіт, München! | поле", new string('x', textLength)));
+        var exactWire = Wire(Input(raw: exactRaw));
+        Check(Encoding.UTF8.GetByteCount(exactWire) == 1_048_576, "exact 1MiB request");
+        await Status(await RawPost(client, exactWire), 200);
+        Check(factory.Created == 1, "1MiB request accepted with one backend call");
     }
 
     private static async Task HttpResponseAndBounds()
