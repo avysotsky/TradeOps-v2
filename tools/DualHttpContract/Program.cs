@@ -52,8 +52,24 @@ internal static class DualHttpContract
     };
     private static int assertions;
 
+    // Do not run eight misleading failures if WebApplicationFactory cannot boot.
+    // This preflight uses the real DocFlow.Api health route, not a fake endpoint.
     public static async Task<int> Main()
     {
+        try
+        {
+            using var host = new Host(new DeterministicFactory());
+            using var client = Client(host);
+            using var live = await client.GetAsync("/health/live");
+            if (live.StatusCode != HttpStatusCode.OK)
+                throw new CheckFailure("testhost liveness returned non-200");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("FAIL testhost-bootstrap " + SafeFailure(ex));
+            Console.WriteLine($"TO-V2-03 TOTAL cases={Cases.Length} passed=0 failed=0 not_run={Cases.Length} assertions=0 bootstrap_failed=1");
+            return 1;
+        }
         var passed = 0;
         var failed = 0;
         foreach (var (name, run) in Cases)
@@ -63,12 +79,36 @@ internal static class DualHttpContract
             {
                 failed++;
                 // No raw requests or token values are printed by test helpers.
-                Console.Error.WriteLine("FAIL " + name + " " + ex.GetType().Name +
-                                        ": " + (ex is CheckFailure ? ex.Message : "unexpected test exception"));
+                Console.Error.WriteLine("FAIL " + name + " " + SafeFailure(ex));
             }
         }
         Console.WriteLine($"TO-V2-03 TOTAL cases={Cases.Length} passed={passed} failed={failed} assertions={assertions}");
         return failed == 0 ? 0 : 1;
+    }
+
+    // Never print exception.Message/ToString from arbitrary provider or request paths:
+    // they may include JWT, raw documents, local secrets or provider error text.
+    // Only display an allowlisted infrastructure symptom and a safe type/origin.
+    private static string SafeFailure(Exception error)
+    {
+        for (Exception? current = error; current != null; current = current.InnerException)
+        {
+            if (current is not InvalidOperationException) continue;
+            if (current.Message.Contains("Solution root could not be located", StringComparison.OrdinalIgnoreCase))
+                return "testhost_solution_root_missing";
+            if (current.Message.Contains(".deps.json", StringComparison.OrdinalIgnoreCase))
+                return "testhost_dependency_manifest_missing";
+            if (current.Message.Contains("Connection string 'DocFlowDbContext' was not found", StringComparison.Ordinal))
+                return "testhost_bootstrap_connection_string_missing";
+            if (current.Message.Contains("extraction", StringComparison.OrdinalIgnoreCase) &&
+                current.Message.Contains("authority", StringComparison.OrdinalIgnoreCase))
+                return "testhost_auth_configuration_missing";
+        }
+        if (error is CheckFailure failure)
+            return "assertion: " + failure.Message;
+        var origin = error.TargetSite?.DeclaringType?.FullName;
+        return error.GetType().Name + " at " +
+            (origin is null ? "unknown_origin" : origin.Replace(' ', '_'));
     }
 
     private sealed class CheckFailure(string message) : Exception(message) { }
