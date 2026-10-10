@@ -584,6 +584,8 @@ internal static class DualHttpContract
             StorageRoot = Path.Combine(bootstrapRoot, "storage");
             Directory.CreateDirectory(StorageRoot);
 
+            var allowedClients = new JsonArray();
+            allowedClients.Add("tradeops-integration-test");
             var extraction = new JsonObject
             {
                 ["Enabled"] = enabled,
@@ -598,7 +600,7 @@ internal static class DualHttpContract
                 }),
                 // Explicit allowlist is required whenever extraction is enabled.
                 // This is a synthetic, test-only service identity; no production ID.
-                ["AllowedClientIds"] = new JsonArray("tradeops-integration-test")
+                ["AllowedClientIds"] = allowedClients
             };
             var config = new JsonObject
             {
