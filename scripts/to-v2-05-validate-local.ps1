@@ -295,7 +295,7 @@ try {
  $projectPath=Join-Path $consumer 'Consumer.csproj'
  $project=@"
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><RestorePackagesWithLockFile>true</RestorePackagesWithLockFile></PropertyGroup>
   <ItemGroup><ProjectReference Include="$appXml" /></ItemGroup>
   <ItemGroup>
     <PackageReference Include="DocFlow.Normalization" Version="[$version]" />
@@ -321,8 +321,7 @@ try {
  $env:DOTNET_ROOT=[IO.Path]::GetDirectoryName($DotNetExe)
  $env:DOTNET_NOLOGO='1'
  $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
- DotNet 'isolated package-source-mapped restore' @('restore',$projectPath,'--configfile',$configPath,
-  '-p:RestorePackagesWithLockFile=true','-warnaserror')
+ DotNet 'isolated package-source-mapped restore' @('restore',$projectPath,'--configfile',$configPath,'-warnaserror')
  $lockPath=Join-Path $consumer 'packages.lock.json'
  if(-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { throw 'Missing packages.lock.json' }
  $lock=Get-Content -Raw -Encoding UTF8 -LiteralPath $lockPath | ConvertFrom-Json
