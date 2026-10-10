@@ -118,6 +118,20 @@ Attach console output and full commit information to PR #5 for independent
 review. Some restore traffic to public NuGet.org is permitted; no actual
 service/LLM/production DB/broker calls are permitted.
 
+## Blocking issue revealed by source review
+
+DocFlow.Api's real policy only requires a nonempty client_id/azp/appid and
+the correct scope, not an exact/approved TradeOps service identity. The native
+JWT fixture now asserts that a correctly signed, properly scoped token with
+an **unapproved nonempty client_id** is rejected with 403. The unmodified
+read-only DocFlow.Api implementation appears to return 200. Thus this
+assertion is **EXPECTED TO FAIL** when executed; that assessment comes from
+code review and is not a fabricated runtime result. Do not drop the assertion
+or inject an artificially stricter test policy to force green. Escalate the
+contract/authentication requirement to Development Orchestrator for a
+separate approved DocFlow-v2 change, or a documented security decision.
+The worker must not modify DocFlow-v2.
+
 ## Open acceptance and review decisions
 
 - Owner must run actual Windows SDK 10.0.401 Release restore/build/TestServer
