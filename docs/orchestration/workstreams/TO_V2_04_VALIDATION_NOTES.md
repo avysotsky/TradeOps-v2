@@ -1,5 +1,41 @@
 # TO-V2-04 — Exact-head offline Windows validation notes
 
+## OWNER WINDOWS ACCEPTANCE EXECUTED — PASS, 2026-10-10
+
+The owner executed this runbook on Windows at the following **exact source code**. All resulting PASS counts below come from the supplied console log, not from an earlier workstream.
+
+| Source / gate | Actual observation |
+|---|---|
+| TradeOps-v2 worker code HEAD tested | a688b13839c99c0d3d7fe2cea3e8f8651ace4d02 |
+| TradeOps-v2 origin/main pinned | 7fab8a4e862c7fbdc2d717941a189308cd69fc18 |
+| DocFlow-v2 clean main pinned | 22741d73a67112eae929d65337818b9b53629c8e |
+| SDK | 10.0.401 PASS |
+| Exact branch, upstream refs, origins, clean trees, 15 net10 projects | PASS (validator passed both source gates) |
+| Explicit 15 TradeOps project restores | **15/15 PASS** |
+| Explicit 15 TradeOps project Release builds | **15/15 PASS** with -warnaserror |
+| Temporary source-linked TradeOps/DocFlow restore/build | PASS, 0 warnings, 0 errors in harness build |
+| Native DocFlow.Api in-memory TestServer /health/live | HTTP 200 PASS |
+| canonical-native-parity-utf8 | PASS |
+| invalid-provider-data | PASS |
+| jwt-security-https | PASS |
+| request-contract-and-bounds | PASS |
+| http-response-and-bounds | PASS |
+| backend-errors-and-routing | PASS |
+| deadline-and-cancellation | PASS |
+| bounded-concurrency | PASS |
+| Genuine TestServer total | **cases=8 passed=8 failed=0 assertions=171** |
+| Wrapper TO-V2-04 total | **cases=8 passed=8 failed=0 assertions=171** |
+| Actual process exit | **0** |
+| GitHub Actions | OFF; NOT RUN |
+
+**Security-critical detail:** native JWT authorization completed with the signed/allowlisted integration identity yielding HTTP 200; the separate validly signed, properly scoped but **unapproved** service identity yielded HTTP 403. Unchanged harness asserts that the latter rejection occurs **before another backend is created**. Source config uses real early-loaded native DocFlow allowlist from isolated test JSON, not substituted authorization middleware.
+
+**Scope detail:** eight original scenarios remain one in-memory source-linked harness execution, not sixteen independent tests; the two TOTAL lines are separate report layers around the same eight cases. Fake external provider and local synthetic JWT issuance are allowed; no real network-bound HTTP listeners, OIDC/LLM/brokers or production DB were contacted by the harness. Public NuGet.org access was used for dependency restores only.
+
+**Evidence boundary:** successful owner-run TradeOps code HEAD is exactly a688b13839c99c0d3d7fe2cea3e8f8651ace4d02. Later changes to THIS NOTE and TO_V2_04_STATUS.md are **documentation only**, and their resulting higher branch HEAD has not itself been re-executed. Development Orchestrator must confirm the diff from the tested code SHA contains only those evidence-document updates and must not transplant the PASS to any subsequent code change. If implementation or dependency source changes, repeat all gates at the new exact HEAD.
+
+The original pre-run instructions below remain valid as a recipe for an independent repeat, with the expected TradeOps HEAD changed to the latest live PR HEAD if performing a NEW run. The old NOT RUN ledger is superseded by this owner evidence.
+
 ## Scope / immutability
 
 Target is a NEW independent source-linked regression run of **TradeOps-v2 worker branch** against the two approved PRIVATE main baselines:
@@ -82,22 +118,22 @@ The underlying eight-case harness still deliberately prints TO-V2-03 case lines 
 
 No Kestrel bound sockets; no real OIDC metadata fetch, external LLM, trading broker API, production database, production storage endpoint, NuGet publish, public web deployment or in-process NuGet adapter. Fixture storage uses a disposable sandbox. Approved public NuGet.org is allowed ONLY for dependency restore, not publication.
 
-## Evidence ledger
+## Verified evidence ledger — old/new source pairs
 
-| Evidence | Historical TO-V2-03 | New TO-V2-04 |
+| Evidence | Historical TO-V2-03 | New TO-V2-04 owner Windows |
 |---|---|---|
-| TradeOps tested source | 84fa7eaa080800b74f28cde50d1659a3eb3fbab0 | Await owner full PR #6 SHA |
-| DocFlow tested source | 7e9dc58947797251ab3be188411f514a6b078ac3 | 22741d73a67112eae929d65337818b9b53629c8e target, NOT RUN |
-| .NET 10.0.401 | PASS | **NOT RUN** |
-| Restore and warnings-as-errors build | PASS (historical participating source graph) | **NOT RUN** |
-| Native TestServer / real HTTP adapter and facade | PASS | **NOT RUN** |
-| JWT allowlisted 200 / disallowed signed 403 before backend | PASS | **NOT RUN** |
-| All eight cases | 8/8 PASS | **NOT RUN** |
-| Assertions | 171 | **NOT RUN / UNKNOWN** |
-| Exit code | 0 | **NOT RUN / UNKNOWN** |
+| TradeOps tested code SHA | 84fa7eaa080800b74f28cde50d1659a3eb3fbab0 | a688b13839c99c0d3d7fe2cea3e8f8651ace4d02 |
+| DocFlow tested main SHA | 7e9dc58947797251ab3be188411f514a6b078ac3 | 22741d73a67112eae929d65337818b9b53629c8e |
+| .NET SDK 10.0.401 | PASS | PASS |
+| Restore/build | PASS | 15/15 projects PASS; source-linked harness PASS |
+| Native TestServer / real adapter and facade | PASS | PASS |
+| JWT signed allowlisted 200 / disallowed signed 403 before backend | PASS | PASS |
+| Eight HTTP cases | 8/8 PASS | **8/8 PASS** |
+| Assertions | 171 | **171** |
+| Exit | 0 | **0** |
 | GitHub Actions | OFF | OFF / NOT RUN |
 
-Never copy historical PASS into the new column. A successful restore/build without all eight native cases and actual exit 0 is NOT an accepted TO-V2-04.
+These correspond to two separate source pairs and two separate owner executions. Do not interpret a docs-only evidence commit as another run, or infer public-release readiness.
 
 ## Owner evidence to provide to Development Orchestrator
 
