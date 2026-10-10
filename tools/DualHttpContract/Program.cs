@@ -247,7 +247,7 @@ internal static class DualHttpContract
         using var client = Client(host, Token());
         await Status(await RawPost(client, Wire(Input(), 2)), 422, "invalid_request");
         await Status(await RawPost(client, Wire(Input()).Replace(
-            "\"model\":\"model-test\"", "\"model\":\"model-test\",\"unknown\":true\"")),
+            "\"model\":\"model-test\"", "\"model\":\"model-test\",\"unknown\":true")),
             422, "invalid_request");
         await Status(await RawPost(client, Wire(Input()).Replace(
             "\"type\":\"string\"", "\"type\":\"string\",\"pattern\":\"bad\"")),
@@ -264,7 +264,6 @@ internal static class DualHttpContract
             raw: Json("""{"invalid":"document"}""")), "normalization error");
 
         // The adapter rejects oversized UTF-8 payloads before any SendAsync call.
-        var baseBody = Wire(Input());
         var replacement = new string('x', 1_048_577);
         var rawLarge = Json(Raw.Replace("Привіт, München! | поле", replacement));
         var oversized = Input(raw: rawLarge);
