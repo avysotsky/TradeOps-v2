@@ -184,7 +184,7 @@ internal static class DualHttpContract
         using var host = new Host(backend);
         using var client = Client(host, Token());
         var actual = await Adapter(client).ExtractAsync(Input());
-        using var directFactory = new DeterministicFactory();
+        var directFactory = new DeterministicFactory();
         var direct = await new DocFlowExtractionFacade(directFactory).ExtractRawAsync(
             new RawExtractionRequest(Json(Raw), SchemaExtractionRequest.Parse(Json(Schema)),
                 new BackendSelection("groq", "model-test"), "Résumé – звіт"));
@@ -219,7 +219,7 @@ internal static class DualHttpContract
         using var client = Client(host, Token());
         var result = await Adapter(client).ExtractAsync(Input());
         var structured = Json(result.StructuredExtractionJson);
-        using var directFactory = new DeterministicFactory { Data = Json("""{"unapproved":true}""") };
+        var directFactory = new DeterministicFactory { Data = Json("""{"unapproved":true}""") };
         var direct = await new DocFlowExtractionFacade(directFactory).ExtractRawAsync(
             new RawExtractionRequest(Json(Raw), SchemaExtractionRequest.Parse(Json(Schema)),
                 new BackendSelection("groq", "model-test"), "Résumé – звіт"));
