@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 
 $expectedBranch = 'TradeOps/to-v2-03-dotnet10-dual-http-contract'
 $expectedTradeOpsMain = 'bab7b5c48bbb30677f7747fe2445c2673fd663c5'
-$expectedDocFlow = '3f09e91ba356fb367248ef1b48a56b19d9fdae97'
+$expectedDocFlow = '7e9dc58947797251ab3be188411f514a6b078ac3'
 $expectedSdk = '10.0.401'
 
 function Git-Exact([string] $root, [string[]] $gitArgs) {
@@ -133,10 +133,11 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $nativeApiContentRoot 'Program.cs') -PathType Leaf)) {
         throw 'DocFlow.Api content root marker missing; TestServer bootstrap prohibited'
     }
-    # Microsoft.AspNetCore.Mvc.Testing (10.x) searches *.sln next to the
-    # temporary harness binary unless ASPNETCORE_TEST_CONTENTROOT_<APP> is set.
-    # Pin it to the genuine read-only DocFlow.Api checkout before TestServer
-    # starts; this setting is restored in finally and does not bind any port.
+    # This WAF discovery fallback allows a scratch harness outside both .sln
+    # trees to find the genuine DocFlow.Api assembly. Each WebApplicationFactory
+    # then overrides its *actual* contentRoot with a unique test-only directory
+    # containing early-loaded appsettings.json (DF-V2-08 pattern).
+    # Restore this setting in finally; no network port is bound.
     $env:ASPNETCORE_TEST_CONTENTROOT_DOCFLOW_API = $nativeApiContentRoot
 
     # Approved package restore is read-only from public NuGet.org; there is no
@@ -161,7 +162,7 @@ try {
         Copy-Item -LiteralPath $depsFromBuild -Destination $depsInSandbox
         Write-Host 'OFFLINE TESTHOST: copied DocFlow.Api.deps.json to disposable sandbox'
     }
-    Write-Host 'OFFLINE TESTHOST: pinned DocFlow.Api content root; in-memory TestServer only'
+    Write-Host 'OFFLINE TESTHOST: pinned native DocFlow.Api source + isolated per-host JSON content roots; in-memory TestServer only'
     Run-Checked 'in-memory dual-HTTP verification (8 cases)' {
         & $DotNetExe run --project $harnessProject -c Release --no-build --no-restore
     }
