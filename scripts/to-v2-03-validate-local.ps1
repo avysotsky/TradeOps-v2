@@ -100,10 +100,9 @@ try {
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('to-v2-03-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
     $harnessProject = Join-Path $tempRoot 'DualHttpContract.csproj'
-    $esc = [System.Security.SecurityElement]
-    $srcXml = $esc::Escape($source)
-    $toXml = $esc::Escape($tradeOpsInfra)
-    $dfXml = $esc::Escape($docflowApi)
+    $srcXml = [System.Security.SecurityElement]::Escape($source)
+    $toXml = [System.Security.SecurityElement]::Escape($tradeOpsInfra)
+    $dfXml = [System.Security.SecurityElement]::Escape($docflowApi)
     # All references go to original projects; nothing is copied or vendored.
     $csproj = @"
 <Project Sdk="Microsoft.NET.Sdk">
