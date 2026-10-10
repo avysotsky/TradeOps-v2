@@ -41,12 +41,40 @@ foreach ($file in @('src/TradeOps.Api/Dockerfile','src/TradeOps.Worker/Dockerfil
 }
 if ((Get-Content -Raw src/TradeOps.Api/Dockerfile) -notmatch 'mcr.microsoft.com/dotnet/aspnet:10.0') { throw 'API runtime mismatch' }
 if ((Get-Content -Raw src/TradeOps.Worker/Dockerfile) -notmatch 'mcr.microsoft.com/dotnet/runtime:10.0') { throw 'Worker runtime mismatch' }
+# NuGet audit stays enabled. Check actual resolved versions, not merely requested csproj versions.
+function Assert-Newtonsoft-Resolved([System.IO.FileInfo[]]$projectFiles) {
+    $found = 0
+    foreach ($project in $projectFiles) {
+        $assetsPath = Join-Path $project.DirectoryName 'obj/project.assets.json'
+        if (-not (Test-Path -LiteralPath $assetsPath)) { throw "Missing restored assets: $assetsPath" }
+        $assets = Get-Content -Raw -Encoding UTF8 -LiteralPath $assetsPath | ConvertFrom-Json
+        $libraries = @($assets.libraries.PSObject.Properties | Where-Object { $_.Name -like 'Newtonsoft.Json/*' })
+        foreach ($library in $libraries) {
+            $found++
+            $versionString = $library.Name.Substring('Newtonsoft.Json/'.Length)
+            $version = [version]$versionString
+            if ($version -lt [version]'13.0.4' -or $version.Major -ge 14) {
+                throw "Unsafe or unreviewed Newtonsoft.Json resolved version $versionString in $assetsPath (expected exactly 13.0.4)"
+            }
+            if ($versionString -ne '13.0.4') { throw "Unexpected Newtonsoft.Json version $versionString in $assetsPath" }
+            Write-Host "SECURITY PASS $($project.Name): Newtonsoft.Json/$versionString"
+        }
+    }
+    if ($found -eq 0) { throw 'Newtonsoft.Json not found in any project assets; expected Nethereum dependency graph' }
+    $infraAssets = Join-Path (Split-Path -Parent (Resolve-Path 'src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj')) 'obj/project.assets.json'
+    $infraJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $infraAssets | ConvertFrom-Json
+    if (-not $infraJson.libraries.PSObject.Properties['Newtonsoft.Json/13.0.4']) {
+        throw 'Infrastructure did not resolve Newtonsoft.Json/13.0.4'
+    }
+}
 Run-Checked 'Solution restore with warnings as errors' { & $dotnet restore TradeOps.sln -warnaserror }
+Assert-Newtonsoft-Resolved $projects
 Run-Checked 'Solution Release build with warnings as errors' { & $dotnet build TradeOps.sln -c Release --no-restore -warnaserror }
 foreach ($project in $projects) {
     Run-Checked "Restore $($project.FullName)" { & $dotnet restore $project.FullName -warnaserror }
     Run-Checked "Release build $($project.FullName)" { & $dotnet build $project.FullName -c Release --no-restore -warnaserror }
 }
+Assert-Newtonsoft-Resolved $projects
 # Explicit allow-list: in-memory deterministic tests, no PostgreSQL integration or provider smoke.
 # Do not extend filter without reviewing each test for network, credential and DB side effects.
 $safeTestFilter = 'FullyQualifiedName~RiskControlServiceTests|FullyQualifiedName~NonMutatingRiskPreviewTests|FullyQualifiedName~OrderCancellationServiceTests|FullyQualifiedName~OrderBulkCancellationServiceTests|FullyQualifiedName~OrderManagerClientOrderIdentityTests|FullyQualifiedName~OrderRecoveryTests|FullyQualifiedName~ClientOrderIdGeneratorTests|FullyQualifiedName~PositionReconciliationTests|FullyQualifiedName~DocFlowHttpExtractionAdapterTests|FullyQualifiedName~ResearchDecisionValidatorTests|FullyQualifiedName~TradingSignalRequestValidatorTests|FullyQualifiedName~EarningsResearchPolicyConfigurationTests'
