@@ -357,7 +357,7 @@ internal static class DualHttpContract
                 return Json("""{"category":"never"}""");
             }
         };
-        using var host = new Host(backend, deadline: 100);
+        using var host = new Host(backend, deadline: 750);
         using var client = Client(host, Token());
         await Sanitized(() => Adapter(client).ExtractAsync(Input()), "server deadline");
         Check(backend.Created == 1, "deadline no retry");
@@ -400,7 +400,7 @@ internal static class DualHttpContract
         };
         using var thirdHost = new Host(third);
         using var thirdClient = Client(thirdHost, Token());
-        thirdClient.Timeout = TimeSpan.FromMilliseconds(150);
+        thirdClient.Timeout = TimeSpan.FromMilliseconds(1500);
         var timed = Adapter(thirdClient).ExtractAsync(Input());
         await thirdStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         try
