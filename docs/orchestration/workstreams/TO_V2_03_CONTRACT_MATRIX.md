@@ -1,0 +1,75 @@
+# TO-V2-03 — .NET 10 native HTTP contract matrix
+
+**Implementation:** tools/DualHttpContract/Program.cs, executed by
+scripts/to-v2-03-validate-local.ps1. **Execution state: NOT RUN.**
+This is the inventory of implemented assertions, not a claim of passing tests.
+
+## Implementation boundaries
+
+| Boundary | Real production implementation | Test-only dependency |
+|---|---|---|
+| TradeOps port and HTTP adapter | IDocFlowExtractionPort / DocFlowHttpExtractionAdapter; 1 MiB outbound body, 2 MiB inbound body | HttpClient connected to in-memory TestServer |
+| DocFlow HTTP | DocFlow.Api POST /api/v1/extractions and native parser, JWT authorization, semaphore, deadlines | WebApplicationFactory with HTTPS request scheme, no bound TCP socket |
+| Native extraction | DocFlowExtractionFacade, TextDocumentNormalizer, NativeExtractionService, SchemaSubset, result factory | IExtractionBackendFactory and per-call fake backend with fixed confidence 0.42 |
+| OIDC | Genuine JwtBearer middleware and scope/client policy | Locally issued signed JWT / static signing keys, no OIDC discovery |
+| Persistence | DocFlow.Api boot registration | DbContext and options registrations removed in fixture, no DB |
+| Storage | Real LocalFileStorage constructor | Unique disposable temporary root |
+| Adversarial remote HTTP response | Genuine TradeOps HTTP adapter | Separately isolated static HttpMessageHandler; **not** a native DocFlow-host response |
+
+Neither TradeOps.Api nor TradeOps.Worker starts. No broker, LLM, Postgres,
+real OIDC, deployed service endpoint, trading operation or NuGet publication.
+
+## Eight test cases implemented (all NOT RUN)
+
+| Case | Genuine DocFlow endpoint/facade? | Expected contract checked | Evidence |
+|---|---|---|---|
+| canonical-native-parity-utf8 | Yes | Full JSON deep equivalence against direct facade for normalized and structured output; document_id, fingerprint, ordered segment_id, participants, provenance, confidence, schemaVersion 1, validation status and Unicode/emoji; one backend invocation; no stored file | NOT RUN |
+| invalid-provider-data | Yes | Schema-invalid well-formed output remains HTTP 200 / validation_status=invalid and full direct facade parity | NOT RUN |
+| jwt-security-https | Yes | Missing/malformed/expired/wrong issuer/audience/key JWT -> 401; wrong scope and absent client ID -> 403; HTTP request scheme -> 403; pre-dispatch rejection; valid synthetic JWT accepted | NOT RUN |
+| request-contract-and-bounds | Yes | HTTP wrong version, duplicate key, unsupported schema, bad normalization -> 422; unsupported selection -> 503; oversized request rejected by adapter before send, and HTTP -> 413 | NOT RUN |
+| http-response-and-bounds | Host for oversized native response; fake external handler for adapter-only cases | Native oversized output -> 502; adapter rejects non-2xx, malformed JSON, version mismatch, missing fields, >2 MiB response; error strings never echo provider sentinel | NOT RUN |
+| backend-errors-and-routing | Yes | Backend exception -> 502, transport exception -> 503, disabled HTTP route -> 404, missing backend -> 503, no retries | NOT RUN |
+| deadline-and-cancellation | Yes | Native deadline -> 504 mapped to sanitized adapter error, caller cancellation and HttpClient timeout propagate, no retry | NOT RUN |
+| bounded-concurrency | Yes | Maximum concurrency=1: second request -> 429 before backend dispatch, adapter sanitizes failure, initial request completes after release | NOT RUN |
+
+The harness is intended to emit per-case PASS/FAIL and:
+TO-V2-03 TOTAL cases=8 passed=N failed=M assertions=K,
+returning exit code 1 for one or more failures. **N/M/K are unknown until executed.**
+
+## Contract distinctions and residual gaps
+
+- The TradeOps adapter does not retrieve service JWTs itself. The test's injected
+  HttpClient carries a synthetic signed JWT. This does not prove production
+  credential lifecycle or OIDC integration.
+- Non-2xx DocFlow codes are intentionally converted by the existing TradeOps
+  adapter into a generic DocFlowHttpExtractionException; numeric 422/429/502/503
+  and 504 are not observable by the application port. Do not misreport a typed
+  status-preserving client contract.
+- DocFlow still configures a DbContext at startup, but the fixture removes
+  DbContext/options registrations after service configuration. Production DB
+  behavior and migrations are not exercised. Real LocalFileStorage constructs
+  a sandbox root; route must leave it empty.
+- The test-only external handler for >2 MiB and malformed *received* responses
+  proves only client-side defensive behavior. Real DocFlow responds 502 before
+  sending an oversized result, so claiming it transmitted >2 MiB would be false.
+- No socket TLS/reverse proxy, external service JWT acquisition, real model
+  throughput, provider retries, production logging sink, deployment security,
+  historical Python equivalence, private NuGet publication/ACL, or brokerage
+  behavior is certified by these assertions.
+- Both participating libraries are **source-referenced**, not copied or vendored.
+  TO-V2-01B in-process adapter remains outside this scope.
+
+## Owner validation
+
+From D:\Projects\TradeOps-v2 on Windows 10 / Visual Studio 2026 with
+D:\DotNet\dotnet.exe SDK 10.0.401, after refreshing Git remotes and checking
+out the assigned branch and read-only DocFlow main, execute:
+
+    & .\scripts\to-v2-03-validate-local.ps1 -ExpectedTradeOpsHead '<exact 40-hex PR #5 HEAD>'
+
+The PowerShell script enforces the expected branch, clean Git trees, exact
+TradeOps-v2 PR head and reviewed main, DocFlow-v2 pinned main,
+.NET10 target frameworks, 15 existing TradeOps csproj files and SDK 10.0.401.
+It creates and deletes a temporary csproj outside both repositories and
+does not invoke any project run targets besides the isolated harness.
+Re-pin any moved source SHA only after Development Orchestrator review.
