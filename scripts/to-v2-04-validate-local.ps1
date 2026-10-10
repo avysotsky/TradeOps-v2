@@ -195,13 +195,15 @@ try {
     if ($summaries.Count -ne 1) {
         throw "Expected one genuine HTTP aggregate, received $($summaries.Count)"
     }
-    if ($summaries[0] -cnotmatch '^TO-V2-03 TOTAL cases=(\d+) passed=(\d+) failed=(\d+) assertions=(\d+)$') {
+    if ($summaries[0] -cmatch '^TO-V2-03 TOTAL cases=(\d+) passed=(\d+) failed=(\d+) assertions=(\d+)$') {
+        $caseCount = [int]$Matches[1]
+        $passed = [int]$Matches[2]
+        $failed = [int]$Matches[3]
+        $assertions = [int]$Matches[4]
+    }
+    else {
         throw 'Invalid TestServer summary'
     }
-    $caseCount = [int]$Matches[1]
-    $passed = [int]$Matches[2]
-    $failed = [int]$Matches[3]
-    $assertions = [int]$Matches[4]
     if ($caseCount -ne 8 -or $passed -ne 8 -or $failed -ne 0 -or $assertions -lt 171) {
         throw "HTTP qualification failed: cases=$caseCount passed=$passed failed=$failed assertions=$assertions"
     }
