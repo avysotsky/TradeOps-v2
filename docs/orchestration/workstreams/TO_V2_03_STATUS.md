@@ -1,7 +1,83 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: IMPLEMENTED SOURCE, VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
+**State: SOURCE FIXED FOLLOWING OWNER CS1026 FAILURE; NEW-HEAD VALIDATION NOT RUN — Draft PR #5 / DO NOT MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
+
+## 2026-10-10 — owner Windows compile failure and worker syntax correction (latest)
+
+**Current state: HARNESS SOURCE FIXED; NEW-HEAD BUILD / ALL EIGHT HTTP
+SCENARIOS NOT RUN; PR #5 STILL DRAFT, MERGE BLOCKED.** This update
+supersedes the older "no owner machine evidence" statements below.
+The final corrected branch HEAD is recorded in the latest PR #5 worker
+comment after this documentation commit, to avoid self-referential SHA.
+
+**Verified owner evidence on OLD TradeOps HEAD
+`fd6cd4026e9d8222c09b84ce19c483b0c36a1cd0`** against read-only
+DocFlow-v2 `3f09e91ba356fb367248ef1b48a56b19d9fdae97`:
+
+| Operation on owner Windows 10 / SDK 10.0.401 | Actual result |
+|---|---|
+| Clean branch / pinned checkout preflight | PASS |
+| Temporary source-linked NuGet restore | **PASS** (owner reports 5.0 s) |
+| Real TradeOps + DocFlow dependent net10 project builds | **PASS** |
+| Test harness Program.cs C# compilation | **FAIL** `CS1026: ) expected`, line 286 column 77 |
+| Eight HTTP scenarios | **NOT RUN** (build prevented execution) |
+| Wrapper exit code | **1** |
+
+Development Orchestrator diagnosed a missing close-parenthesis around the
+nested `DocFlowHttpExtractionAdapter.ExtractAsync(Input(...))` call in
+`RequestContractAndBounds`; see the latest owner comment in PR #5.
+
+**Worker correction in existing assigned branch only:**
+The incorrect nested expression
+
+```csharp
+await Sanitized(() => Adapter(client).ExtractAsync(Input(
+    raw: Json("""{"invalid":"document"}""")), "normalization error");
+```
+
+was changed to
+
+```csharp
+await Sanitized(
+    () => Adapter(client).ExtractAsync(
+        Input(raw: Json("""{"invalid":"document"}"""))),
+    "normalization error");
+```
+
+The entire corrected `Program.cs` was inspected, and a lexical
+delimiter scan, ignoring comments / raw, quoted and character literals,
+found **zero unmatched parentheses, braces, or brackets**. This is
+*source-level only*, not compiler certification. The eight registered
+test cases, deterministic fake backend, production source references and
+the explicit `client_id="unapproved-service-client"` negative
+JWT requirement are unchanged. No production TradeOps source was modified;
+DocFlow-v2, Actions, workflows, NuGet publish and merge were untouched.
+
+**NEW HEAD evidence:** restore **NOT RUN**, Release build **NOT RUN**,
+all eight HTTP scenarios **NOT RUN** (passed/failed/assertion totals
+unknown), and SDK validation at corrected HEAD **NOT RUN**. The prior
+successful dependency builds do **not** imply a successful new-head
+harness build or integration test pass. The intentionally strict JWT
+client-id rejection may still fail against the unchanged DocFlow.Api
+policy, as documented in the contract matrix; do not weaken it.
+
+**Owner exact-head rerun:** with both private checkouts clean, refresh
+remote refs, keep TradeOps on the *existing* TO-V2-03 branch and
+DocFlow-v2 on pinned main; run
+
+```powershell
+Set-Location D:\Projects\TradeOps-v2
+& .\scripts\to-v2-03-validate-local.ps1 -ExpectedTradeOpsHead '<NEW_PR5_HEAD>'
+$LASTEXITCODE
+```
+
+Replace placeholder using the final SHA in PR #5 latest worker comment.
+Do not bypass the SHA, clean-working-tree, 15-project, or SDK guards.
+Collect all eight per-case PASS/FAIL lines, totals, actual stdout/stderr
+and exit code. Orchestrator reviews results before any merge.
+
+---
 
 ## Exact repositories and reviewed sources
 
