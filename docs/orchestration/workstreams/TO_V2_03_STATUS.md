@@ -1,9 +1,93 @@
 # TO-V2-03 — Worker implementation status / orchestrator handoff
 
-**State: OWNER .NET10 RESTORE+BUILD PASS; HTTP 7 PASS / 1 BLOCKING JWT AUTH FAIL; 168 ASSERTIONS — Draft PR #5 / DO NOT MERGE.**
+**State: DF-V2-08 MAIN RE-PINNED; ISOLATED EARLY JSON JWT ALLOWLIST FIXTURE COMMITTED; NEW-HEAD 8 HTTP TESTS NOT RUN — Draft PR #5 / NO MERGE.**
 Date: 2026-10-10 (Europe/Kyiv). GitHub is source of truth.
 
-## 2026-10-10 — Windows full HTTP verification at bd06bba (latest)
+## 2026-10-10 — DF-V2-08 merged; native JWT allowlist integration retest (LATEST)
+
+**New read-only DocFlow-v2 main SHA:**
+`7e9dc58947797251ab3be188411f514a6b078ac3`.
+DF-V2-08 PR #14 is merged. Development Orchestrator reports
+DocFlow native 9/9 HTTP and 12/12 facade PASS at SDK 10.0.401.
+This is upstream evidence ONLY, not a TO-V2-03 8/8 result.
+
+**Existing TradeOps workstream:**
+branch `TradeOps/to-v2-03-dotnet10-dual-http-contract`, Draft PR #5;
+no new branch, production code change or merge.
+Current exact new TradeOps HEAD is recorded in the latest PR #5
+worker comment, written after this documentation commit.
+
+DF-V2-08 requires `ExtractionHttp:AllowedClientIds` to be an
+explicit dense JSON array parsed BEFORE WebApplicationBuilder.Build()
+by the real minimal-host `WebApplication.CreateBuilder(args)`.
+DF-V2-08 uncovered that passing indexed array keys via
+DeferredHostBuilder.UseSetting or deferred ConfigureAppConfiguration
+may also project an empty parent scalar and correctly fail closed.
+
+**Test-only change in TO-V2-03 DualHttpContract:**
+- Each WebApplicationFactory creates its own unique temporary
+  content root and UTF-8 no-BOM `appsettings.json`, with
+  `ExtractionHttp:AllowedClientIds = ["tradeops-integration-test"]`.
+- JSON also carries Enabled, HTTPS issuer, audience, one approved
+  groq/model-test selection, deadline, concurrency, sandbox storage
+  and an unreachable placeholder database string.
+- `CreateHost(IHostBuilder)` forwards only flat `contentRoot` and
+  `environment=Testing`; `ConfigureWebHost` also sets these flat
+  properties and registers the synthetic in-memory backend plus
+  local signed JWT test validation metadata.
+- NO deferred app configuration for nested keys, NO nested
+  IWebHostBuilder.UseSetting and NO ASP.NET policy override.
+- Temporary per-host config and storage are recursively cleaned
+  on Dispose. The global test-content-root discovery fallback
+  remains in the PowerShell script to locate real DocFlow.Api from
+  the cross-solution scratch harness; its original value is
+  restored on script exit. The factory's actual app content root
+  is overridden to its isolated bootstrap JSON directory.
+- Safe fixture diagnostics reveal only client child count/indices
+  (never client ID values). Genuine DocFlow-v2 early parser prints
+  Testing-only `DF-V2-08 APP EARLY CONFIG` with
+  `childCount=1 keys=[0] parentScalar=null` if correctly loaded.
+- Signed synthetic `client_id=tradeops-integration-test` remains
+  valid; the original negative `client_id=unapproved-service-client`
+  MUST receive 403 with no backend invocation, unchanged.
+- The other seven transport tests, real TradeOps HTTP adapter,
+  native DocFlow.Api TestServer/normalization/facade and request
+  contracts remain intact.
+
+`scripts/to-v2-03-validate-local.ps1` now pins exact DocFlow main
+`7e9dc58947797251ab3be188411f514a6b078ac3`.
+Strict clean source, exact SHA, SDK 10.0.401, fifteen net10
+TradeOps projects, warn-as-error, public NuGet restore, source-linked
+temporary Release build, manifest and non-network TestServer guards
+remain enabled.
+
+**Actual TO-V2-03 evidence at NEW source graph:**
+restore **NOT RUN**; net10 Release compile **NOT RUN**;
+TestServer native early config **NOT RUN**; HTTP scenarios
+**NOT RUN (8 total)**, actual assertions unknown.
+Previous 7 PASS / 1 FAIL, 168 assertions was at TradeOps
+`bd06bbacc46c1fbba4c06832d92984ba4aec6d9e` and OLD DocFlow
+`3f09e91ba356fb367248ef1b48a56b19d9fdae97`.
+Do not claim 8/8 until owner Windows run confirms it.
+
+Owner run: update TradeOps existing branch with `git pull --ff-only`,
+DocFlow-v2 clean main with `git pull --ff-only`, then
+
+    Set-Location D:\Projects\TradeOps-v2
+    & .\scripts\to-v2-03-validate-local.ps1 -ExpectedTradeOpsHead '<exact new PR #5 HEAD>'
+    $code = $LASTEXITCODE
+    if ($code -ne 0) { throw 'TO-V2-03 VALIDATION FAILED' }
+
+Report actual eight case lines, `DF-V2-08 APP EARLY CONFIG` shape,
+assertion total, exit code and any errors. If any fail, repair in
+same branch without weakening the 403 gate.
+
+GitHub Actions OFF, workflow YAML untouched, DocFlow-v2 READ ONLY,
+no real OIDC/LLM/broker/production database, no NuGet publish,
+PR #5 remains Draft, no merge.
+
+---
+## 2026-10-10 — Windows full HTTP verification at bd06bba (HISTORICAL old DocFlow source)
 
 **Verified SOURCE HEAD:** TradeOps-v2 bd06bbacc46c1fbba4c06832d92984ba4aec6d9e;
 read-only DocFlow-v2 main 3f09e91ba356fb367248ef1b48a56b19d9fdae97;
