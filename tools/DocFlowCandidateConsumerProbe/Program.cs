@@ -132,11 +132,11 @@ internal static class Program
             "schema validation state");
         Check(data.RootElement.GetProperty("validation").GetProperty("status").GetString() == "valid",
             "nested schema validation state");
-        Check(factory.Created == 1 && factory.Backend.Calls == 1,
+        Check(factory.Created == 1 && factory.Backend!.Calls == 1,
             "exactly one backend factory create and invocation");
-        Check(factory.Backend.SchemaName == "classification" && factory.Backend.SchemaVersion == 1,
+        Check(factory.Backend!.SchemaName == "classification" && factory.Backend!.SchemaVersion == 1,
             "schema identity passed through");
-        Check(factory.Backend.DocumentName == "fixture-document", "document name passed through");
+        Check(factory.Backend!.DocumentName == "fixture-document", "document name passed through");
         Check(request.RawDocument.GetRawText() == beforeRaw &&
               request.SchemaRequest.GetRawText() == beforeSchema, "caller input not mutated");
     }
@@ -158,7 +158,7 @@ internal static class Program
             "normalized artifact survives source JsonDocument disposal");
         Check(structured.RootElement.GetProperty("data").GetProperty("category").GetString() ==
               "analysis", "structured artifact survives source disposal");
-        Check(factory.Created == 1 && factory.Backend.Calls == 1, "owned artifacts dispatched exactly once");
+        Check(factory.Created == 1 && factory.Backend!.Calls == 1, "owned artifacts dispatched exactly once");
     }
 
     private static async Task PreCancellation()
@@ -169,7 +169,7 @@ internal static class Program
         await Reject<OperationCanceledException>(
             () => Map(new DocFlowExtractionFacade(factory), Request(), token.Token), "pre-cancel rejected");
         Check(factory.Created == 0, "pre-cancel no factory creation");
-        Check(factory.Backend.Calls == 0, "pre-cancel no backend dispatch");
+        Check(factory.Backend is null, "pre-cancel no backend dispatch");
     }
 
     private static async Task SelectorRejection()
@@ -184,7 +184,7 @@ internal static class Program
                 () => Map(new DocFlowExtractionFacade(factory), Request(provider, model)),
                 "invalid/unsupported selector");
             Check(factory.Created == 0, "bad selector no factory create");
-            Check(factory.Backend.Calls == 0, "bad selector no backend call");
+            Check(factory.Backend is null, "bad selector no backend call");
         }
     }
 
@@ -198,7 +198,7 @@ internal static class Program
             var factory = new FakeFactory();
             await Reject<ArgumentException>(
                 () => Map(new DocFlowExtractionFacade(factory), Request(raw: Json(raw))), "invalid raw");
-            Check(factory.Created == 0 && factory.Backend.Calls == 0, "bad raw no backend");
+            Check(factory.Created == 0 && factory.Backend is null, "bad raw no backend");
         }
         foreach (var schema in new[] {
             """{"schema_name":"test","schema_version":0,"json_schema":{"type":"object"}}""",
@@ -225,7 +225,7 @@ internal static class Program
               .GetProperty("status").GetString() == "failed", "native diagnostics");
         Check(root.GetProperty("data").GetProperty("unknown").GetInt32() == 1,
             "original invalid data retained");
-        Check(factory.Created == 1 && factory.Backend.Calls == 1, "no retry/extra call");
+        Check(factory.Created == 1 && factory.Backend!.Calls == 1, "no retry/extra call");
     }
 
     private static async Task Reject<T>(Func<Task> action, string description) where T : Exception
@@ -240,7 +240,7 @@ internal static class Program
         private readonly string _response;
         public FakeFactory(string response = """{"category":"analysis"}""") => _response = response;
         public int Created { get; private set; }
-        public FakeBackend Backend { get; private set; } = new("""{"category":"analysis"}""");
+        public FakeBackend? Backend { get; private set; }
         public bool IsSupported(BackendSelection selector) =>
             selector.Provider == "synthetic" && selector.Model == "model-a";
         public IExtractionBackend Create(BackendSelection selector)
