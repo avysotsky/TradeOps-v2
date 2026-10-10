@@ -68,16 +68,16 @@ function Assert-Newtonsoft-Resolved([System.IO.FileInfo[]]$projectFiles) {
     }
 }
 Run-Checked 'Solution restore with warnings as errors' { & $dotnet restore TradeOps.sln -warnaserror }
-Assert-Newtonsoft-Resolved $projects
 Run-Checked 'Solution Release build with warnings as errors' { & $dotnet build TradeOps.sln -c Release --no-restore -warnaserror }
 foreach ($project in $projects) {
     Run-Checked "Restore $($project.FullName)" { & $dotnet restore $project.FullName -warnaserror }
     Run-Checked "Release build $($project.FullName)" { & $dotnet build $project.FullName -c Release --no-restore -warnaserror }
 }
+# All 15 projects (including out-of-solution MigrationSmoke) have now been restored.
 Assert-Newtonsoft-Resolved $projects
 # Explicit allow-list: in-memory deterministic tests, no PostgreSQL integration or provider smoke.
 # Do not extend filter without reviewing each test for network, credential and DB side effects.
-$safeTestFilter = 'FullyQualifiedName~RiskControlServiceTests|FullyQualifiedName~NonMutatingRiskPreviewTests|FullyQualifiedName~OrderCancellationServiceTests|FullyQualifiedName~OrderBulkCancellationServiceTests|FullyQualifiedName~OrderManagerClientOrderIdentityTests|FullyQualifiedName~OrderRecoveryTests|FullyQualifiedName~ClientOrderIdGeneratorTests|FullyQualifiedName~PositionReconciliationTests|FullyQualifiedName~DocFlowHttpExtractionAdapterTests|FullyQualifiedName~ResearchDecisionValidatorTests|FullyQualifiedName~TradingSignalRequestValidatorTests|FullyQualifiedName~EarningsResearchPolicyConfigurationTests'
+$safeTestFilter = 'FullyQualifiedName~RiskControlServiceTests|FullyQualifiedName~NonMutatingRiskPreviewTests|FullyQualifiedName~OrderCancellationServiceTests|FullyQualifiedName~OrderBulkCancellationServiceTests|FullyQualifiedName~OrderManagerClientOrderIdentityTests|FullyQualifiedName~OrderRecoveryTests|FullyQualifiedName~ClientOrderIdGeneratorTests|FullyQualifiedName~PositionReconciliationTests|FullyQualifiedName~DocFlowHttpExtractionAdapterTests|FullyQualifiedName~ResearchDecisionValidatorTests|FullyQualifiedName~TradingSignalRequestValidatorTests|FullyQualifiedName~EarningsResearchPolicyConfigurationTests|FullyQualifiedName~HyperliquidL1SignerTests'
 Write-Host 'SAFE TEST ALLOW-LIST (review fixture isolation before extending)'
 Run-Checked 'Selected offline xUnit tests' { & $dotnet test tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj -c Release --no-build --filter $safeTestFilter --logger 'console;verbosity=normal' }
 Write-Host "VALIDATION COMPLETED for $head. Record passed/failed/skipped totals from the console output."
