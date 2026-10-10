@@ -141,10 +141,10 @@ function InspectArchive([string]$path,[string]$id,[string]$kind,[string]$sha) {
       $repo.GetAttribute('commit') -cne $source) {
     throw "Wrong/stale package source SHA: $id"
    }
-   $expected=switch($id) {
-    'DocFlow.Normalization' { @() }
-    'DocFlow.SchemaExtraction' { @('DocFlow.Normalization') }
-    'DocFlow.Extraction.Application' { @('DocFlow.Normalization','DocFlow.SchemaExtraction') }
+   $expected=@()
+   if($id -ceq 'DocFlow.SchemaExtraction') { $expected=@('DocFlow.Normalization') }
+   if($id -ceq 'DocFlow.Extraction.Application') {
+    $expected=@('DocFlow.Normalization','DocFlow.SchemaExtraction')
    }
    $dependencies=@($metadata.SelectNodes(".//*[local-name()='dependency']"))
    if($dependencies.Count -ne $expected.Count) { throw "Wrong dependency count: $id" }
