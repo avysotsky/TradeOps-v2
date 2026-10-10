@@ -23,6 +23,7 @@ public sealed class DocFlowHttpExtractionAdapter : IDocFlowExtractionPort
     public async Task<DocFlowExtractionResult> ExtractAsync(
         DocFlowExtractionRequest request, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(request);
         if (request.RawDocument.ValueKind != JsonValueKind.Object ||
             request.SchemaRequest.ValueKind != JsonValueKind.Object ||
@@ -47,6 +48,7 @@ public sealed class DocFlowHttpExtractionAdapter : IDocFlowExtractionPort
         using var message = new HttpRequestMessage(HttpMethod.Post, "api/v1/extractions");
         message.Content = new ByteArrayContent(requestBody);
         message.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        cancellationToken.ThrowIfCancellationRequested();
         using var response = await _client.SendAsync(
             message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!response.IsSuccessStatusCode)
