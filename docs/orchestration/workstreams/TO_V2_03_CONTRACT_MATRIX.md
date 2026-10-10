@@ -1,8 +1,8 @@
 # TO-V2-03 — .NET 10 native HTTP contract matrix
 
 **Implementation:** tools/DualHttpContract/Program.cs, executed by
-scripts/to-v2-03-validate-local.ps1. **Execution state: NOT RUN.**
-This is the inventory of implemented assertions, not a claim of passing tests.
+scripts/to-v2-03-validate-local.ps1. **OLD HEAD: 6 PASS / 2 FAIL / 153 assertions; NEW HEAD: NOT RUN.**
+This is the contract inventory and evidence; it does not claim all tests pass.
 
 ## Implementation boundaries
 
@@ -19,6 +19,41 @@ This is the inventory of implemented assertions, not a claim of passing tests.
 Neither TradeOps.Api nor TradeOps.Worker starts. No broker, LLM, Postgres,
 real OIDC, deployed service endpoint, trading operation or NuGet publication.
 
+## Owner Windows SDK 10.0.401 TestServer results (2026-10-10)
+
+TradeOps a596a250c6646755969dd332be6145a84680f044 against
+DocFlow 3f09e91ba356fb367248ef1b48a56b19d9fdae97:
+restore PASS, complete net10 Release build PASS, bootstrap PASS,
+6 of 8 HTTP cases PASS, 2 FAIL, 153 assertions executed, exit 1.
+
+| Case | Actual old-HEAD result |
+|---|---|
+| canonical-native-parity-utf8 | PASS |
+| invalid-provider-data | PASS |
+| jwt-security-https | FAIL: expected 403 assertion |
+| request-contract-and-bounds | PASS |
+| http-response-and-bounds | PASS |
+| backend-errors-and-routing | PASS |
+| deadline-and-cancellation | FAIL: unexpected adapter HTTP exception |
+| bounded-concurrency | PASS |
+
+Security failure is now observed, while the actual numeric return status
+was not displayed in that run. Native DocFlow-v2 source indicates
+allowed client identity is not pinned, likely returning HTTP 200.
+Strict expected 403 is preserved for upstream orchestrator review.
+
+Cancellation test had assumed OperationCanceledException only.
+TradeOps adapter maps non-2xx HTTP to DocFlowHttpExtractionException.
+Updated test-only case now verifies native server 504 on deadline,
+and requires independently observed native backend token cancellation
+for caller abort and HttpClient timeout before accepting either
+transport cancellation or sanitized HTTP rejection.
+The previous substep was not identified by the diagnostic logger.
+
+NEW HEAD outcomes, including restore/build, are NOT RUN.
+Historical 6/8 is not acceptance of the updated code. No merge.
+
+---
 ## Owner evidence and TestServer bootstrap gate (2026-10-10)
 
 - At **old TradeOps HEAD 158b069ce0eb46bb5935d3654da577b62a87d8c2**
@@ -52,7 +87,7 @@ real OIDC, deployed service endpoint, trading operation or NuGet publication.
 | request-contract-and-bounds | Yes | HTTP wrong version, duplicate key, unsupported schema, bad normalization -> 422; unsupported selection -> 503; oversized request rejected by adapter before send; DocFlow HTTP -> 413 for Content-Length and chunked input; malformed JSON and invalid UTF-8 -> 422; inclusive **exactly 1,048,576-byte** native request -> 200 | NOT RUN |
 | http-response-and-bounds | Host for oversized native response; fake external handler for adapter-only cases | Native oversized output -> 502; adapter rejects non-2xx, malformed JSON, version mismatch, missing fields, >2 MiB response; error strings never echo provider sentinel | NOT RUN |
 | backend-errors-and-routing | Yes | Backend exception -> 502, transport exception -> 503, disabled HTTP route -> 404, missing backend -> 503, no retries | NOT RUN |
-| deadline-and-cancellation | Yes | Native deadline -> 504 mapped to sanitized adapter error, caller cancellation and HttpClient timeout propagate, no retry | NOT RUN |
+| deadline-and-cancellation | Yes | Real native HTTP 504 for server deadline and sanitized adapter rejection; caller cancellation and HttpClient.Timeout must cause actual native backend cancellation, allowing transport OCE or sanitized non-2xx only with that proof; no retry | NOT RUN |
 | bounded-concurrency | Yes | Maximum concurrency=1: second request -> 429 before backend dispatch, adapter sanitizes failure, initial request completes after release | NOT RUN |
 
 The harness is intended to emit per-case PASS/FAIL and:
@@ -68,7 +103,7 @@ named client carrying a valid signature/scope is therefore accepted by the
 current predicate. The jwt-security-https scenario now contains an explicit
 403 expectation for an unapproved nonempty client ID. From source inspection
 this expectation is **likely to FAIL (HTTP 200)** when the owner executes it.
-This is not a tested failure count (test execution remains NOT RUN).
+In the 6/8 owner run this scenario FAILED an expected-403 status assertion; exact observed code was not printed. New-head rerun remains pending.
 We deliberately do not override auth policy in TestServer or silently weaken
 this assertion. A separately authorized DocFlow security change, or a formally
 reviewed contract decision, is required before this gate can be accepted.
