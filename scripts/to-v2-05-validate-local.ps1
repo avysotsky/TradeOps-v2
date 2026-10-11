@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $branch='TradeOps/to-v2-05-offline-docflow-package-consumer-gate'
 $toMain='0b2a5216c5528cb49d41eb9f5a43870e935da3ef'
-$dfMain='62fa3c3c77134cf923233e51fcba7c4f08eb2ef7'
+$dfMain='ced3bd5fd985634345b764e02ebb45d14f8341a6'
 $source='927eddee08d084e7759eef1b0a67404711d2b3b1'
 $version='2.0.0-preview.1'
 $ids=@('DocFlow.Normalization','DocFlow.SchemaExtraction','DocFlow.Extraction.Application')
