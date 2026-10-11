@@ -24,16 +24,16 @@ $cases=@('ABI-01-source-assembly-boundary','ABI-02-raw-mapping-and-canonical-art
 function Equal([string]$actual,[string]$expected,[string]$label) {
  if($actual -cne $expected) { throw "$label mismatch: expected=$expected actual=$actual" }
 }
-function Git([string]$root,[string[]]$argsForGit) {
+function Invoke-GitChecked([string]$root,[string[]]$argsForGit) {
  $result=& git -C $root @argsForGit
  if($LASTEXITCODE -ne 0) { throw "Git preflight failed: $root" }
  return ($result | Out-String).Trim()
 }
 function Clean([string]$root) {
- Equal (Git $root @('status','--porcelain','--untracked-files=normal')) '' "clean tree $root"
+ Equal (Invoke-GitChecked $root @('status','--porcelain','--untracked-files=normal')) '' "clean tree $root"
 }
 function Origin([string]$root,[string]$repo) {
- $url=Git $root @('remote','get-url','origin')
+ $url=Invoke-GitChecked $root @('remote','get-url','origin')
  $p=[regex]::Escape($repo)
  if($url -cnotmatch "^https://github\.com/$p(\.git)?/?$" -and
     $url -cnotmatch "^git@github\.com:$p(\.git)?/?$" -and
@@ -195,15 +195,15 @@ try {
  if(-not (Test-Path -LiteralPath $DotNetExe -PathType Leaf)) { throw 'Missing .NET SDK' }
  Origin $TradeOpsRoot 'avysotsky/TradeOps-v2'
  Origin $DocFlowRoot 'avysotsky/DocFlow-v2'
- Equal (Git $TradeOpsRoot @('branch','--show-current')) $branch 'TradeOps feature branch'
- Equal (Git $TradeOpsRoot @('rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}')) "origin/$branch" 'feature upstream'
- Equal (Git $TradeOpsRoot @('rev-parse','HEAD')) $ExpectedHead 'feature HEAD'
- Equal (Git $TradeOpsRoot @('rev-parse',"origin/$branch")) $ExpectedHead 'remote feature HEAD'
- Equal (Git $TradeOpsRoot @('rev-parse','origin/main')) $toMain 'TradeOps main'
- Equal (Git $DocFlowRoot @('branch','--show-current')) 'main' 'read-only DocFlow branch'
- Equal (Git $DocFlowRoot @('rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}')) 'origin/main' 'DocFlow upstream'
- Equal (Git $DocFlowRoot @('rev-parse','HEAD')) $dfMain 'DocFlow main'
- Equal (Git $DocFlowRoot @('rev-parse','origin/main')) $dfMain 'remote DocFlow main'
+ Equal (Invoke-GitChecked $TradeOpsRoot @('branch','--show-current')) $branch 'TradeOps feature branch'
+ Equal (Invoke-GitChecked $TradeOpsRoot @('rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}')) "origin/$branch" 'feature upstream'
+ Equal (Invoke-GitChecked $TradeOpsRoot @('rev-parse','HEAD')) $ExpectedHead 'feature HEAD'
+ Equal (Invoke-GitChecked $TradeOpsRoot @('rev-parse',"origin/$branch")) $ExpectedHead 'remote feature HEAD'
+ Equal (Invoke-GitChecked $TradeOpsRoot @('rev-parse','origin/main')) $toMain 'TradeOps main'
+ Equal (Invoke-GitChecked $DocFlowRoot @('branch','--show-current')) 'main' 'read-only DocFlow branch'
+ Equal (Invoke-GitChecked $DocFlowRoot @('rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}')) 'origin/main' 'DocFlow upstream'
+ Equal (Invoke-GitChecked $DocFlowRoot @('rev-parse','HEAD')) $dfMain 'DocFlow main'
+ Equal (Invoke-GitChecked $DocFlowRoot @('rev-parse','origin/main')) $dfMain 'remote DocFlow main'
  Clean $TradeOpsRoot
  Clean $DocFlowRoot
  SDKPin $TradeOpsRoot
@@ -412,8 +412,8 @@ try {
  }
  Clean $TradeOpsRoot
  Clean $DocFlowRoot
- Equal (Git $TradeOpsRoot @('rev-parse','HEAD')) $ExpectedHead 'final feature HEAD'
- Equal (Git $DocFlowRoot @('rev-parse','HEAD')) $dfMain 'final DocFlow main'
+ Equal (Invoke-GitChecked $TradeOpsRoot @('rev-parse','HEAD')) $ExpectedHead 'final feature HEAD'
+ Equal (Invoke-GitChecked $DocFlowRoot @('rev-parse','HEAD')) $dfMain 'final DocFlow main'
  Write-Host "TO-V2-05 TOTAL cases=7 passed=7 failed=0 assertions=$assertions"
  Write-Host 'LOCAL CANDIDATE ABI/CONTRACT PASS / PUBLISH BLOCKED / IN-PROCESS PRODUCTION INTEGRATION BLOCKED'
  exit 3
