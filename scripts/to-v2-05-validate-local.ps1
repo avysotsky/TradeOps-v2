@@ -331,13 +331,44 @@ try {
  $lockPath=Join-Path $consumer 'packages.lock.json'
  if(-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { throw 'Missing packages.lock.json' }
  $lock=Get-Content -Raw -Encoding UTF8 -LiteralPath $lockPath | ConvertFrom-Json
- $dependencies=@($lock.dependencies.'net10.0'.PSObject.Properties.Name)
- if(@($dependencies | Where-Object { $_ -like 'DocFlow.*' }).Count -ne 3 -or
-    @($dependencies | Where-Object {
-     $_ -notlike 'DocFlow.*' -and $_ -notlike 'Microsoft.*' -and $_ -notlike 'System.*'
-    }).Count -gt 0) { throw "Unexpected NuGet closure: $($dependencies -join ',')" }
+ # NuGet lock files include source-controlled ProjectReference nodes alongside packages.
+ # Permit ONLY the two exact TradeOps source projects with type=Project; every
+ # DocFlow entry must still be a direct package from the isolated candidate feed.
+ $locked=$lock.dependencies.'net10.0'
+ if($null -eq $locked) { throw 'Missing net10.0 dependency graph' }
+ $dependencies=@($locked.PSObject.Properties.Name)
+ $expectedProjects=@('tradeops.application','tradeops.domain')
+ $actualDocFlow=@($dependencies | Where-Object { $_ -clike 'DocFlow.*' } | Sort-Object)
+ if(($actualDocFlow -join '|') -cne ((@($ids | Sort-Object)) -join '|')) {
+  throw "Unexpected DocFlow package closure: $($actualDocFlow -join ',')"
+ }
+ foreach($name in $dependencies) {
+  $entry=$locked.PSObject.Properties[$name].Value
+  $type=[string]$entry.type
+  if($name -cin $expectedProjects) {
+   if($type -cne 'Project') {
+    throw "TradeOps local dependency is not Project: $name (type=$type)"
+   }
+  } elseif($name -cin $ids) {
+   if($type -cne 'Direct') {
+    throw "DocFlow candidate must be a direct package: $name (type=$type)"
+   }
+  } elseif($name -clike 'Microsoft.*' -or $name -clike 'System.*') {
+   if($type -cne 'Direct' -and $type -cne 'Transitive') {
+    throw "Unexpected Microsoft/System dependency kind: $name (type=$type)"
+   }
+  } else {
+   throw "Unexpected NuGet dependency: $name (type=$type)"
+  }
+ }
+ foreach($projectName in $expectedProjects) {
+  if($dependencies -cnotcontains $projectName) {
+   throw "Expected source ProjectReference absent: $projectName"
+  }
+ }
+ Write-Host 'PASS SOURCE PROJECT LOCK: tradeops.application + tradeops.domain (type=Project); no extra source projects'
  foreach($id in $ids) {
-  $item=$lock.dependencies.'net10.0'.PSObject.Properties[$id].Value
+  $item=$locked.PSObject.Properties[$id].Value
   if($null -eq $item -or [string]$item.resolved -cne $version -or
      [string]::IsNullOrWhiteSpace([string]$item.contentHash)) {
    throw "Missing exact package lock: $id"
