@@ -347,6 +347,37 @@ public sealed class IbkrOfflineEvidencePageCollectorTests
     }
 
     [Fact]
+    public void OversizedNestedExecutionPage_RejectsBeforeAcceptingAnyPage()
+    {
+        var collector = NewCollector();
+        var many = Enumerable.Range(0, 2050)
+            .Select(i => Execution($"execution-{i}", 0.000001m))
+            .ToArray();
+        var first = Order() with
+        {
+            RequestedQuantity = 3m,
+            CumulativeFilled = 0.002050m,
+            Executions = many
+        };
+        var second = first with
+        {
+            ClientOrderId = "second-client",
+            BrokerOrderId = "second-broker",
+            Executions = many.Select(e => e with
+            {
+                ClientOrderId = "second-client",
+                BrokerOrderId = "second-broker"
+            }).ToArray()
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            collector.Append(Page(0, null, null, true, first, second)));
+        Assert.Equal(0, collector.AcceptedPageCount);
+        Assert.False(collector.IsComplete);
+        collector.Append(Page(0, null, null, true, Order()));
+    }
+
+    [Fact]
     public void ConstructorRequiresNonemptyScopedSequenceAndKeys()
     {
         Assert.Throws<InvalidOperationException>(() =>
