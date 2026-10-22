@@ -43,7 +43,13 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
             "PowerShell launcher for WSL acceptance is missing.");
 
         var code = File.ReadAllText(launcher);
-        Assert.Contains("[string] $Branch =", code, StringComparison.Ordinal);
+        Assert.Contains("[string] $Branch,", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "[Parameter(Mandatory = $true)]" + Environment.NewLine +
+            "    [ValidatePattern('^TradeOps/to-v2-[0-9]{2}-[a-z0-9-]+$')]" +
+            Environment.NewLine + "    [string] $Branch,",
+            code, StringComparison.Ordinal);
+        Assert.DoesNotContain("[string] $Branch =", code, StringComparison.Ordinal);
         Assert.Contains("fetch origin $Branch", code, StringComparison.Ordinal);
         Assert.Contains("rev-parse FETCH_HEAD", code, StringComparison.Ordinal);
         Assert.Contains("$fetchedHead -cne $ExpectedHead", code, StringComparison.Ordinal);
