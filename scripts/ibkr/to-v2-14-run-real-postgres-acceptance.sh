@@ -493,4 +493,19 @@ events="$(docker exec "$pg_container" psql -U postgres -d "$api_db" -At \
     fail "api_sql_lifecycle_events"
 printf 'TRADEOPS REAL SQL CHECK PASS orders=1 lifecycle_events_present=true\n'
 
+# TO-V2-19: Assert a new additive EF Core migration actually applied to
+# the disposable API PostgreSQL 17 database. All temporary fixtures are
+# inside a SQL transaction ending in ROLLBACK; legacy order history and
+# global indexes remain untouched. No account or broker scope backfill.
+if ! docker exec -i "$pg_container" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$api_db" -At \
+    < scripts/ibkr/to-v2-19-synthetic-order-identity.sql \
+    > "$scratch/scope-sql.log" 2>&1; then
+    fail "synthetic_broker_scope_sql"
+fi
+scope_marker='TRADEOPS REAL BROKER SCOPE SQL PASS synthetic_only=true legacy_unscoped=true constraints=true rollback=true'
+grep -Fxq "$scope_marker" "$scratch/scope-sql.log" ||
+    fail "synthetic_broker_scope_marker_missing"
+printf '%s\n' "$scope_marker"
+
 completed=1
