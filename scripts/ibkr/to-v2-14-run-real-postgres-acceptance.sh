@@ -101,6 +101,25 @@ run_dotnet() {
 }
 printf 'TRADEOPS REAL POSTGRES DOTNET MODE=%s\n' "$dotnet_mode"
 
+# Heartbeat reports stage and log size, never a NuGet URL, package source
+# credential or environment variable. The individual dotnet command is
+# already bounded by timeout inside run_dotnet.
+run_with_progress() {
+    local stage="$1"
+    local logfile="$2"
+    shift 2
+    "$@" >"$logfile" 2>&1 &
+    local task_pid=$!
+    while kill -0 "$task_pid" 2>/dev/null; do
+        sleep 10
+        if kill -0 "$task_pid" 2>/dev/null; then
+            printf 'TRADEOPS REAL POSTGRES %s active log_bytes=%s\n' \
+                "$stage" "$(wc -c <"$logfile" | tr -d '[:space:]')"
+        fi
+    done
+    wait "$task_pid"
+}
+
 exec 9>"${TMPDIR:-/tmp}/tradeops-ibkr-real-pg-acceptance.lock"
 flock -n 9 || fail "another_real_postgres_acceptance_is_running"
 
@@ -175,14 +194,16 @@ printf 'TRADEOPS REAL POSTGRES ACCEPTANCE start sha=%s mode=isolated_mock_only\n
 # nuget.org only for restore; builds and all offline broker demos run with
 # Docker networking disabled. No actual trading or broker requests.
 printf 'TRADEOPS REAL POSTGRES RESTORE START source=nuget.org-only network=restore-only\n'
-if ! run_dotnet host 360 restore TradeOps.sln \
+if ! run_with_progress RESTORE "$scratch/restore.log" \
+    run_dotnet host 360 restore TradeOps.sln \
     --configfile scripts/ibkr/to-v2-14-nuget.config \
-    --verbosity minimal >"$scratch/restore.log" 2>&1; then
+    --verbosity minimal; then
     fail "solution_restore"
 fi
 printf 'TRADEOPS REAL POSTGRES RESTORE PASS\n'
 printf 'TRADEOPS REAL POSTGRES BUILD START\n'
-if ! run_dotnet none 180 build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
+if ! run_with_progress BUILD "$scratch/build.log" \
+    run_dotnet none 180 build TradeOps.sln -c Release --no-restore -v:q; then
     fail "solution_build"
 fi
 printf 'TRADEOPS REAL POSTGRES BUILD PASS\n'
