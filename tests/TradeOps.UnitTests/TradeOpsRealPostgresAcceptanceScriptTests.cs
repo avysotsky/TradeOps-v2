@@ -70,6 +70,30 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
     }
 
     [Fact]
+    public void MessagePackDependency_UsesPatchedVersion_AndKeepsNuGetAuditEnabled()
+    {
+        var root = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(ScriptPath())!, "..", ".."));
+        var projectPath = Path.Combine(root, "src", "TradeOps.Infrastructure",
+            "TradeOps.Infrastructure.csproj");
+
+        var project = System.Xml.Linq.XDocument.Load(projectPath);
+        var package = project.Descendants("PackageReference").Single(
+            element => (string?)element.Attribute("Include") == "MessagePack");
+        var rawVersion = (string?)package.Attribute("Version");
+        Assert.True(Version.TryParse(rawVersion, out var version),
+            "MessagePack version must be an exact, non-floating version.");
+        Assert.True(version >= new Version(3, 1, 9),
+            "MessagePack must include the GHSA-qhrr-8q5h-9q3h patch.");
+
+        // Acceptance cannot be made to PASS by hiding NuGet security findings.
+        var script = File.ReadAllText(ScriptPath());
+        Assert.DoesNotContain("--ignore-failed-sources", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("NuGetAudit=false", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("NU1902", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RealPostgresAcceptanceScript_IsStructurallyCompleteAndNotDuplicated()
     {
         var source = File.ReadAllText(ScriptPath());
