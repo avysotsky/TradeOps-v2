@@ -18,6 +18,25 @@ builder.Services.AddDbContext<TradeOpsDbContext>(options => options.UseNpgsql(co
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection(TelegramOptions.SectionName));
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(WorkerOptions.SectionName));
 
+// TO-V2-18: isolated, disabled-by-default synthetic runtime canary.
+// IMPORTANT: this is NOT the future PostgreSQL-backed shadow comparator.
+// Existing reconciliation, orders, exchange events and Worker services
+// remain untouched. Do not register on any real provider or Paper IBKR.
+var syntheticShadowEnabled = builder.Configuration.GetValue<bool>(
+    ReconciliationShadowStartupPolicy.SectionName + ":Enabled");
+ReconciliationShadowStartupPolicy.DemandSyntheticOnly(
+    syntheticShadowEnabled,
+    builder.Configuration["Exchange:Provider"],
+    Environment.GetEnvironmentVariable(
+        ReconciliationShadowStartupPolicy.EnvironmentConfirm));
+
+if (syntheticShadowEnabled)
+{
+    builder.Services.AddSingleton<IBrokerReconciliationDecisionEngine,
+        BrokerReconciliationDecisionEngine>();
+    builder.Services.AddHostedService<ReconciliationShadowCanaryHostedService>();
+}
+
 builder.Services.AddOptions<TradingViewDeliveryHealthSettings>()
     .Bind(builder.Configuration.GetSection(TradingViewDeliveryHealthSettings.SectionName))
     .Validate(
