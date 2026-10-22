@@ -267,9 +267,197 @@ export TRADEOPS_IBKR_OFFLINE_SMOKE_CONFIRM=DISPOSABLE_LOCAL_POSTGRES_ONLY
 export TRADEOPS_IBKR_OFFLINE_SMOKE_PG="$journal_connection"
 
 if ! run_dotnet host 120 "tools/TradeOps.IbkrOfflinePostgresSmoke/bin/Release/net10.0/TradeOps.IbkrOfflinePostgresSmoke.dll" >"$scratch/journal.log" 2>&1; then
+    # Print only the fixed, sanitized diagnostic markers emitted by our
+    # smoke executable. Never expose raw PostgreSQL connection strings.
+    grep -E '^IBKR OFFLINE POSTGRES SMOKE (FAIL|NOT RUN)' \
+        "$scratch/journal.log" | tail -n 4 >&2 || true
     fail "real_postgresql_journal_smoke"
 fi
-grep -Eq '^IBKR OFFLINE POSTGRES SMOKE PASS cases=[0-9]+ broker_requests=0 cleanup=true$'     "$scratch/journal.log" || fail "journal_smoke_success_marker_missing"
+if ! grep -Eq '^IBKR OFFLINE POSTGRES SMOKE PASS cases=[0-9]+ broker_requests=0 cleanup=true
+printf 'TRADEOPS REAL POSTGRES JOURNAL PASS\n'
+unset TRADEOPS_IBKR_OFFLINE_SMOKE_PG
+
+# Account-free IBKR read-path synthetic transport demo: executable, not just
+# compiled. It must explicitly state zero external/broker requests.
+if ! run_dotnet none 90 "tools/TradeOps.IbkrOfflineDemo/bin/Release/net10.0/TradeOps.IbkrOfflineDemo.dll" >"$scratch/ibkr-demo.log" 2>&1; then
+    fail "ibkr_read_path_offline_demo"
+fi
+grep -q 'IBKR ACCOUNT-FREE OFFLINE DEMO PASS' "$scratch/ibkr-demo.log" ||
+    fail "ibkr_demo_success_marker_missing"
+printf 'TRADEOPS IBKR ACCOUNT-FREE DEMO PASS\n'
+
+api_port="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+export ConnectionStrings__TradeOpsDb="Host=127.0.0.1;Port=${pg_port};Database=${api_db};Username=postgres;Password=${password}"
+export Exchange__Provider=Mock
+export Telegram__Enabled=false
+export Integrations__TradingView__Enabled=false
+export SignalIngress__Authentication__Enabled=true
+export SignalIngress__Authentication__ApiKey="$signal_key"
+export OperatorApi__Authentication__Enabled=true
+export OperatorApi__Authentication__ApiKey="$operator_key"
+export ASPNETCORE_ENVIRONMENT=Production
+export DOTNET_ENVIRONMENT=Production
+export ASPNETCORE_URLS="http://127.0.0.1:${api_port}"
+
+export TRADEOPS_ACCEPTANCE_API_URL="$ASPNETCORE_URLS"
+export TRADEOPS_ACCEPTANCE_SIGNAL_KEY="$signal_key"
+export TRADEOPS_ACCEPTANCE_OPERATOR_KEY="$operator_key"
+export TRADEOPS_ACCEPTANCE_STATE="$scratch/state.json"
+
+api_is_running() {
+    if [[ "$dotnet_mode" == native ]]; then
+        [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null
+    else
+        [[ "$(docker inspect -f '{{.State.Running}}' "$api_container" 2>/dev/null || true)" == true ]]
+    fi
+}
+
+stop_api() {
+    if [[ "$dotnet_mode" == native ]]; then
+        stop_process "$api_pid"
+        api_pid=''
+    else
+        docker rm -f "$api_container" >/dev/null 2>&1 ||
+            fail "api_container_stop"
+        docker inspect "$api_container" >/dev/null 2>&1 &&
+            fail "api_container_cleanup"
+    fi
+}
+
+start_api() {
+    local label="$1"
+    if [[ "$dotnet_mode" == native ]]; then
+        (
+            cd "$ROOT/src/TradeOps.Api"
+            exec dotnet bin/Release/net10.0/TradeOps.Api.dll
+        ) >"$scratch/${label}.log" 2>&1 &
+        api_pid=$!
+    else
+        docker run --detach --rm --pull=never \
+            --name "$api_container" --network host \
+            --cpus=2 --memory=1g --pids-limit=160 \
+            --mount "type=bind,source=$ROOT,target=/workspace,readonly" \
+            --workdir /workspace/src/TradeOps.Api \
+            -e ConnectionStrings__TradeOpsDb \
+            -e Exchange__Provider \
+            -e Telegram__Enabled \
+            -e Integrations__TradingView__Enabled \
+            -e SignalIngress__Authentication__Enabled \
+            -e SignalIngress__Authentication__ApiKey \
+            -e OperatorApi__Authentication__Enabled \
+            -e OperatorApi__Authentication__ApiKey \
+            -e ASPNETCORE_ENVIRONMENT \
+            -e DOTNET_ENVIRONMENT \
+            -e ASPNETCORE_URLS \
+            --entrypoint dotnet "$dotnet_image" \
+            bin/Release/net10.0/TradeOps.Api.dll \
+            >"$scratch/${label}.container-id" 2>"$scratch/${label}.docker.log" ||
+            fail "${label}_container_start"
+    fi
+
+    local http_status
+    for _ in $(seq 1 75); do
+        api_is_running || fail "${label}_exited_before_ready"
+        http_status="$(curl --noproxy '*' --silent --output /dev/null \
+            --write-out '%{http_code}' --max-time 2 \
+            "http://127.0.0.1:${api_port}/health/ready" || true)"
+        if [[ "$http_status" == 200 ]]; then
+            return
+        fi
+        sleep 1
+    done
+    fail "${label}_health_ready_timeout"
+}
+
+start_api "api-first"
+TRADEOPS_ACCEPTANCE_PHASE=initial python3 \
+    scripts/ibkr/to-v2-14-api-http-acceptance.py ||
+    fail "api_real_http_and_postgresql_initial"
+stop_api
+printf 'TRADEOPS REAL API INITIAL PASS\n'
+
+# Restart the REAL ASP.NET Core process on the SAME PostgreSQL database.
+start_api "api-restarted"
+TRADEOPS_ACCEPTANCE_PHASE=restart python3 \
+    scripts/ibkr/to-v2-14-api-http-acceptance.py ||
+    fail "api_real_http_postgres_restart"
+stop_api
+
+# Verify a second real executable (Worker) starts with the real database,
+# using Mock venue and no outbound brokerage service.
+if [[ "$dotnet_mode" == native ]]; then
+    (
+        cd "$ROOT/src/TradeOps.Worker"
+        exec dotnet bin/Release/net10.0/TradeOps.Worker.dll
+    ) >"$scratch/worker.log" 2>&1 &
+    worker_pid=$!
+else
+    docker run --detach --rm --pull=never \
+        --name "$worker_container" --network host \
+        --cpus=2 --memory=1g --pids-limit=160 \
+        --mount "type=bind,source=$ROOT,target=/workspace,readonly" \
+        --workdir /workspace/src/TradeOps.Worker \
+        -e ConnectionStrings__TradeOpsDb \
+        -e Exchange__Provider \
+        -e Telegram__Enabled \
+        -e ASPNETCORE_ENVIRONMENT \
+        -e DOTNET_ENVIRONMENT \
+        --entrypoint dotnet "$dotnet_image" \
+        bin/Release/net10.0/TradeOps.Worker.dll \
+        >"$scratch/worker.container-id" 2>"$scratch/worker.docker.log" ||
+        fail "worker_container_start"
+fi
+
+worker_is_running() {
+    if [[ "$dotnet_mode" == native ]]; then
+        [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null
+    else
+        [[ "$(docker inspect -f '{{.State.Running}}' "$worker_container" 2>/dev/null || true)" == true ]]
+    fi
+}
+
+worker_ready=0
+for _ in $(seq 1 20); do
+    worker_is_running || fail "worker_process_crashed"
+    if [[ "$dotnet_mode" == native ]]; then
+        grep -q 'Application started' "$scratch/worker.log" && worker_ready=1
+    else
+        docker logs "$worker_container" 2>&1 |
+            grep -q 'Application started' && worker_ready=1
+    fi
+    if [[ "$worker_ready" == 1 ]]; then
+        break
+    fi
+    sleep 1
+done
+[[ "$worker_ready" == 1 ]] || fail "worker_not_started"
+sleep 3
+worker_is_running || fail "worker_exited_after_start"
+if [[ "$dotnet_mode" == native ]]; then
+    stop_process "$worker_pid"
+    worker_pid=''
+else
+    docker rm -f "$worker_container" >/dev/null 2>&1 ||
+        fail "worker_container_stop"
+fi
+printf 'TRADEOPS REAL WORKER START PASS\n'
+
+# Independently verify actual EF Core migrations and persistent database rows.
+count="$(docker exec "$pg_container" psql -U postgres -d "$api_db" -At \
+    -c 'SELECT count(*) FROM "Orders"' | tr -d '[:space:]')"
+[[ "$count" == 1 ]] || fail "api_sql_order_idempotency"
+events="$(docker exec "$pg_container" psql -U postgres -d "$api_db" -At \
+    -c 'SELECT count(*) FROM "OrderLifecycleEvents"' | tr -d '[:space:]')"
+[[ "$events" =~ ^[0-9]+$ && "$events" -ge 2 ]] ||
+    fail "api_sql_lifecycle_events"
+printf 'TRADEOPS REAL SQL CHECK PASS orders=1 lifecycle_events_present=true\n'
+
+completed=1
+ "$scratch/journal.log"; then
+    grep -E '^IBKR OFFLINE POSTGRES SMOKE (FAIL|NOT RUN)' \
+        "$scratch/journal.log" | tail -n 4 >&2 || true
+    fail "journal_smoke_success_marker_missing"
+fi
 printf 'TRADEOPS REAL POSTGRES JOURNAL PASS\n'
 unset TRADEOPS_IBKR_OFFLINE_SMOKE_PG
 
