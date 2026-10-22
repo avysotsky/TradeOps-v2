@@ -72,14 +72,18 @@ fi
 # the sole package source (scripts/ibkr/to-v2-14-nuget.config).
 run_dotnet() {
     local network="$1"
-    shift
+    local max_seconds="$2"
+    shift 2
     if [[ "$dotnet_mode" == native ]]; then
         NUGET_PACKAGES="$scratch/nuget-packages" \
             NUGET_HTTP_CACHE_PATH="$scratch/nuget-http" \
             DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+            timeout --signal=TERM --kill-after=10s "${max_seconds}s" \
             dotnet "$@"
     else
-        docker run --rm --pull=never \
+        timeout --signal=TERM --kill-after=10s "${max_seconds}s" \
+            docker run --rm --pull=never \
+            --name "$sdk_container" \
             --network "$network" --cpus=2 --memory=2g --pids-limit=160 \
             --mount "type=bind,source=$ROOT,target=/workspace" \
             --mount "type=bind,source=$scratch/nuget-packages,target=/acceptance-nuget/packages" \
@@ -104,6 +108,7 @@ scratch="$(mktemp -d "${TMPDIR:-/tmp}/tradeops-real-pg.XXXXXXXX")"
 mkdir -p "$scratch/nuget-packages" "$scratch/nuget-http"
 run_suffix="$(python3 -c 'import secrets;print(secrets.token_hex(6))')"
 pg_container="tradeops-ibkr-realpg-${run_suffix}"
+sdk_container="tradeops-ibkr-realsdk-${run_suffix}"
 api_container="tradeops-ibkr-realapi-${run_suffix}"
 worker_container="tradeops-ibkr-realworker-${run_suffix}"
 journal_db="tradeops_ibkr_offline_smoke_${run_suffix}"
@@ -139,7 +144,7 @@ cleanup() {
     stop_process "$api_pid"
     stop_process "$worker_pid"
     local cleanup_failed=0
-    for disposable in "$api_container" "$worker_container"; do
+    for disposable in "$sdk_container" "$api_container" "$worker_container"; do
         if docker inspect "$disposable" >/dev/null 2>&1; then
             docker rm -f "$disposable" >/dev/null 2>&1 || cleanup_failed=1
         fi
@@ -170,16 +175,14 @@ printf 'TRADEOPS REAL POSTGRES ACCEPTANCE start sha=%s mode=isolated_mock_only\n
 # nuget.org only for restore; builds and all offline broker demos run with
 # Docker networking disabled. No actual trading or broker requests.
 printf 'TRADEOPS REAL POSTGRES RESTORE START source=nuget.org-only network=restore-only\n'
-if ! timeout --signal=TERM --kill-after=10s 360s \
-    run_dotnet host restore TradeOps.sln \
+if ! run_dotnet host 360 restore TradeOps.sln \
     --configfile scripts/ibkr/to-v2-14-nuget.config \
     --verbosity minimal >"$scratch/restore.log" 2>&1; then
     fail "solution_restore"
 fi
 printf 'TRADEOPS REAL POSTGRES RESTORE PASS\n'
 printf 'TRADEOPS REAL POSTGRES BUILD START\n'
-if ! timeout --signal=TERM --kill-after=10s 180s \
-    run_dotnet none build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
+if ! run_dotnet none 180 build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
     fail "solution_build"
 fi
 printf 'TRADEOPS REAL POSTGRES BUILD PASS\n'
@@ -226,7 +229,7 @@ journal_connection="Host=127.0.0.1;Port=${pg_port};Database=${journal_db};Userna
 export TRADEOPS_IBKR_OFFLINE_SMOKE_CONFIRM=DISPOSABLE_LOCAL_POSTGRES_ONLY
 export TRADEOPS_IBKR_OFFLINE_SMOKE_PG="$journal_connection"
 
-if ! run_dotnet host "tools/TradeOps.IbkrOfflinePostgresSmoke/bin/Release/net10.0/TradeOps.IbkrOfflinePostgresSmoke.dll" >"$scratch/journal.log" 2>&1; then
+if ! run_dotnet host 120 "tools/TradeOps.IbkrOfflinePostgresSmoke/bin/Release/net10.0/TradeOps.IbkrOfflinePostgresSmoke.dll" >"$scratch/journal.log" 2>&1; then
     fail "real_postgresql_journal_smoke"
 fi
 grep -Eq '^IBKR OFFLINE POSTGRES SMOKE PASS cases=[0-9]+ broker_requests=0 cleanup=true$'     "$scratch/journal.log" || fail "journal_smoke_success_marker_missing"
@@ -235,7 +238,7 @@ unset TRADEOPS_IBKR_OFFLINE_SMOKE_PG
 
 # Account-free IBKR read-path synthetic transport demo: executable, not just
 # compiled. It must explicitly state zero external/broker requests.
-if ! run_dotnet none "tools/TradeOps.IbkrOfflineDemo/bin/Release/net10.0/TradeOps.IbkrOfflineDemo.dll" >"$scratch/ibkr-demo.log" 2>&1; then
+if ! run_dotnet none 90 "tools/TradeOps.IbkrOfflineDemo/bin/Release/net10.0/TradeOps.IbkrOfflineDemo.dll" >"$scratch/ibkr-demo.log" 2>&1; then
     fail "ibkr_read_path_offline_demo"
 fi
 grep -q 'IBKR ACCOUNT-FREE OFFLINE DEMO PASS' "$scratch/ibkr-demo.log" ||
