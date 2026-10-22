@@ -185,6 +185,38 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
     }
 
     [Fact]
+    public void RealPostgresAcceptanceScript_RequiresRollbackOnlyBrokerScopeSqlGate()
+    {
+        var bash = File.ReadAllText(ScriptPath());
+        Assert.Contains(
+            "scripts/ibkr/to-v2-19-synthetic-order-identity.sql",
+            bash, StringComparison.Ordinal);
+        Assert.Contains("synthetic_broker_scope_sql",
+            bash, StringComparison.Ordinal);
+        Assert.Contains(
+            "TRADEOPS REAL BROKER SCOPE SQL PASS synthetic_only=true legacy_unscoped=true constraints=true rollback=true",
+            bash, StringComparison.Ordinal);
+
+        var path = Path.Combine(
+            Path.GetFullPath(Path.Combine(
+                Path.GetDirectoryName(ScriptPath())!, "..", "..")),
+            "scripts", "ibkr", "to-v2-19-synthetic-order-identity.sql");
+        var sql = File.ReadAllText(path);
+
+        Assert.Contains("BEGIN;", sql, StringComparison.Ordinal);
+        Assert.Contains("ROLLBACK;", sql, StringComparison.Ordinal);
+        Assert.Contains("FROM \"BrokerOrderIdentities\"", sql,
+            StringComparison.Ordinal);
+        Assert.Contains("WHEN check_violation", sql, StringComparison.Ordinal);
+        Assert.Contains("WHEN foreign_key_violation", sql, StringComparison.Ordinal);
+        Assert.Contains("WHEN unique_violation", sql, StringComparison.Ordinal);
+        Assert.Contains("FROM \"__EFMigrationsHistory\"", sql,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("TRUNCATE", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DROP TABLE", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void MessagePackDependency_UsesPatchedVersion_AndKeepsNuGetAuditEnabled()
     {
         var root = Path.GetFullPath(Path.Combine(
