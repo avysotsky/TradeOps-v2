@@ -182,6 +182,24 @@ public sealed class IbkrOfflineOrderLifecycleTests
     }
 
     [Fact]
+    public void TimeoutAndLateAcknowledgements_DoNotDuplicateOrRegressExecution()
+    {
+        var pending = Submitted(quantity: 3m);
+        Assert.Equal(IbkrOfflineOrderState.Unknown,
+            Advance(pending, IbkrOfflineOrderEventType.TransportTimedOut).State);
+        Assert.Throws<InvalidOperationException>(() =>
+            Advance(pending, IbkrOfflineOrderEventType.SubmissionStarted));
+        Assert.Equal(IbkrOfflineOrderState.Working,
+            Advance(pending, IbkrOfflineOrderEventType.BrokerAcknowledged, brokerId: BrokerId).State);
+
+        Advance(pending, IbkrOfflineOrderEventType.CumulativeFill, filled: 3m);
+        Assert.Equal(IbkrOfflineOrderState.Filled,
+            Advance(pending, IbkrOfflineOrderEventType.BrokerAcknowledged, brokerId: BrokerId).State);
+        Assert.Throws<InvalidOperationException>(() =>
+            Advance(pending, IbkrOfflineOrderEventType.BrokerAcknowledged, brokerId: "wrong"));
+    }
+
+    [Fact]
     public void Reconnection_CannotSubmitAgainBeforeBrokerReconciliation()
     {
         var model = Working(quantity: 5m);
