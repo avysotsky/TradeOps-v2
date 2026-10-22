@@ -11,7 +11,7 @@ namespace TradeOps.Infrastructure.Exchange.Ibkr;
 /// Never registered in TradeOps dependency injection and has no broker HTTP
 /// transport. Schema must be installed separately in a disposable test DB.
 /// </summary>
-public sealed class IbkrOfflinePostgresJournal
+public sealed partial class IbkrOfflinePostgresJournal
 {
     private const int MaximumReplayRows = 10000;
     private readonly string _connectionString;
