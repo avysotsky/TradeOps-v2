@@ -138,7 +138,8 @@ def restarted():
 
     signal = expect("GET", f"/api/signals/{signal_id}", 200,
                     authorization="operator")
-    check(signal.get("id") == signal_id, "signal not restored after API restart")
+    check(signal.get("signalId", signal.get("id")) == signal_id,
+          "signal not restored after API restart")
 
     history = expect("GET", f"/api/orders/local/{coid}/history", 200,
                      authorization="operator")
