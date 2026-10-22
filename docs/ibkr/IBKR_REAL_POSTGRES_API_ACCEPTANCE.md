@@ -191,3 +191,41 @@ offline/loopback-only). If the WSL2 host cannot reach the NuGet source,
 runtime acceptance remains blocked until an authorized local source or
 pre-provisioned offline cache is available. Never claim a PostgreSQL
 PASS merely because restore succeeds.
+
+
+### Root-owned NuGet files and incorrect cleanup (October 22, 2026)
+
+The first nuget.org-enabled restore created hundreds of NuGet files
+owned by `root` on the WSL2 host. A disposable .NET SDK Docker
+container wrote them into `/tmp/tradeops-real-pg.<random>/nuget-*`
+using the container's default root identity. The enclosing Bash
+process was a normal WSL user and therefore could not remove the
+cache. The prior cleanup erroneously printed `cleanup=PASS`, because
+the `rm -rf` failure was not checked.
+
+Fixed:
+- Every SDK Docker build/restore/journal/demo invocation now runs
+  with explicit `--user "$(id -u):$(id -g)"`; its bind-mounted
+  ephemeral NuGet cache and generated files are user-owned.
+- Both the exit status of `rm -rf` and the **absence** of the
+  temporary scratch directory are checked in the exit trap.
+  Any mismatch prints `FAIL stage=temporary_cache_cleanup`,
+  marks cleanup as failed, and forbids the final PASS marker.
+- The cleanup trap still removes all uniquely named disposable
+  containers and checks their absence. A cleanup failure must not
+  be reported as successful, even when functional tests pass.
+- Do not use broad `sudo rm -rf /tmp/tradeops-*` or prune Docker:
+  unrelated WSL services/containers might be affected.
+
+One prior run left the **exact** directory
+`/tmp/tradeops-real-pg.KUjt90rm`. Before deleting it manually,
+verify that it is not a symlink, that its parent is exactly
+`/tmp`, and that the directory itself belongs to the invoking
+WSL user. The retained root-owned *contents* may then be removed
+in a disposable SDK Docker helper which bind-mounts **only that
+directory**, with `--network none`. A permanent root shell or
+broad recursive system cleanup is unnecessary. The main runner
+never automatically deletes unrelated old run directories.
+
+Old acceptance outputs, including any prior `cleanup=PASS` on a
+failed run, do **not** qualify as runtime PostgreSQL acceptance.
