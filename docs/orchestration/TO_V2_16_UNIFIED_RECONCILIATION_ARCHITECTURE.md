@@ -79,8 +79,12 @@ Infrastructure: PostgreSQL
 - `BrokerReconciliationDecisionKind.Candidate` is a
   **non-executable proposal** only: never authorization to send a
   broker order or persist a row without the future atomic policy gate.
-- `BrokerReconciliationDecisionKind.NoChange` requires aligned local
-  state, cumulative fill and already-known broker order ID.
+- `BrokerReconciliationDecisionKind.NoChange` is allowed only for
+  an already-identified **unfilled** working order with identical local
+  state. Aligned positive cumulative quantity is NOT proof the local
+  execution-ID ledger matches the broker's ledger, so it remains a
+  `Candidate` for future atomic execution-ID comparison/import.
+  Never skip ID-level reconciliation because totals are equal.
 - The decision service is **not added to `TradeOps.Api`,
   `TradeOps.Worker` or DI**, and legacy
   `OrderReconciliationService` remains the live path.
