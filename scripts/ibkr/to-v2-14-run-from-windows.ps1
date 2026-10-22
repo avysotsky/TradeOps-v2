@@ -1,4 +1,4 @@
-# TO-V2-14: Windows launcher for isolated REAL PostgreSQL / API acceptance.
+# TradeOps-v2: reusable Windows launcher for isolated REAL PostgreSQL / API acceptance.
 # Run against an exact WSL2-qualified Draft PR HEAD. No existing DB/services touched.
 [CmdletBinding()]
 param(
@@ -6,11 +6,15 @@ param(
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string] $ExpectedHead,
 
+    # Supply the exact stacked workstream's remote branch (TO-V2-15, etc.).
+    # The default preserves the original TO-V2-14 invocation behavior.
+    [ValidatePattern('^TradeOps/to-v2-[0-9]{2}-[a-z0-9-]+$')]
+    [string] $Branch = 'TradeOps/to-v2-14-real-postgres-api-acceptance',
+
     [string] $Repository = 'D:\Projects\TradeOps-v2'
 )
 
 $ErrorActionPreference = 'Stop'
-$branch = 'TradeOps/to-v2-14-real-postgres-api-acceptance'
 
 if (-not (Test-Path -LiteralPath $Repository -PathType Container)) {
     throw "TradeOps repository not found: $Repository"
@@ -21,12 +25,12 @@ $stage = Join-Path $parent (
     'TradeOps-RealPg-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 )
 $log = Join-Path $parent (
-    'TO-V2-14-RealPg-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log'
+    'TradeOps-RealPg-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log'
 )
 
 $added = $false
 try {
-    & git.exe -C $Repository fetch origin $branch
+    & git.exe -C $Repository fetch origin $Branch
     if ($LASTEXITCODE -ne 0) {
         throw 'GIT FETCH FAILED'
     }
@@ -34,7 +38,7 @@ try {
     $fetchedHead = (& git.exe -C $Repository rev-parse FETCH_HEAD |
         Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $fetchedHead -cne $ExpectedHead) {
-        throw "REMOTE HEAD MISMATCH: $fetchedHead"
+        throw "REMOTE HEAD MISMATCH branch=$Branch actual=$fetchedHead expected=$ExpectedHead"
     }
 
     if (Test-Path -LiteralPath $stage) {
