@@ -162,8 +162,13 @@ public sealed class BrokerReconciliationDecisionEngine(IOrderStateMachine stateM
             return Unresolved("TransitionNotAllowed");
         }
 
+        // An aligned cumulative amount does NOT prove that the persisted
+        // execution-ID ledger matches broker evidence. For positive fills,
+        // require the future atomic journal writer to compare/import IDs;
+        // never suppress the candidate on quantity equality alone.
         if (local.LocalStatus == order.Status
-            && local.LocalFilledQuantity == executed
+            && local.LocalFilledQuantity == 0m
+            && executed == 0m
             && local.BrokerOrderId is not null)
         {
             return new(
