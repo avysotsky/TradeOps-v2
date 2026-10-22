@@ -18,8 +18,10 @@ public sealed partial class IbkrOfflinePostgresJournal
 
     public IbkrOfflinePostgresJournal(string connectionString)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-        _connectionString = connectionString;
+        // No connection may be opened to an arbitrary (including production)
+        // PostgreSQL database. The caller must use a disposable local DB
+        // and a unique isolated schema, exactly as the opt-in smoke does.
+        _connectionString = IbkrOfflineJournalConnectionPolicy.Validate(connectionString);
     }
 
     public async Task<IbkrOfflineJournalRecovery> RegisterAsync(
@@ -106,10 +108,18 @@ public sealed partial class IbkrOfflinePostgresJournal
             return loaded;
         }
 
-        if (evt.Type is IbkrOfflineOrderEventType.CumulativeFill)
+        // Reconciliation transitions must be atomically bound to complete
+        // execution-ID evidence and an observation record. A direct lifecycle
+        // append can otherwise create Filled/Cancelled with no supporting
+        // evidence and silently destroy the durable baseline guarantee.
+        if (evt.Type is IbkrOfflineOrderEventType.CumulativeFill
+            or IbkrOfflineOrderEventType.ReconciledWorking
+            or IbkrOfflineOrderEventType.ReconciledFilled
+            or IbkrOfflineOrderEventType.ReconciledCancelled
+            or IbkrOfflineOrderEventType.CancelConfirmed)
         {
             throw new InvalidOperationException(
-                "Direct fill journaling is forbidden: use atomic execution-ID persistence.");
+                "Evidence-bound IBKR offline lifecycle events require atomic execution or reconciliation persistence.");
         }
 
         var updated = ApplyChecked(loaded, evt);
