@@ -36,7 +36,7 @@ order placement or cancellation**. No production PostgreSQL.
 From the detached checkout at repository root:
 
 ```bash
-bash scripts/ibkr/to-v2-14-run-real-postgres-acceptance.sh
+bash scripts/ibkr/to-v2-14-run-real-postgres-acceptance.sh "<verified-40-character-Git-HEAD>"
 ```
 
 The script independently checks all tools, .NET 10 and the locally
@@ -133,3 +133,23 @@ If the next attempt reports `no_cached_dotnet10_sdk_image` or
 worktree; **do not** install tools or modify the running relay to make
 the test appear successful. A genuine successful result still requires
 the actual G2–G5 markers from the disposable runtime acceptance.
+
+
+### Windows Git worktree / Linux Git mismatch (2026-10-22)
+
+On the first Docker-mode acceptance attempt, Windows Git created a
+`.git` worktree pointer with an absolute drive-letter path such as
+`D:/Projects/TradeOps-v2/.git/worktrees/...`. Linux Git running under
+WSL2 tried to resolve that path relative to `/mnt/d/Projects/...` and
+failed with `fatal: not a git repository`, **before PostgreSQL started**.
+
+The Bash acceptance script therefore never performs `git rev-parse`
+inside that Windows-origin worktree. It requires one full 40-character
+lowercase commit SHA as its positional argument. The Windows launcher
+is responsible for verifying it with `git.exe -C <worktree> rev-parse
+HEAD` before invoking WSL. The Bash script refuses missing or
+invalid SHA strings before creating any container.
+
+This is a Windows/Linux Git interoperability fix, not PostgreSQL or
+IBKR runtime qualification. The real PostgreSQL acceptance must still
+execute to completion with its actual DB/API/Worker evidence.
