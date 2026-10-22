@@ -160,6 +160,7 @@ stop_process() {
 cleanup() {
     local code=$?
     trap - EXIT
+    trap - ERR
     set +e
     stop_process "$api_pid"
     stop_process "$worker_pid"
@@ -202,6 +203,16 @@ cleanup() {
     exit 1
 }
 trap cleanup EXIT
+# Any unexpected non-zero exit under strict Bash errexit must identify its
+# source line, rather than only printing a final cleanup status.
+# Never include BASH_COMMAND, connection strings or environment secrets.
+unhandled_failure() {
+    local status=$?
+    local line="${1:-unknown}"
+    printf 'TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=unhandled_shell_error line=%s exit=%s\n' \
+        "$line" "$status" >&2
+}
+trap 'unhandled_failure "$LINENO"' ERR
 
 printf 'TRADEOPS REAL POSTGRES ACCEPTANCE start sha=%s mode=isolated_mock_only\n' "$head"
 
