@@ -12,13 +12,54 @@ fail() {
     exit 1
 }
 
-for dependency in docker dotnet python3 curl flock git; do
+for dependency in docker python3 curl flock git; do
     command -v "$dependency" >/dev/null 2>&1 || fail "missing_${dependency}"
 done
-dotnet --list-sdks | grep -Eq '^10\.' || fail "dotnet_10_sdk_missing"
 docker info >/dev/null 2>&1 || fail "docker_engine_unavailable"
 docker image inspect postgres:17-bookworm >/dev/null 2>&1 ||
     fail "local_postgres_17_image_missing_no_automatic_pull"
+
+# The interactive WSL2 shell may NOT have a dotnet CLI even though the
+# autonomous WSL2 test runner has a local .NET 10 SDK *Docker image*.
+# Never download/install an SDK or modify an existing WSL2 service.
+dotnet_mode=native
+dotnet_image=''
+if ! command -v dotnet >/dev/null 2>&1 ||
+   ! dotnet --list-sdks 2>/dev/null | grep -Eq '^10\.'; then
+    dotnet_mode=docker
+    for candidate in jobradar-pr-autotest:dotnet10 mcr.microsoft.com/dotnet/sdk:10.0; do
+        if docker image inspect "$candidate" >/dev/null 2>&1; then
+            dotnet_image="$candidate"
+            break
+        fi
+    done
+    [[ -n "$dotnet_image" ]] || fail "no_cached_dotnet10_sdk_image"
+    if ! docker run --rm --pull=never --network none --entrypoint dotnet \
+        "$dotnet_image" --list-sdks 2>/dev/null | grep -Eq '^10\.'; then
+        fail "cached_image_not_dotnet10_sdk"
+    fi
+fi
+
+# Build and CLI acceptance use the same cached .NET 10 SDK. For container
+# mode, bind ONLY the detached checkout (not other owner projects).
+run_dotnet() {
+    local network="$1"
+    shift
+    if [[ "$dotnet_mode" == native ]]; then
+        dotnet "$@"
+    else
+        docker run --rm --pull=never \
+            --network "$network" --cpus=2 --memory=2g \
+            --mount "type=bind,source=$ROOT,target=/workspace" \
+            --workdir /workspace \
+            -e DOTNET_CLI_HOME=/tmp \
+            -e TRADEOPS_IBKR_OFFLINE_SMOKE_CONFIRM \
+            -e TRADEOPS_IBKR_OFFLINE_SMOKE_PG \
+            --entrypoint dotnet \
+            "$dotnet_image" "$@"
+    fi
+}
+printf 'TRADEOPS REAL POSTGRES DOTNET MODE=%s\n' "$dotnet_mode"
 
 exec 9>"${TMPDIR:-/tmp}/tradeops-ibkr-real-pg-acceptance.lock"
 flock -n 9 || fail "another_real_postgres_acceptance_is_running"
@@ -26,6 +67,8 @@ flock -n 9 || fail "another_real_postgres_acceptance_is_running"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/tradeops-real-pg.XXXXXXXX")"
 run_suffix="$(python3 -c 'import secrets;print(secrets.token_hex(6))')"
 pg_container="tradeops-ibkr-realpg-${run_suffix}"
+api_container="tradeops-ibkr-realapi-${run_suffix}"
+worker_container="tradeops-ibkr-realworker-${run_suffix}"
 journal_db="tradeops_ibkr_offline_smoke_${run_suffix}"
 api_db="tradeops_api_smoke_${run_suffix}"
 password="$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
@@ -59,6 +102,12 @@ cleanup() {
     stop_process "$api_pid"
     stop_process "$worker_pid"
     local cleanup_failed=0
+    for disposable in "$api_container" "$worker_container"; do
+        if docker inspect "$disposable" >/dev/null 2>&1; then
+            docker rm -f "$disposable" >/dev/null 2>&1 || cleanup_failed=1
+        fi
+        docker inspect "$disposable" >/dev/null 2>&1 && cleanup_failed=1
+    done
     if [[ "$pg_started" == 1 ]]; then
         if docker inspect "$pg_container" >/dev/null 2>&1; then
             docker rm -f "$pg_container" >/dev/null 2>&1 || cleanup_failed=1
@@ -81,10 +130,10 @@ printf 'TRADEOPS REAL POSTGRES ACCEPTANCE start sha=%s mode=isolated_mock_only\n
 
 # New detached worktrees require their own obj/project.assets.json.
 # Do NOT invoke network-accessing broker adapters or existing WSL relay services.
-if ! dotnet restore TradeOps.sln --ignore-failed-sources --verbosity quiet >"$scratch/restore.log" 2>&1; then
+if ! run_dotnet none restore TradeOps.sln --ignore-failed-sources --verbosity quiet >"$scratch/restore.log" 2>&1; then
     fail "solution_restore"
 fi
-if ! dotnet build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
+if ! run_dotnet none build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
     fail "solution_build"
 fi
 printf 'TRADEOPS REAL POSTGRES BUILD PASS\n'
@@ -131,7 +180,7 @@ journal_connection="Host=127.0.0.1;Port=${pg_port};Database=${journal_db};Userna
 export TRADEOPS_IBKR_OFFLINE_SMOKE_CONFIRM=DISPOSABLE_LOCAL_POSTGRES_ONLY
 export TRADEOPS_IBKR_OFFLINE_SMOKE_PG="$journal_connection"
 
-if ! dotnet "tools/TradeOps.IbkrOfflinePostgresSmoke/bin/Release/net10.0/TradeOps.IbkrOfflinePostgresSmoke.dll" >"$scratch/journal.log" 2>&1; then
+if ! run_dotnet host "tools/TradeOps.IbkrOfflinePostgresSmoke/bin/Release/net10.0/TradeOps.IbkrOfflinePostgresSmoke.dll" >"$scratch/journal.log" 2>&1; then
     fail "real_postgresql_journal_smoke"
 fi
 grep -Eq '^IBKR OFFLINE POSTGRES SMOKE PASS cases=[0-9]+ broker_requests=0 cleanup=true$'     "$scratch/journal.log" || fail "journal_smoke_success_marker_missing"
@@ -140,7 +189,7 @@ unset TRADEOPS_IBKR_OFFLINE_SMOKE_PG
 
 # Account-free IBKR read-path synthetic transport demo: executable, not just
 # compiled. It must explicitly state zero external/broker requests.
-if ! dotnet "tools/TradeOps.IbkrOfflineDemo/bin/Release/net10.0/TradeOps.IbkrOfflineDemo.dll" >"$scratch/ibkr-demo.log" 2>&1; then
+if ! run_dotnet none "tools/TradeOps.IbkrOfflineDemo/bin/Release/net10.0/TradeOps.IbkrOfflineDemo.dll" >"$scratch/ibkr-demo.log" 2>&1; then
     fail "ibkr_read_path_offline_demo"
 fi
 grep -q 'IBKR ACCOUNT-FREE OFFLINE DEMO PASS' "$scratch/ibkr-demo.log" ||
@@ -165,16 +214,60 @@ export TRADEOPS_ACCEPTANCE_SIGNAL_KEY="$signal_key"
 export TRADEOPS_ACCEPTANCE_OPERATOR_KEY="$operator_key"
 export TRADEOPS_ACCEPTANCE_STATE="$scratch/state.json"
 
+api_is_running() {
+    if [[ "$dotnet_mode" == native ]]; then
+        [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null
+    else
+        [[ "$(docker inspect -f '{{.State.Running}}' "$api_container" 2>/dev/null || true)" == true ]]
+    fi
+}
+
+stop_api() {
+    if [[ "$dotnet_mode" == native ]]; then
+        stop_process "$api_pid"
+        api_pid=''
+    else
+        docker rm -f "$api_container" >/dev/null 2>&1 ||
+            fail "api_container_stop"
+        docker inspect "$api_container" >/dev/null 2>&1 &&
+            fail "api_container_cleanup"
+    fi
+}
+
 start_api() {
     local label="$1"
-    (
-        cd "$ROOT/src/TradeOps.Api"
-        exec dotnet bin/Release/net10.0/TradeOps.Api.dll
-    ) >"$scratch/${label}.log" 2>&1 &
-    api_pid=$!
+    if [[ "$dotnet_mode" == native ]]; then
+        (
+            cd "$ROOT/src/TradeOps.Api"
+            exec dotnet bin/Release/net10.0/TradeOps.Api.dll
+        ) >"$scratch/${label}.log" 2>&1 &
+        api_pid=$!
+    else
+        docker run --detach --rm --pull=never \
+            --name "$api_container" --network host \
+            --cpus=2 --memory=1g --pids-limit=160 \
+            --mount "type=bind,source=$ROOT,target=/workspace,readonly" \
+            --workdir /workspace/src/TradeOps.Api \
+            -e ConnectionStrings__TradeOpsDb \
+            -e Exchange__Provider \
+            -e Telegram__Enabled \
+            -e Integrations__TradingView__Enabled \
+            -e SignalIngress__Authentication__Enabled \
+            -e SignalIngress__Authentication__ApiKey \
+            -e OperatorApi__Authentication__Enabled \
+            -e OperatorApi__Authentication__ApiKey \
+            -e ASPNETCORE_ENVIRONMENT \
+            -e DOTNET_ENVIRONMENT \
+            -e ASPNETCORE_URLS \
+            --entrypoint dotnet "$dotnet_image" \
+            bin/Release/net10.0/TradeOps.Api.dll \
+            >"$scratch/${label}.container-id" 2>"$scratch/${label}.docker.log" ||
+            fail "${label}_container_start"
+    fi
+
     local http_status
     for _ in $(seq 1 75); do
-        kill -0 "$api_pid" 2>/dev/null || fail "${label}_exited_before_ready"
+        api_is_running || fail "${label}_exited_before_ready"
         http_status="$(curl --noproxy '*' --silent --output /dev/null \
             --write-out '%{http_code}' --max-time 2 \
             "http://127.0.0.1:${api_port}/health/ready" || true)"
@@ -190,8 +283,7 @@ start_api "api-first"
 TRADEOPS_ACCEPTANCE_PHASE=initial python3 \
     scripts/ibkr/to-v2-14-api-http-acceptance.py ||
     fail "api_real_http_and_postgresql_initial"
-stop_process "$api_pid"
-api_pid=''
+stop_api
 printf 'TRADEOPS REAL API INITIAL PASS\n'
 
 # Restart the REAL ASP.NET Core process on the SAME PostgreSQL database.
@@ -199,30 +291,65 @@ start_api "api-restarted"
 TRADEOPS_ACCEPTANCE_PHASE=restart python3 \
     scripts/ibkr/to-v2-14-api-http-acceptance.py ||
     fail "api_real_http_postgres_restart"
-stop_process "$api_pid"
-api_pid=''
+stop_api
 
 # Verify a second real executable (Worker) starts with the real database,
 # using Mock venue and no outbound brokerage service.
-(
-    cd "$ROOT/src/TradeOps.Worker"
-    exec dotnet bin/Release/net10.0/TradeOps.Worker.dll
-) >"$scratch/worker.log" 2>&1 &
-worker_pid=$!
+if [[ "$dotnet_mode" == native ]]; then
+    (
+        cd "$ROOT/src/TradeOps.Worker"
+        exec dotnet bin/Release/net10.0/TradeOps.Worker.dll
+    ) >"$scratch/worker.log" 2>&1 &
+    worker_pid=$!
+else
+    docker run --detach --rm --pull=never \
+        --name "$worker_container" --network host \
+        --cpus=2 --memory=1g --pids-limit=160 \
+        --mount "type=bind,source=$ROOT,target=/workspace,readonly" \
+        --workdir /workspace/src/TradeOps.Worker \
+        -e ConnectionStrings__TradeOpsDb \
+        -e Exchange__Provider \
+        -e Telegram__Enabled \
+        -e ASPNETCORE_ENVIRONMENT \
+        -e DOTNET_ENVIRONMENT \
+        --entrypoint dotnet "$dotnet_image" \
+        bin/Release/net10.0/TradeOps.Worker.dll \
+        >"$scratch/worker.container-id" 2>"$scratch/worker.docker.log" ||
+        fail "worker_container_start"
+fi
+
+worker_is_running() {
+    if [[ "$dotnet_mode" == native ]]; then
+        [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null
+    else
+        [[ "$(docker inspect -f '{{.State.Running}}' "$worker_container" 2>/dev/null || true)" == true ]]
+    fi
+}
+
 worker_ready=0
 for _ in $(seq 1 20); do
-    kill -0 "$worker_pid" 2>/dev/null || fail "worker_process_crashed"
-    if grep -q 'Application started' "$scratch/worker.log"; then
-        worker_ready=1
+    worker_is_running || fail "worker_process_crashed"
+    if [[ "$dotnet_mode" == native ]]; then
+        grep -q 'Application started' "$scratch/worker.log" && worker_ready=1
+    else
+        docker logs "$worker_container" 2>&1 |
+            grep -q 'Application started' && worker_ready=1
+    fi
+    if [[ "$worker_ready" == 1 ]]; then
         break
     fi
     sleep 1
 done
 [[ "$worker_ready" == 1 ]] || fail "worker_not_started"
 sleep 3
-kill -0 "$worker_pid" 2>/dev/null || fail "worker_exited_after_start"
-stop_process "$worker_pid"
-worker_pid=''
+worker_is_running || fail "worker_exited_after_start"
+if [[ "$dotnet_mode" == native ]]; then
+    stop_process "$worker_pid"
+    worker_pid=''
+else
+    docker rm -f "$worker_container" >/dev/null 2>&1 ||
+        fail "worker_container_stop"
+fi
 printf 'TRADEOPS REAL WORKER START PASS\n'
 
 # Independently verify actual EF Core migrations and persistent database rows.
