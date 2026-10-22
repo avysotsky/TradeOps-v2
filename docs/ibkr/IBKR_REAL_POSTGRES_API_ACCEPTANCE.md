@@ -11,10 +11,17 @@ order placement or cancellation**. No production PostgreSQL.
 
 ## Requirements
 
-- Trusted **user-owned WSL2 Ubuntu** shell with .NET 10 SDK, Python 3,
-  curl, flock, Git, Docker Engine and a locally cached
-  `postgres:17-bookworm` Docker image. It deliberately will not pull
-  a Docker image or install software.
+- Trusted **user-owned WSL2 Ubuntu** shell with Python 3, curl,
+  flock, Git, Docker Engine and a locally cached
+  `postgres:17-bookworm` Docker image. The interactive host's `dotnet`
+  command is **optional**. If .NET 10 SDK is absent from WSL `PATH`,
+  the script automatically uses one of the already cached SDK images,
+  preferring `jobradar-pr-autotest:dotnet10`, then
+  `mcr.microsoft.com/dotnet/sdk:10.0`. These are checked for SDK 10;
+  no image pull or software installation is attempted. In container
+  mode, build and restore run without a network, while the real API,
+  Worker and journal smoke share the local Docker host namespace to
+  reach the separate ephemeral PostgreSQL instance.
 - A **clean, detached checkout** of TO-V2-14. Use a separate `git
   worktree` instead of switching the running relay's checkout.
 - Permission to start and remove a uniquely named ephemeral Docker
@@ -109,3 +116,20 @@ includes the exact `git rev-parse HEAD` and states
 Treat G2–G5 as NOT RUN until verified output is collected from the
 trusted WSL2 host. If a stage fails, use the printed stage code to
 debug; do not enable broker access as a workaround.
+
+
+### Environment diagnostic
+
+The first previous run from the owner Windows Git worktree stopped at
+`line 4: set: pipefail` due CRLF normalization. Fixed by a repository
+`.gitattributes` forcing LF for WSL `.sh` and `.py` paths.
+The next real attempt stopped at `FAIL stage=missing_dotnet`: the
+interactive WSL shell did not have `dotnet` on PATH. Neither failure
+ever reached the PostgreSQL container. The new SDK container fallback
+addresses this without changing the owner's WSL packages.
+
+If the next attempt reports `no_cached_dotnet10_sdk_image` or
+`cached_image_not_dotnet10_sdk`, inspect cached images and the detached
+worktree; **do not** install tools or modify the running relay to make
+the test appear successful. A genuine successful result still requires
+the actual G2–G5 markers from the disposable runtime acceptance.
