@@ -295,8 +295,20 @@ static async Task RunReconciliationAsync(string connectionString, Action casePas
         IbkrOfflineBrokerOrderStatus.PartiallyFilled,
         ExecutionsComplete: true,
         Executions: [fill1]);
-    var incomplete = new IbkrOfflineEvidenceSnapshot(
-        1, account, OrdersComplete: false, Orders: [order]);
+    // TO-V2-15: a missing terminal cursor page can NEVER claim that the
+    // account-order list is complete. Persisting this explicitly incomplete
+    // synthetic observation must leave the Unknown order untouched.
+    var interruptedPages = new IbkrOfflineEvidencePageCollector(
+        account, "interrupted-cursor-fixture", 1);
+    interruptedPages.Append(new IbkrOfflineEvidencePage(
+        account, "interrupted-cursor-fixture", 1,
+        PageIndex: 0, RequestCursor: null, NextCursor: "missing-page-2",
+        IsLastPage: false, Orders: [order]));
+    Check(!interruptedPages.IsComplete, "incomplete cursor must not be complete");
+    await MustRejectAsync(() => Task.FromResult(
+        interruptedPages.RequireCompleteSnapshot()));
+
+    var incomplete = interruptedPages.GetPartialSnapshot();
     var inconclusive = await journal.AppendReconciliationAsync(account, coid, incomplete);
     Check(inconclusive.Result.Disposition == IbkrOfflineReconciliationDisposition.Inconclusive
         && inconclusive.Result.Order.State == IbkrOfflineOrderState.Unknown,
@@ -305,8 +317,22 @@ static async Task RunReconciliationAsync(string connectionString, Action casePas
         "partial snapshot must not import fills");
     casePassed();
 
-    var complete = new IbkrOfflineEvidenceSnapshot(
-        2, account, OrdersComplete: true, Orders: [order]);
+    // The next independent observation must carry a NEW sequence. Only
+    // a complete two-page cursor chain is eligible for durable SQL
+    // reconciliation and an execution-ID baseline import.
+    var fullPages = new IbkrOfflineEvidencePageCollector(
+        account, "complete-cursor-fixture", 2);
+    fullPages.Append(new IbkrOfflineEvidencePage(
+        account, "complete-cursor-fixture", 2,
+        PageIndex: 0, RequestCursor: null, NextCursor: "verified-page-2",
+        IsLastPage: false, Orders: []));
+    fullPages.Append(new IbkrOfflineEvidencePage(
+        account, "complete-cursor-fixture", 2,
+        PageIndex: 1, RequestCursor: "verified-page-2", NextCursor: null,
+        IsLastPage: true, Orders: [order]));
+    Check(fullPages.IsComplete && fullPages.AcceptedPageCount == 2,
+        "cursor chain must terminate with an intact page sequence");
+    var complete = fullPages.RequireCompleteSnapshot();
     var reconciled = await new IbkrOfflinePostgresJournal(connectionString)
         .AppendReconciliationAsync(account, coid, complete);
     Check(reconciled.Result.Disposition == IbkrOfflineReconciliationDisposition.PartiallyFilled
