@@ -132,8 +132,11 @@ public sealed class IbkrOfflineOrderLifecycle
             case IbkrOfflineOrderEventType.BrokerAcknowledged:
             {
                 var id = Required(evt.BrokerOrderId, nameof(evt.BrokerOrderId));
-                if (state is IbkrOfflineOrderState.Working or IbkrOfflineOrderState.PartiallyFilled
-                    && previous.BrokerOrderId == id)
+                if ((state is IbkrOfflineOrderState.Working
+                    or IbkrOfflineOrderState.PartiallyFilled
+                    or IbkrOfflineOrderState.CancelPending
+                    or IbkrOfflineOrderState.Cancelled
+                    or IbkrOfflineOrderState.Filled) && previous.BrokerOrderId == id)
                 {
                     return previous;
                 }
@@ -166,6 +169,17 @@ public sealed class IbkrOfflineOrderLifecycle
                 };
                 break;
             }
+
+            case IbkrOfflineOrderEventType.TransportTimedOut:
+                Require(state is IbkrOfflineOrderState.AwaitingAcknowledgement
+                    or IbkrOfflineOrderState.AwaitingReply
+                    or IbkrOfflineOrderState.CancelPending);
+                next = previous with
+                {
+                    State = IbkrOfflineOrderState.Unknown,
+                    PendingReplyId = null
+                };
+                break;
 
             case IbkrOfflineOrderEventType.Disconnected:
                 next = state is IbkrOfflineOrderState.AwaitingAcknowledgement
@@ -341,6 +355,7 @@ public enum IbkrOfflineOrderEventType
     ReplyConfirmed,
     BrokerAcknowledged,
     HttpFailure,
+    TransportTimedOut,
     Disconnected,
     ReconciliationNotFound,
     ReconciledWorking,
