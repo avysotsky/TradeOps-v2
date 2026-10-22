@@ -130,7 +130,7 @@ public sealed class BrokerReconciliationDecisionEngine(IOrderStateMachine stateM
             throw Invalid();
         }
 
-        if (order.Status is OrderStatus.Submitted or OrderStatus.Accepted
+        if ((order.Status is OrderStatus.Submitted or OrderStatus.Accepted)
             && executed != 0m)
         {
             // A working status with a non-zero execution ledger must be
