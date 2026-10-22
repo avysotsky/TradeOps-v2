@@ -269,3 +269,47 @@ Package: https://www.nuget.org/packages/MessagePack/3.1.12
 
 The actual local PostgreSQL/API runtime gates remain **NOT RUN**
 until the new qualified HEAD is executed in WSL2.
+
+
+### Real PostgreSQL / first API success, and shell process lifecycle bug (2026-10-22)
+
+The owner ran the exact qualified `087cb57f...` acceptance head on
+the trusted WSL2 host. These **real runtime** gates passed:
+
+- Real NuGet restore and real `dotnet build` from the checked-out source.
+- Actual disposable PostgreSQL **17** server version check.
+- Real Npgsql journal transaction/concurrency/reconciliation smoke:
+  `TRADEOPS REAL POSTGRES JOURNAL PASS`.
+- Account-free, zero-broker-request IBKR offline executable:
+  `TRADEOPS IBKR ACCOUNT-FREE DEMO PASS`.
+- Actual ASP.NET Core HTTP + PostgreSQL end-to-end initial scenario:
+  `TRADEOPS REAL API INITIAL PASS`, including mock signal, idempotent
+  replay, conflicting signal HTTP 409, real PostgreSQL readiness, and
+  mocked reconciliation to `Filled`.
+
+The run **failed after the initial HTTP PASS**, when `stop_api`
+successfully removed the disposable API Docker container and performed
+an expected `docker inspect` of the now-absent name. The previous code:
+
+```bash
+docker inspect "$api_container" >/dev/null 2>&1 && fail "api_container_cleanup"
+```
+
+returned exit **1** from the overall `stop_api` function when the
+container was correctly absent. Bash `set -e` terminated the script
+without reaching API restart, Worker, or SQL count checks. This was a
+harness false-negative, **not evidence of an application bug**.
+
+The fix uses an explicit `if docker inspect ...; then fail; fi`
+guard and `return 0` for the expected absent-container postcondition.
+Two Linux-run Bash regression tests execute the **real function**
+under strict `set -e`, covering both absent (success) and surviving
+(failure) containers. Any future unexpected shell failure now emits
+a sanitized `stage=unhandled_shell_error line=<line> exit=<status>`
+without dumping the shell command or secrets.
+
+**Evidence classification:** G2 (real IBKR journal) PASS, G3 initial
+API HTTP PASS; G3 restart, G4 Worker, G5 end-to-end PASS remain
+**NOT YET PROVEN**. The overall acceptance is FAIL until the full
+script reaches its final PASS marker on a new, exact-head, locally
+executed run.
