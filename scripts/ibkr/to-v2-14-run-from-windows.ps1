@@ -6,10 +6,11 @@ param(
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string] $ExpectedHead,
 
-    # Supply the exact stacked workstream's remote branch (TO-V2-15, etc.).
-    # The default preserves the original TO-V2-14 invocation behavior.
+    # Branch is intentionally mandatory. Defaulting to TO-V2-14
+    # caused a previous TO-V2-15 attempt to fetch the wrong PR head.
+    [Parameter(Mandatory = $true)]
     [ValidatePattern('^TradeOps/to-v2-[0-9]{2}-[a-z0-9-]+$')]
-    [string] $Branch = 'TradeOps/to-v2-14-real-postgres-api-acceptance',
+    [string] $Branch,
 
     [string] $Repository = 'D:\Projects\TradeOps-v2'
 )
