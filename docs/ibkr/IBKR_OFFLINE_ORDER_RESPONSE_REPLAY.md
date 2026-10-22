@@ -69,3 +69,21 @@ new validated fixtures, not silent acceptance. No durable idempotency
 journal, broker reply confirmation transport, concurrent order coordinator,
 production reconciliation, event sequencing or live transaction semantics
 is implemented. No merge/NuGet/release without owner approval.
+
+## Cancellation receipt is not a terminal cancel event
+
+Current official documentation:
+https://www.interactivebrokers.com/docs/web-api/trading/orders/canceling-orders
+
+A cancellation request can receive HTTP 200 plus `msg: "Request was submitted"`
+with `order_id`, `conid` and optionally an `account` value. This
+acknowledges **receipt of the cancellation request**, NOT cancellation of
+the order. `account` can be null even in a documented successful receipt.
+
+`IbkrOfflineCancelReceiptParser` accepts a strictly correlated
+`order_id` and an account value if present (including null, marked
+unverified). A mismatched account or order ID fails closed.
+`IbkrOfflineCancelReceiptReplay.Observe` requires an existing
+`CancelPending` order and does **not** modify the snapshot.
+Only a distinct verified terminal order-status reconciliation may result
+in a `Cancelled` state. There are no real DELETE requests.
