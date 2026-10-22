@@ -691,6 +691,9 @@ public sealed class IbkrPaperExchangeClient
                 "localhost",
                 StringComparison.OrdinalIgnoreCase)
             || uri.Port != 5000
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment)
             || !string.Equals(
                 uri.AbsolutePath.TrimEnd('/'),
                 "/v1/api",
