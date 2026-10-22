@@ -112,3 +112,38 @@ The system deliberately does **not** implement credential handling,
 network pagination, IBKR account authorization, UI, automatic retries,
 real market-data subscriptions, live order transport, release
 publication, migration of any existing database, or mainline merge.
+
+  
+## Windows launcher guard: workstream branch must match exact PR HEAD
+
+A real owner invocation against the first TO-V2-15 SHA
+`133dbe7bb6dc48c95191576747c1948d02398cb4`
+was blocked before PostgreSQL startup with
+`REMOTE HEAD MISMATCH`. Root cause: the inherited
+`to-v2-14-run-from-windows.ps1` PowerShell launcher ignored the
+caller-selected TO-V2-15 branch and fetched the hard-coded TO-V2-14
+remote branch, whose valid HEAD is
+`f0d54abbfa935b4cfc798f9acf523e904a7a6e6a`.
+
+The launcher is now shared across stacked workstreams but requires
+**both** `-Branch` and `-ExpectedHead`. It validates the branch name,
+fetches that specific remote branch, compares `FETCH_HEAD` with the
+exact expected 40-hex SHA, verifies the freshly created detached
+worktree HEAD via Windows Git, and only then invokes WSL. Omitting the
+branch fails PowerShell parameter binding **before fetch/containers**.
+The independent unit-test gate checks that the branch parameter is
+mandatory and prevents reintroducing the hard-coded assignment.
+
+Usage from the trusted Windows PowerShell session:
+
+```powershell
+$branch = 'TradeOps/to-v2-15-offline-evidence-cursor-continuity'
+$sha = '<exact-new-qualified-PR-head>'
+# After fetching and extracting the launcher at that exact SHA:
+& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File $launcher -Branch $branch -ExpectedHead $sha `
+    -Repository 'D:\Projects\TradeOps-v2'
+```
+
+This resolves a launcher bug; the prior `REMOTE HEAD MISMATCH` is
+neither a PostgreSQL failure nor a qualification of the new collector.
