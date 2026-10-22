@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS ibkr_offline_executions (
     recorded_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT pk_ibkr_offline_executions
         PRIMARY KEY (account_key, client_order_id, execution_id),
+    CONSTRAINT uq_ibkr_offline_executions_account_id
+        UNIQUE (account_key, execution_id),
     CONSTRAINT fk_ibkr_offline_executions_intent
         FOREIGN KEY (account_key, client_order_id)
         REFERENCES ibkr_offline_intents (account_key, client_order_id)
