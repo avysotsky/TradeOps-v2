@@ -195,6 +195,7 @@ cleanup() {
     fi
     unset password signal_key operator_key POSTGRES_PASSWORD
     unset ConnectionStrings__TradeOpsDb TRADEOPS_IBKR_OFFLINE_SMOKE_PG
+    unset ReconciliationShadow__Enabled TRADEOPS_RECON_SHADOW_CONFIRM
     if [[ "$code" -eq 0 && "$cleanup_failed" -eq 0 && "$completed" == 1 ]]; then
         printf 'TRADEOPS REAL POSTGRES ACCEPTANCE PASS sha=%s pg=17 journal=PASS api=PASS restart=PASS worker=PASS cleanup=PASS broker_requests=0\n' "$head"
         exit 0
@@ -403,6 +404,12 @@ TRADEOPS_ACCEPTANCE_PHASE=restart python3 \
     fail "api_real_http_postgres_restart"
 stop_api
 
+# TO-V2-18: the REAL Worker must execute the synthetic canary under its
+# explicit fail-closed startup gate. The canary is completely in-memory:
+# no broker traffic and no additional database read or write. Normal
+# recovery Worker activities are unchanged.
+export ReconciliationShadow__Enabled=true
+export TRADEOPS_RECON_SHADOW_CONFIRM=SYNTHETIC_MOCK_IBKR_ONLY
 # Verify a second real executable (Worker) starts with the real database,
 # using Mock venue and no outbound brokerage service.
 if [[ "$dotnet_mode" == native ]]; then
@@ -420,6 +427,8 @@ else
         -e ConnectionStrings__TradeOpsDb \
         -e Exchange__Provider \
         -e Telegram__Enabled \
+        -e ReconciliationShadow__Enabled \
+        -e TRADEOPS_RECON_SHADOW_CONFIRM \
         -e ASPNETCORE_ENVIRONMENT \
         -e DOTNET_ENVIRONMENT \
         --entrypoint dotnet "$dotnet_image" \
@@ -451,6 +460,18 @@ for _ in $(seq 1 20); do
     sleep 1
 done
 [[ "$worker_ready" == 1 ]] || fail "worker_not_started"
+# The HostedService executes before the "Application started" marker.
+# Only aggregate synthetic health counters may be shown. No broker
+# identifiers, instrument/order payloads, passwords or connection strings.
+shadow_marker='TRADEOPS SHADOW RECONCILIATION CANARY PASS providers=2 evaluations=6 candidates=2 unresolved=4 db_writes=0 broker_requests=0 mode=synthetic_only'
+if [[ "$dotnet_mode" == native ]]; then
+    grep -Fq "$shadow_marker" "$scratch/worker.log" ||
+        fail "worker_shadow_canary_missing_or_failed"
+else
+    docker logs "$worker_container" 2>&1 | grep -Fq "$shadow_marker" ||
+        fail "worker_shadow_canary_missing_or_failed"
+fi
+printf 'TRADEOPS REAL SHADOW RECONCILIATION PASS providers=2 evaluations=6 candidates=2 unresolved=4 db_writes=0 broker_requests=0\n'
 sleep 3
 worker_is_running || fail "worker_exited_after_start"
 if [[ "$dotnet_mode" == native ]]; then
