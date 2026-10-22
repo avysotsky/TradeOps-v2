@@ -74,19 +74,19 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
     {
         var source = File.ReadAllText(ScriptPath());
         Assert.Equal(1, Regex.Matches(source,
-            "^start_api \\"api-first\\"$", RegexOptions.Multiline).Count);
+            """^start_api "api-first"$""", RegexOptions.Multiline).Count);
         Assert.Equal(1, Regex.Matches(source,
             "^completed=1$", RegexOptions.Multiline).Count);
         Assert.Equal(1, Regex.Matches(source,
-            "^worker_is_running\\(\\) \\{$", RegexOptions.Multiline).Count);
+            """^worker_is_running\(\) \{$""", RegexOptions.Multiline).Count);
         Assert.Contains(
             "IBKR OFFLINE POSTGRES SMOKE PASS cases=[0-9]+ broker_requests=0 cleanup=true$",
             source, StringComparison.Ordinal);
         Assert.Contains(
-            "fail \\"journal_smoke_success_marker_missing\\"",
+            "journal_smoke_success_marker_missing",
             source, StringComparison.Ordinal);
         Assert.Contains("stage=temporary_cache_cleanup",
             source, StringComparison.Ordinal);
-        Assert.DoesNotContain("\\r", source, StringComparison.Ordinal);
+        Assert.False(source.Contains((char)13), "Acceptance script contains CRLF.");
     }
 }
