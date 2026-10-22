@@ -67,14 +67,20 @@ try
     var ddlPath = Path.Combine(root,
         "scripts", "ibkr", "to-v2-10-offline-journal-schema.sql");
     var schemaSql = await File.ReadAllTextAsync(ddlPath);
+    var reconciliationDdl = await File.ReadAllTextAsync(Path.Combine(root,
+        "scripts", "ibkr", "to-v2-12-offline-reconciliation-schema.sql"));
     await using (var connection = new NpgsqlConnection(scopedBuilder.ConnectionString))
     {
         await connection.OpenAsync();
         await using var ddl = new NpgsqlCommand(schemaSql, connection);
         await ddl.ExecuteNonQueryAsync();
+        await using var reconciliationSchema = new NpgsqlCommand(reconciliationDdl, connection);
+        await reconciliationSchema.ExecuteNonQueryAsync();
     }
 
     await RunAsync(scopedBuilder.ConnectionString,
+        () => completedCases++);
+    await RunReconciliationAsync(scopedBuilder.ConnectionString,
         () => completedCases++);
 
     // Independently validate schema and rows stayed within the smoke schema.
@@ -84,7 +90,7 @@ try
         await using var command = new NpgsqlCommand(
             "SELECT count(*) FROM ibkr_offline_intents", connection);
         var count = Convert.ToInt64(await command.ExecuteScalarAsync());
-        Check(count == 2, "unexpected offline order count");
+        Check(count == 4, "unexpected offline order count");
         completedCases++;
     }
 }
@@ -220,6 +226,116 @@ static async Task RunAsync(string scopedConnectionString, Action casePassed)
     var latest = await restartedAgain.LoadAsync(account, coid);
     Check(latest.Snapshot.State == IbkrOfflineOrderState.Filled
         && latest.Executions.Count == 3, "durable independent reconstruction");
+    casePassed();
+}
+
+static async Task RunReconciliationAsync(string connectionString, Action casePassed)
+{
+    const string account = "offline-account-fixture";
+    const string broker = "reconciliation-broker-901";
+    var coid = "coid-" + Guid.NewGuid().ToString("N");
+    var intent = new IbkrOfflineOrderIntent(
+        coid, account, "AAPL", OrderSide.Buy, 5m);
+    var journal = new IbkrOfflinePostgresJournal(connectionString);
+    await journal.RegisterAsync(intent);
+    await journal.AppendEventAsync(account, "preflight", Event(
+        coid, IbkrOfflineOrderEventType.PreflightApproved));
+    await journal.AppendEventAsync(account, "placement", Event(
+        coid, IbkrOfflineOrderEventType.SubmissionStarted));
+    await journal.AppendEventAsync(account, "timeout", Event(
+        coid, IbkrOfflineOrderEventType.TransportTimedOut));
+
+    var fill1 = new IbkrOfflineExecutionEvidence(
+        "reconciliation-exec-1", account, coid, broker, 2m);
+    var order = new IbkrOfflineBrokerOrderEvidence(
+        account, coid, broker, "AAPL", OrderSide.Buy, 5m, 2m,
+        IbkrOfflineBrokerOrderStatus.PartiallyFilled,
+        ExecutionsComplete: true,
+        Executions: [fill1]);
+    var incomplete = new IbkrOfflineEvidenceSnapshot(
+        1, account, OrdersComplete: false, Orders: [order]);
+    var inconclusive = await journal.AppendReconciliationAsync(account, coid, incomplete);
+    Check(inconclusive.Result.Disposition == IbkrOfflineReconciliationDisposition.Inconclusive
+        && inconclusive.Result.Order.State == IbkrOfflineOrderState.Unknown,
+        "partial account snapshot must not resolve");
+    Check((await journal.LoadAsync(account, coid)).Executions.Count == 0,
+        "partial snapshot must not import fills");
+    casePassed();
+
+    var complete = new IbkrOfflineEvidenceSnapshot(
+        2, account, OrdersComplete: true, Orders: [order]);
+    var reconciled = await new IbkrOfflinePostgresJournal(connectionString)
+        .AppendReconciliationAsync(account, coid, complete);
+    Check(reconciled.Result.Disposition == IbkrOfflineReconciliationDisposition.PartiallyFilled
+        && reconciled.Result.Order.CumulativeFilled == 2m
+        && reconciled.AddedExecutionIds == 1
+        && !reconciled.IdempotentReplay, "atomic reconciliation baseline import");
+
+    var afterRestart = await journal.LoadAsync(account, coid);
+    Check(afterRestart.Snapshot.State == IbkrOfflineOrderState.PartiallyFilled
+        && afterRestart.Snapshot.CumulativeFilled == 2m
+        && afterRestart.Executions.Count == 1, "reconciliation survives restart");
+    casePassed();
+
+    var again = await new IbkrOfflinePostgresJournal(connectionString)
+        .AppendReconciliationAsync(account, coid, complete);
+    Check(again.IdempotentReplay
+        && again.AddedExecutionIds == 0, "idempotent observation replay");
+    await MustRejectAsync(() => journal.AppendReconciliationAsync(
+        account, coid, complete with { Sequence = 1 }));
+    await MustRejectAsync(() => journal.AppendReconciliationAsync(
+        account, coid, complete with { OrdersComplete = false }));
+    casePassed();
+
+    var final = await journal.AppendExecutionAsync(
+        account, coid, "reconciliation-exec-2", broker, 3m);
+    Check(final.Snapshot.State == IbkrOfflineOrderState.Filled
+        && final.Snapshot.CumulativeFilled == 5m
+        && final.Executions.Count == 2,
+        "full fill must count from imported execution-ID baseline");
+    casePassed();
+
+    // On the next order, verify a SQL execution ID conflict rolls back
+    // BOTH the normalized audit record and the state transition.
+    var otherCoid = "coid-" + Guid.NewGuid().ToString("N");
+    await journal.RegisterAsync(intent with { ClientOrderId = otherCoid });
+    await journal.AppendEventAsync(account, "preflight", Event(
+        otherCoid, IbkrOfflineOrderEventType.PreflightApproved));
+    await journal.AppendEventAsync(account, "placement", Event(
+        otherCoid, IbkrOfflineOrderEventType.SubmissionStarted));
+    await journal.AppendEventAsync(account, "timeout", Event(
+        otherCoid, IbkrOfflineOrderEventType.TransportTimedOut));
+    var otherBroker = "reconciliation-broker-902";
+    var conflicting = new IbkrOfflineEvidenceSnapshot(
+        1, account, true,
+        [new IbkrOfflineBrokerOrderEvidence(
+            account, otherCoid, otherBroker, "AAPL", OrderSide.Buy, 5m, 2m,
+            IbkrOfflineBrokerOrderStatus.PartiallyFilled, true,
+            [new IbkrOfflineExecutionEvidence(
+                "reconciliation-exec-1", account, otherCoid, otherBroker, 2m)])]);
+
+    await MustRejectAsync(() => journal.AppendReconciliationAsync(
+        account, otherCoid, conflicting));
+    var rolledBack = await journal.LoadAsync(account, otherCoid);
+    Check(rolledBack.Snapshot.State == IbkrOfflineOrderState.Unknown
+        && rolledBack.Executions.Count == 0,
+        "failed reconciliation cannot leave imported fill or accepted state");
+
+    // The same sequence can now be used with valid evidence; its failed
+    // attempt must not have created a durable observation row.
+    var corrected = conflicting with
+    {
+        Orders = [conflicting.Orders[0] with
+        {
+            Executions = [new IbkrOfflineExecutionEvidence(
+                "reconciliation-exec-3", account, otherCoid, otherBroker, 2m)]
+        }]
+    };
+    var recovered = await journal.AppendReconciliationAsync(
+        account, otherCoid, corrected);
+    Check(recovered.Result.Disposition == IbkrOfflineReconciliationDisposition.PartiallyFilled
+        && recovered.AddedExecutionIds == 1,
+        "rollback must also remove the failed observation");
     casePassed();
 }
 
