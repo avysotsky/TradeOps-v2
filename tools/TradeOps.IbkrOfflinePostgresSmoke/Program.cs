@@ -34,7 +34,13 @@ if (!string.Equals(rootBuilder.Host, "localhost", StringComparison.OrdinalIgnore
 }
 
 if (string.IsNullOrWhiteSpace(rootBuilder.Database)
-    || !rootBuilder.Database.StartsWith("tradeops_ibkr_offline_smoke_", StringComparison.Ordinal))
+    || !rootBuilder.Database.StartsWith("tradeops_ibkr_offline_smoke_", StringComparison.Ordinal)
+    || rootBuilder.Database.Length > 63
+    || rootBuilder.Database.Length == "tradeops_ibkr_offline_smoke_".Length
+    || !rootBuilder.Database.All(c => c is >= 'a' and <= 'z'
+        or >= '0' and <= '9' or '_')
+    || !string.IsNullOrWhiteSpace(rootBuilder.SearchPath)
+    || !string.IsNullOrWhiteSpace(rootBuilder.Options))
 {
     Console.Error.WriteLine("IBKR OFFLINE POSTGRES SMOKE NOT RUN: dedicated disposable DB name required.");
     return 2;
@@ -62,6 +68,10 @@ try
         SearchPath = schema,
         ApplicationName = "TradeOps.IbkrOfflinePostgresSmoke"
     };
+
+    // Validate the final scoped connection BEFORE any schema DDL runs.
+    // A public, aliased or multi-schema search path is never permissible.
+    IbkrOfflineJournalConnectionPolicy.Validate(scopedBuilder.ConnectionString);
 
     var root = FindRepositoryRoot();
     var ddlPath = Path.Combine(root,
@@ -244,6 +254,21 @@ static async Task RunReconciliationAsync(string connectionString, Action casePas
         coid, IbkrOfflineOrderEventType.SubmissionStarted));
     await journal.AppendEventAsync(account, "timeout", Event(
         coid, IbkrOfflineOrderEventType.TransportTimedOut));
+
+    // A direct "reconciled filled" append would bypass the evidence+fill
+    // atomic transaction and must fail before interacting with the DB.
+    await MustRejectAsync(() => journal.AppendEventAsync(
+        account, "forged-terminal", new IbkrOfflineOrderEvent(
+            coid, IbkrOfflineOrderEventType.ReconciledFilled,
+            BrokerOrderId: broker, CumulativeFilled: 5m)));
+    await MustRejectAsync(() => journal.AppendEventAsync(
+        account, "forged-not-found", Event(
+            coid, IbkrOfflineOrderEventType.ReconciliationNotFound)));
+    var beforeReconcile = await journal.LoadAsync(account, coid);
+    Check(beforeReconcile.Snapshot.State == IbkrOfflineOrderState.Unknown
+        && beforeReconcile.Executions.Count == 0,
+        "unsupported direct reconciliation events must not modify the journal");
+    casePassed();
 
     var fill1 = new IbkrOfflineExecutionEvidence(
         "reconciliation-exec-1", account, coid, broker, 2m);
