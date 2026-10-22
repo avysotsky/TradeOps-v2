@@ -88,6 +88,7 @@ public sealed partial class IbkrOfflinePostgresJournal
         IbkrOfflineJournalReplay.ValidateKey(accountKey, nameof(accountKey));
         ArgumentNullException.ThrowIfNull(evt);
         IbkrOfflineJournalReplay.ValidateKey(evt.ClientOrderId, nameof(evt.ClientOrderId));
+        IbkrOfflineJournalReplay.ValidateDirectAppend(evt);
 
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = (NpgsqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
@@ -106,20 +107,6 @@ public sealed partial class IbkrOfflinePostgresJournal
 
             await transaction.CommitAsync(cancellationToken);
             return loaded;
-        }
-
-        // Reconciliation transitions must be atomically bound to complete
-        // execution-ID evidence and an observation record. A direct lifecycle
-        // append can otherwise create Filled/Cancelled with no supporting
-        // evidence and silently destroy the durable baseline guarantee.
-        if (evt.Type is IbkrOfflineOrderEventType.CumulativeFill
-            or IbkrOfflineOrderEventType.ReconciledWorking
-            or IbkrOfflineOrderEventType.ReconciledFilled
-            or IbkrOfflineOrderEventType.ReconciledCancelled
-            or IbkrOfflineOrderEventType.CancelConfirmed)
-        {
-            throw new InvalidOperationException(
-                "Evidence-bound IBKR offline lifecycle events require atomic execution or reconciliation persistence.");
         }
 
         var updated = ApplyChecked(loaded, evt);
