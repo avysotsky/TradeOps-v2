@@ -103,6 +103,7 @@ public static class IbkrOfflineJournalReplay
     {
         ArgumentNullException.ThrowIfNull(evt);
         if (evt.Type is IbkrOfflineOrderEventType.CumulativeFill
+            or IbkrOfflineOrderEventType.ReconciliationNotFound
             or IbkrOfflineOrderEventType.ReconciledWorking
             or IbkrOfflineOrderEventType.ReconciledFilled
             or IbkrOfflineOrderEventType.ReconciledCancelled
