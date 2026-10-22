@@ -116,6 +116,10 @@ for _ in $(seq 1 75); do
     sleep 1
 done
 [[ "$ready" == 1 ]] || fail "postgres_ready"
+server_version="$(docker exec "$pg_container" psql -U postgres -d "$journal_db" -At \
+    -c 'SHOW server_version_num' | tr -d '[:space:]')"
+[[ "$server_version" =~ ^17[0-9]{4}$ ]] || fail "wrong_postgresql_server_version"
+printf 'TRADEOPS REAL POSTGRES VERSION PASS major=17\n'
 
 # The real API runs against ANOTHER real disposable database in the same
 # ephemeral PostgreSQL cluster, never against the owner's production DB.
