@@ -19,9 +19,16 @@ order placement or cancellation**. No production PostgreSQL.
   preferring `jobradar-pr-autotest:dotnet10`, then
   `mcr.microsoft.com/dotnet/sdk:10.0`. These are checked for SDK 10;
   no image pull or software installation is attempted. In container
-  mode, build and restore run without a network, while the real API,
-  Worker and journal smoke share the local Docker host namespace to
-  reach the separate ephemeral PostgreSQL instance.
+  mode, **only the dependency restore** may reach the public NuGet
+  feed, constrained by the dedicated
+  `scripts/ibkr/to-v2-14-nuget.config` (`nuget.org` exclusively).
+  Restore uses a **per-run temporary NuGet package cache** shared
+  between the disposable SDK containers that perform restore and
+  build. Build and the account-free demo run with Docker networking
+  disabled; the real API, Worker and journal smoke share only the
+  local Docker host namespace to reach the isolated PostgreSQL
+  container. All application exchange providers stay configured
+  as `Mock` with external integrations disabled.
 - A **clean, detached checkout** of TO-V2-14. Use a separate `git
   worktree` instead of switching the running relay's checkout.
 - Permission to start and remove a uniquely named ephemeral Docker
@@ -153,3 +160,34 @@ invalid SHA strings before creating any container.
 This is a Windows/Linux Git interoperability fix, not PostgreSQL or
 IBKR runtime qualification. The real PostgreSQL acceptance must still
 execute to completion with its actual DB/API/Worker evidence.
+
+
+### NuGet restore failure diagnosed (October 22, 2026)
+
+The first real acceptance attempt that reached the SDK restore failed
+with `NU1101` for packages including EF Core, Npgsql and Swashbuckle.
+The original script had run `dotnet restore` under `--network none`
+without a populated NuGet cache inside the SDK image. The test never
+started PostgreSQL; this was a harness dependency issue, not an
+application or database failure.
+
+The revised script:
+- Uses a **dedicated official nuget.org-only** source configuration,
+  not private/system feeds.
+- Enables outbound network **only for NuGet restore**, and disables it
+  again for build and IBKR account-free demos.
+- Mounts a **shared ephemeral NuGet global-packages folder** across
+  separate restore and build SDK containers so the packages do not
+  disappear when the restore container exits.
+- Caps restore to 360 s and build to 180 s; emits a sanitized heartbeat
+  every ~10 s and reports categorized error codes. SDK Docker
+  containers are removed even after a timeout.
+- Drops the ephemeral cache during cleanup. The host's existing NuGet
+  cache and the independent WSL2 runner are untouched.
+
+This does allow an official public package-download connection during
+restore (the image, PostgreSQL and broker transports are still
+offline/loopback-only). If the WSL2 host cannot reach the NuGet source,
+runtime acceptance remains blocked until an authorized local source or
+pre-provisioned offline cache is available. Never claim a PostgreSQL
+PASS merely because restore succeeds.
