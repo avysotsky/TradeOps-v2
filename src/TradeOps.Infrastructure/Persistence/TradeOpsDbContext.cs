@@ -8,6 +8,9 @@ public sealed class TradeOpsDbContext(DbContextOptions<TradeOpsDbContext> option
 {
     public DbSet<Order> Orders => Set<Order>();
 
+    // Additive explicit broker scope; historical orders remain unscoped.
+    public DbSet<BrokerOrderIdentity> BrokerOrderIdentities => Set<BrokerOrderIdentity>();
+
     public DbSet<OrderLifecycleEvent> OrderLifecycleEvents => Set<OrderLifecycleEvent>();
 
     public DbSet<OperationalRunStatus> OperationalRunStatuses => Set<OperationalRunStatus>();
