@@ -17,6 +17,39 @@ partial class TradeOpsDbContextModelSnapshot : ModelSnapshot
             .HasAnnotation("ProductVersion", "8.0.11")
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+        modelBuilder.Entity("TradeOps.Infrastructure.Persistence.BrokerOrderIdentity", b =>
+        {
+            b.Property<Guid>("OrderId").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<string>("ProviderKey").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
+            b.Property<string>("AccountKey").IsRequired().HasMaxLength(128).HasColumnType("character varying(128)");
+            b.Property<string>("InstrumentKey").IsRequired().HasMaxLength(192).HasColumnType("character varying(192)");
+            b.Property<string>("ClientOrderId").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
+            b.Property<string>("BrokerOrderId").HasMaxLength(100).HasColumnType("character varying(100)");
+            b.Property<string>("Classification").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)");
+            b.Property<DateTimeOffset>("RecordedAt").HasColumnType("timestamp with time zone");
+            b.HasKey("OrderId");
+            b.HasIndex("ProviderKey", "AccountKey", "ClientOrderId")
+                .IsUnique().HasDatabaseName("UX_BrokerOrderIdentities_ProviderAccountClient");
+            b.HasIndex("ProviderKey", "AccountKey", "BrokerOrderId")
+                .IsUnique().HasFilter("\"BrokerOrderId\" IS NOT NULL")
+                .HasDatabaseName("UX_BrokerOrderIdentities_ProviderAccountBroker");
+            b.ToTable("BrokerOrderIdentities", t =>
+            {
+                t.HasCheckConstraint("CK_BrokerOrderIdentities_SyntheticOnly",
+                    "\"Classification\" = 'SyntheticOnly'");
+                t.HasCheckConstraint("CK_BrokerOrderIdentities_QualifiedSyntheticInstrument",
+                    "(\"ProviderKey\" = 'Mock' AND left(\"InstrumentKey\", 5) = 'MOCK:' " +
+                    "AND length(\"InstrumentKey\") > 5) OR " +
+                    "(\"ProviderKey\" = 'IbkrOffline' AND left(\"InstrumentKey\", 22) = 'SYNTHETIC-IBKR-SYMBOL:' " +
+                    "AND length(\"InstrumentKey\") > 22)");
+                t.HasCheckConstraint("CK_BrokerOrderIdentities_NonBlankScope",
+                    "length(btrim(\"AccountKey\")) > 0 AND \"AccountKey\" = btrim(\"AccountKey\") " +
+                    "AND length(btrim(\"ClientOrderId\")) > 0 AND \"ClientOrderId\" = btrim(\"ClientOrderId\") " +
+                    "AND (\"BrokerOrderId\" IS NULL OR (length(btrim(\"BrokerOrderId\")) > 0 " +
+                    "AND \"BrokerOrderId\" = btrim(\"BrokerOrderId\")))");
+            });
+        });
+
         modelBuilder.Entity("TradeOps.Domain.Entities.Fill", b =>
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
@@ -279,6 +312,15 @@ partial class TradeOpsDbContextModelSnapshot : ModelSnapshot
             b.HasKey("Id");
             b.HasIndex("TradingSignalId", "OccurredAt");
             b.ToTable("TradingSignalOutcomeEvents");
+        });
+
+        modelBuilder.Entity("TradeOps.Infrastructure.Persistence.BrokerOrderIdentity", b =>
+        {
+            b.HasOne("TradeOps.Domain.Entities.Order", null)
+                .WithOne()
+                .HasForeignKey("TradeOps.Infrastructure.Persistence.BrokerOrderIdentity", "OrderId")
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired();
         });
 
         modelBuilder.Entity("TradeOps.Domain.Entities.Fill", b =>
