@@ -3,6 +3,7 @@ using TradeOps.Application.Models;
 using TradeOps.Application.Services;
 using TradeOps.Domain.Enums;
 using TradeOps.Infrastructure.Exchange;
+using TradeOps.Infrastructure.Exchange.Ibkr;
 using Xunit;
 
 namespace TradeOps.UnitTests;
@@ -30,6 +31,47 @@ public sealed class MockBrokerReconciliationSourceTests
         Assert.Equal(BrokerReconciliationDecisionKind.Candidate, result.Decision.Kind);
         Assert.Equal(OrderStatus.Filled, result.Decision.CandidateStatus);
         Assert.Equal(5m, result.Decision.CandidateFilledQuantity);
+    }
+
+    [Fact]
+    public async Task MockAndSyntheticIbkrSources_ShareExactlyOneDecisionPolicy()
+    {
+        var mock = new BrokerReconciliationShadowEvaluator(
+            new MockBrokerReconciliationSource(
+                Fixture(19, true, true, Order())),
+            DecisionEngine);
+
+        var pages = new IbkrOfflineEvidencePageCollector(
+            Account, "source-parity", observationSequence: 19);
+        pages.Append(new IbkrOfflineEvidencePage(
+            Account, "source-parity", 19, 0, null, "page2", false, []));
+        pages.Append(new IbkrOfflineEvidencePage(
+            Account, "source-parity", 19, 1, "page2", null, true,
+            [new IbkrOfflineBrokerOrderEvidence(
+                Account, Client, Broker, "BTCUSDT", OrderSide.Buy,
+                5m, 5m, IbkrOfflineBrokerOrderStatus.Filled, true,
+                [new IbkrOfflineExecutionEvidence(
+                    "execution-1", Account, Client, Broker, 2m),
+                 new IbkrOfflineExecutionEvidence(
+                    "execution-2", Account, Client, Broker, 3m)])]));
+
+        var ibkr = new BrokerReconciliationShadowEvaluator(
+            new IbkrOfflineBrokerReconciliationSource(pages),
+            DecisionEngine);
+
+        var mockDecision = (await mock.EvaluateAsync(Context())).Decision;
+        var ibkrDecision = (await ibkr.EvaluateAsync(Context() with
+        {
+            ProviderKey = IbkrOfflineBrokerReconciliationSource.ProviderKey,
+            InstrumentKey = IbkrOfflineBrokerReconciliationSource
+                .MakeSyntheticInstrumentKey("BTCUSDT")
+        })).Decision;
+
+        Assert.Equal(BrokerReconciliationDecisionKind.Candidate, mockDecision.Kind);
+        Assert.Equal(mockDecision.Kind, ibkrDecision.Kind);
+        Assert.Equal(mockDecision.CandidateStatus, ibkrDecision.CandidateStatus);
+        Assert.Equal(mockDecision.CandidateFilledQuantity,
+            ibkrDecision.CandidateFilledQuantity);
     }
 
     [Fact]
