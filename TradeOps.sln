@@ -30,6 +30,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.TranscriptResearch
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.ProviderTranscriptResearchDemo", "tools\TradeOps.ProviderTranscriptResearchDemo\TradeOps.ProviderTranscriptResearchDemo.csproj", "{F82B8A96-1D2D-4E31-B0D7-8357B9F45110}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.IbkrOfflineDemo", "tools\\TradeOps.IbkrOfflineDemo\\TradeOps.IbkrOfflineDemo.csproj", "{6C0365AD-40E2-433C-8A4C-64E2B616B499}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -93,5 +95,9 @@ Global
         {F82B8A96-1D2D-4E31-B0D7-8357B9F45110}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {F82B8A96-1D2D-4E31-B0D7-8357B9F45110}.Release|Any CPU.Build.0 = Release|Any CPU
 
+        {6C0365AD-40E2-433C-8A4C-64E2B616B499}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {6C0365AD-40E2-433C-8A4C-64E2B616B499}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {6C0365AD-40E2-433C-8A4C-64E2B616B499}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {6C0365AD-40E2-433C-8A4C-64E2B616B499}.Release|Any CPU.Build.0 = Release|Any CPU
     EndGlobalSection
 EndGlobal
