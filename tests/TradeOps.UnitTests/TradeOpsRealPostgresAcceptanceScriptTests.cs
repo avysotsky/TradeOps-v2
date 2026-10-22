@@ -33,6 +33,29 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
     }
 
     [Fact]
+    public void WindowsLauncher_UsesExplicitWorkstreamBranchAndChecksExactRemoteHead()
+    {
+        var root = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(ScriptPath())!, "..", ".."));
+        var launcher = Path.Combine(
+            root, "scripts", "ibkr", "to-v2-14-run-from-windows.ps1");
+        Assert.True(File.Exists(launcher),
+            "PowerShell launcher for WSL acceptance is missing.");
+
+        var code = File.ReadAllText(launcher);
+        Assert.Contains("[string] $Branch =", code, StringComparison.Ordinal);
+        Assert.Contains("fetch origin $Branch", code, StringComparison.Ordinal);
+        Assert.Contains("rev-parse FETCH_HEAD", code, StringComparison.Ordinal);
+        Assert.Contains("$fetchedHead -cne $ExpectedHead", code, StringComparison.Ordinal);
+        Assert.Contains("$stagedHead -cne $ExpectedHead", code, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "$branch = 'TradeOps/to-v2-14-real-postgres-api-acceptance'",
+            code, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "fetch origin $branch", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RealPostgresAcceptanceScript_ParsesWithBash()
     {
         var script = ScriptPath();
