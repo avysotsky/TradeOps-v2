@@ -131,6 +131,13 @@ public sealed partial class IbkrOfflinePostgresJournal
                     execution.ExecutionId, nameof(execution.ExecutionId));
                 IbkrOfflineJournalReplay.ValidateKey(
                     execution.BrokerOrderId, nameof(execution.BrokerOrderId));
+                if (execution.Quantity <= 0m
+                    || decimal.Round(execution.Quantity, 12) != execution.Quantity
+                    || execution.Quantity >= 10_000_000_000_000_000m)
+                {
+                    throw new InvalidOperationException(
+                        "Synthetic execution quantity is outside PostgreSQL numeric(28,12) range.");
+                }
                 if (unique.TryGetValue(execution.ExecutionId, out var duplicate))
                 {
                     if (duplicate != execution)
