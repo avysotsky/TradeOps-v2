@@ -34,6 +34,24 @@ public sealed class IbkrAdapterTests
             exception.Message);
     }
 
+    [Theory]
+    [InlineData("https://user:password@localhost:5000/v1/api")]
+    [InlineData("https://localhost:5000/v1/api?route=external")]
+    [InlineData("https://localhost:5000/v1/api#fragment")]
+    [InlineData("https://127.0.0.1:5000/v1/api")]
+    [InlineData("http://localhost:5000/v1/api")]
+    public void Constructor_RejectsAmbiguousOrUnsafeGatewayOrigin(string baseUrl)
+    {
+        var factory = new StaticHttpClientFactory(
+            new StubHandler(_ => Json(HttpStatusCode.OK, "{}")));
+
+        Assert.Throws<InvalidOperationException>(
+            () => new IbkrPaperExchangeClient(
+                factory,
+                new IbkrOptions { BaseUrl = baseUrl },
+                NullLogger<IbkrPaperExchangeClient>.Instance));
+    }
+
     [Fact]
     public async Task GetAccountAsync_RejectsNonPaperBrokerageSession()
     {
