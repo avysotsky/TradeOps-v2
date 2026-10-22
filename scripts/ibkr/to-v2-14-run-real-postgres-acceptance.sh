@@ -36,7 +36,7 @@ head="${1:-}"
 [[ "$head" =~ ^[0-9a-f]{40}$ ]] ||
     fail "missing_or_invalid_verified_head"
 
-for dependency in docker python3 curl flock; do
+for dependency in docker python3 curl flock timeout; do
     command -v "$dependency" >/dev/null 2>&1 || fail "missing_${dependency}"
 done
 docker info >/dev/null 2>&1 || fail "docker_engine_unavailable"
@@ -64,19 +64,31 @@ if ! command -v dotnet >/dev/null 2>&1 ||
     fi
 fi
 
-# Build and CLI acceptance use the same cached .NET 10 SDK. For container
-# mode, bind ONLY the detached checkout (not other owner projects).
+# Build and CLI acceptance use the same cached .NET 10 SDK.
+# NuGet's expanded packages MUST survive separate disposable SDK containers:
+# restore and build run in different processes. Cache is inside a temporary,
+# per-run directory, never a shared system SDK cache or an existing WSL service.
+# Network access is permitted ONLY during restore, with official nuget.org as
+# the sole package source (scripts/ibkr/to-v2-14-nuget.config).
 run_dotnet() {
     local network="$1"
     shift
     if [[ "$dotnet_mode" == native ]]; then
-        dotnet "$@"
+        NUGET_PACKAGES="$scratch/nuget-packages" \
+            NUGET_HTTP_CACHE_PATH="$scratch/nuget-http" \
+            DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+            dotnet "$@"
     else
         docker run --rm --pull=never \
-            --network "$network" --cpus=2 --memory=2g \
+            --network "$network" --cpus=2 --memory=2g --pids-limit=160 \
             --mount "type=bind,source=$ROOT,target=/workspace" \
+            --mount "type=bind,source=$scratch/nuget-packages,target=/acceptance-nuget/packages" \
+            --mount "type=bind,source=$scratch/nuget-http,target=/acceptance-nuget/http" \
             --workdir /workspace \
             -e DOTNET_CLI_HOME=/tmp \
+            -e DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+            -e NUGET_PACKAGES=/acceptance-nuget/packages \
+            -e NUGET_HTTP_CACHE_PATH=/acceptance-nuget/http \
             -e TRADEOPS_IBKR_OFFLINE_SMOKE_CONFIRM \
             -e TRADEOPS_IBKR_OFFLINE_SMOKE_PG \
             --entrypoint dotnet \
@@ -89,6 +101,7 @@ exec 9>"${TMPDIR:-/tmp}/tradeops-ibkr-real-pg-acceptance.lock"
 flock -n 9 || fail "another_real_postgres_acceptance_is_running"
 
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/tradeops-real-pg.XXXXXXXX")"
+mkdir -p "$scratch/nuget-packages" "$scratch/nuget-http"
 run_suffix="$(python3 -c 'import secrets;print(secrets.token_hex(6))')"
 pg_container="tradeops-ibkr-realpg-${run_suffix}"
 api_container="tradeops-ibkr-realapi-${run_suffix}"
@@ -153,11 +166,20 @@ trap cleanup EXIT
 printf 'TRADEOPS REAL POSTGRES ACCEPTANCE start sha=%s mode=isolated_mock_only\n' "$head"
 
 # New detached worktrees require their own obj/project.assets.json.
-# Do NOT invoke network-accessing broker adapters or existing WSL relay services.
-if ! run_dotnet none restore TradeOps.sln --ignore-failed-sources --verbosity quiet >"$scratch/restore.log" 2>&1; then
+# The SDK container may have no NuGet packages. Allow access to official
+# nuget.org only for restore; builds and all offline broker demos run with
+# Docker networking disabled. No actual trading or broker requests.
+printf 'TRADEOPS REAL POSTGRES RESTORE START source=nuget.org-only network=restore-only\n'
+if ! timeout --signal=TERM --kill-after=10s 360s \
+    run_dotnet host restore TradeOps.sln \
+    --configfile scripts/ibkr/to-v2-14-nuget.config \
+    --verbosity minimal >"$scratch/restore.log" 2>&1; then
     fail "solution_restore"
 fi
-if ! run_dotnet none build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
+printf 'TRADEOPS REAL POSTGRES RESTORE PASS\n'
+printf 'TRADEOPS REAL POSTGRES BUILD START\n'
+if ! timeout --signal=TERM --kill-after=10s 180s \
+    run_dotnet none build TradeOps.sln -c Release --no-restore -v:q >"$scratch/build.log" 2>&1; then
     fail "solution_build"
 fi
 printf 'TRADEOPS REAL POSTGRES BUILD PASS\n'
