@@ -12,7 +12,15 @@ fail() {
     exit 1
 }
 
-for dependency in docker python3 curl flock git; do
+# A worktree created by Windows Git has a .git file containing a
+# Windows drive-letter path. Linux git rev-parse cannot resolve it.
+# The PowerShell launcher verifies the exact detached HEAD with git.exe
+# and passes the verified full commit SHA as the ONLY script argument.
+head="${1:-}"
+[[ "$head" =~ ^[0-9a-f]{40}$ ]] ||
+    fail "missing_or_invalid_verified_head"
+
+for dependency in docker python3 curl flock; do
     command -v "$dependency" >/dev/null 2>&1 || fail "missing_${dependency}"
 done
 docker info >/dev/null 2>&1 || fail "docker_engine_unavailable"
@@ -74,7 +82,7 @@ api_db="tradeops_api_smoke_${run_suffix}"
 password="$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
 signal_key="$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
 operator_key="$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
-head="$(git rev-parse HEAD)"
+# HEAD was verified on the Windows side; no Linux Git worktree lookup.
 api_pid=''
 worker_pid=''
 pg_started=0
