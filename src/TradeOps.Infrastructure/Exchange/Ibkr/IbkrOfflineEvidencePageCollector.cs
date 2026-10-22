@@ -67,6 +67,7 @@ public sealed class IbkrOfflineEvidencePageCollector
     {
         ArgumentNullException.ThrowIfNull(page);
         if (page.PageIndex < 0 || page.Orders is null
+            || page.Orders.Count > MaxOrders
             || !string.Equals(page.AccountKey, _accountKey, StringComparison.Ordinal)
             || !string.Equals(page.CollectionKey, _collectionKey, StringComparison.Ordinal)
             || page.ObservationSequence != _sequence)
@@ -74,8 +75,17 @@ public sealed class IbkrOfflineEvidencePageCollector
             throw Invalid();
         }
 
-        // Fingerprints are computed before replay handling, including deep
-        // order/execution evidence. Conflicting retries never mutate state.
+        // Reject obviously oversized synthetic fixtures before serialization.
+        // Replays are fingerprinted by value, not IReadOnlyList reference identity.
+        if (page.Orders.Any(order => order is null
+            || order.Executions is null
+            || order.Executions.Count > MaxExecutions))
+        {
+            throw Invalid();
+        }
+
+        // Fingerprints include the nested normalized execution evidence.
+        // Conflicting retries never mutate state.
         var digest = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(page))));
 
@@ -229,7 +239,7 @@ public sealed class IbkrOfflineEvidencePageCollector
             throw Invalid();
         }
 
-        return new(_sequence, _accountKey, OrdersComplete: false,
+        return new(_sequence, _accountKey, false,
             Array.AsReadOnly(_orders.ToArray()));
     }
 
@@ -240,7 +250,7 @@ public sealed class IbkrOfflineEvidencePageCollector
             throw Invalid();
         }
 
-        return new(_sequence, _accountKey, OrdersComplete: true,
+        return new(_sequence, _accountKey, true,
             Array.AsReadOnly(_orders.ToArray()));
     }
 
