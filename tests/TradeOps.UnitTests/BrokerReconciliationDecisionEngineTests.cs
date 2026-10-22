@@ -106,7 +106,23 @@ public sealed class BrokerReconciliationDecisionEngineTests
     }
 
     [Fact]
-    public void AlreadyAlignedKnownOrder_ReturnsNoChange()
+    public void AlreadyAlignedUnfilledKnownOrder_ReturnsNoChange()
+    {
+        var ctx = Local() with
+        {
+            BrokerOrderId = BrokerId,
+            LocalStatus = OrderStatus.Submitted,
+            LocalFilledQuantity = 0m
+        };
+        var result = _engine.Evaluate(ctx, Found(
+            Order(OrderStatus.Submitted, 0m, [])));
+
+        Assert.Equal(BrokerReconciliationDecisionKind.NoChange, result.Kind);
+        Assert.Null(result.CandidateStatus);
+    }
+
+    [Fact]
+    public void AlignedPositiveFills_StillNeedDurableExecutionIdVerification()
     {
         var ctx = Local() with
         {
@@ -116,8 +132,9 @@ public sealed class BrokerReconciliationDecisionEngineTests
         };
         var result = _engine.Evaluate(ctx, Found());
 
-        Assert.Equal(BrokerReconciliationDecisionKind.NoChange, result.Kind);
-        Assert.Null(result.CandidateStatus);
+        Assert.Equal(BrokerReconciliationDecisionKind.Candidate, result.Kind);
+        Assert.Equal(OrderStatus.Filled, result.CandidateStatus);
+        Assert.Equal(5m, result.CandidateFilledQuantity);
     }
 
     [Fact]
@@ -287,7 +304,7 @@ public sealed class BrokerReconciliationDecisionEngineTests
             .GetAwaiter().GetResult();
 
         Assert.Equal(BrokerEvidenceAvailability.Complete, observation.Availability);
-        Assert.Equal(7, observation.ObservationSequence);
+        Assert.Equal(7L, observation.ObservationSequence);
     }
 
     [Fact]
