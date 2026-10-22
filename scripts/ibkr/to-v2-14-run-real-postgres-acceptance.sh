@@ -323,9 +323,14 @@ stop_api() {
     else
         docker rm -f "$api_container" >/dev/null 2>&1 ||
             fail "api_container_stop"
-        docker inspect "$api_container" >/dev/null 2>&1 &&
+        if docker inspect "$api_container" >/dev/null 2>&1; then
             fail "api_container_cleanup"
+        fi
     fi
+    # A missing container is the EXPECTED successful postcondition.
+    # Under set -e, a bare 'docker inspect ... && fail' used to return
+    # status 1 even when removal succeeded, terminating acceptance here.
+    return 0
 }
 
 start_api() {
