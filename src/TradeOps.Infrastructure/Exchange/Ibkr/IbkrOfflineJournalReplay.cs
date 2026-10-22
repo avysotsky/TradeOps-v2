@@ -93,6 +93,26 @@ public static class IbkrOfflineJournalReplay
         }
     }
 
+    /// <summary>
+    /// Direct PostgreSQL append is reserved for non-evidence-bearing events.
+    /// Reconciled states require an atomic snapshot+execution-ID import and
+    /// cumulative fills require an atomic execution-ID insertion. An
+    /// unverified cancellation acknowledgement cannot finalize an order.
+    /// </summary>
+    public static void ValidateDirectAppend(IbkrOfflineOrderEvent evt)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        if (evt.Type is IbkrOfflineOrderEventType.CumulativeFill
+            or IbkrOfflineOrderEventType.ReconciledWorking
+            or IbkrOfflineOrderEventType.ReconciledFilled
+            or IbkrOfflineOrderEventType.ReconciledCancelled
+            or IbkrOfflineOrderEventType.CancelConfirmed)
+        {
+            throw new InvalidOperationException(
+                "Evidence-bound IBKR offline lifecycle events require atomic execution or reconciliation persistence.");
+        }
+    }
+
     public static void ValidateKey(string key, string name)
     {
         if (!IsKey(key))
