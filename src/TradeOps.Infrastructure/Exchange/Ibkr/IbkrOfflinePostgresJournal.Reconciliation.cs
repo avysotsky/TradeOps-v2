@@ -120,55 +120,8 @@ public sealed partial class IbkrOfflinePostgresJournal
                     "Incomplete synthetic execution evidence cannot be imported.");
             }
 
-            // The reconciler already requires deduplicated execution sums
-            // matching cumulative fill, but durable baseline import must also
-            // reject any missing or contradictory PREVIOUSLY persisted fill.
-            var unique = new Dictionary<string, IbkrOfflineExecutionEvidence>(
-                StringComparer.Ordinal);
-            foreach (var execution in observedOrder.Executions)
-            {
-                IbkrOfflineJournalReplay.ValidateKey(
-                    execution.ExecutionId, nameof(execution.ExecutionId));
-                IbkrOfflineJournalReplay.ValidateKey(
-                    execution.BrokerOrderId, nameof(execution.BrokerOrderId));
-                if (execution.Quantity <= 0m
-                    || decimal.Round(execution.Quantity, 12) != execution.Quantity
-                    || execution.Quantity >= 10_000_000_000_000_000m)
-                {
-                    throw new InvalidOperationException(
-                        "Synthetic execution quantity is outside PostgreSQL numeric(28,12) range.");
-                }
-                if (unique.TryGetValue(execution.ExecutionId, out var duplicate))
-                {
-                    if (duplicate != execution)
-                    {
-                        throw new InvalidOperationException("Conflicting duplicate execution evidence.");
-                    }
-                    continue;
-                }
-                unique.Add(execution.ExecutionId, execution);
-            }
-
-            var knownIds = previous.Executions.ToDictionary(
-                entry => entry.ExecutionId, StringComparer.Ordinal);
-            foreach (var known in previous.Executions)
-            {
-                if (!unique.TryGetValue(known.ExecutionId, out var matching)
-                    || matching.BrokerOrderId != known.BrokerOrderId
-                    || matching.Quantity != known.Quantity)
-                {
-                    throw new InvalidOperationException(
-                        "New broker evidence omitted or contradicted an already persisted execution.");
-                }
-            }
-
-            foreach (var execution in unique.Values)
-            {
-                if (!knownIds.ContainsKey(execution.ExecutionId))
-                {
-                    newExecutionRows.Add(execution);
-                }
-            }
+            newExecutionRows.AddRange(IbkrOfflineExecutionBaselinePlanner.Plan(
+                previous.Executions, observedOrder));
 
             var reconciledType = outcome.Disposition switch
             {
