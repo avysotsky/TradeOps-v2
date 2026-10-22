@@ -231,11 +231,12 @@ public sealed class IbkrOfflineJournalReplayTests
     }
 
     [Fact]
-    public void PostgresJournalRequiresExplicitConnection_NotWiredByDefault()
+    public void PostgresJournalRequiresExplicitDisposableConnection_NotWiredByDefault()
     {
         Assert.Throws<ArgumentException>(() => new IbkrOfflinePostgresJournal(""));
         Assert.NotNull(new IbkrOfflinePostgresJournal(
-            "Host=localhost;Database=explicit_synthetic_test;Username=offline;Password=unused"));
+            "Host=localhost;Database=tradeops_ibkr_offline_smoke_unit;Username=offline;" +
+            "Search Path=ibkr_smoke_0123456789abcdef0123456789abcdef"));
     }
 
     private static IbkrOfflineOrderIntent Intent(decimal quantity = 5m) =>
