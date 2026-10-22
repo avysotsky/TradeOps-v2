@@ -85,6 +85,7 @@ run_dotnet() {
             docker run --rm --pull=never \
             --name "$sdk_container" \
             --network "$network" --cpus=2 --memory=2g --pids-limit=160 \
+            --user "$(id -u):$(id -g)" \
             --mount "type=bind,source=$ROOT,target=/workspace" \
             --mount "type=bind,source=$scratch/nuget-packages,target=/acceptance-nuget/packages" \
             --mount "type=bind,source=$scratch/nuget-http,target=/acceptance-nuget/http" \
@@ -175,7 +176,22 @@ cleanup() {
         fi
         docker inspect "$pg_container" >/dev/null 2>&1 && cleanup_failed=1
     fi
-    rm -rf -- "$scratch"
+    # The temporary NuGet cache MUST disappear. Previous versions ran
+    # the SDK Docker container as root, which left root-owned package
+    # files on the host and incorrectly printed cleanup=PASS. All SDK
+    # bind-mount writes now use the invoking WSL2 user's UID/GID.
+    # Cleanup errors are suppressed here to avoid a flood of package
+    # filenames, but they always cause the final result to FAIL.
+    if [[ -n "${scratch:-}" && -d "$scratch" ]]; then
+        rm -rf -- "$scratch" 2>/dev/null || cleanup_failed=1
+        if [[ -e "$scratch" ]]; then
+            cleanup_failed=1
+            printf 'TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=temporary_cache_cleanup\n' >&2
+        fi
+    else
+        cleanup_failed=1
+        printf 'TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=missing_scratch_cleanup_target\n' >&2
+    fi
     unset password signal_key operator_key POSTGRES_PASSWORD
     unset ConnectionStrings__TradeOpsDb TRADEOPS_IBKR_OFFLINE_SMOKE_PG
     if [[ "$code" -eq 0 && "$cleanup_failed" -eq 0 && "$completed" == 1 ]]; then
