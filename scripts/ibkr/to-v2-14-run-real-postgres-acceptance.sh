@@ -8,7 +8,23 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$ROOT"
 
 fail() {
-    printf 'TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=%s\n' "$1" >&2
+    local stage="$1"
+    printf 'TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=%s\n' "$stage" >&2
+    # Print only categorized SDK error diagnostics (never raw logs, env,
+    # passwords or connection strings). Detailed scratch logs are erased
+    # by the cleanup trap to avoid exposing random acceptance credentials.
+    if [[ "${scratch:-}" != '' ]]; then
+        case "$stage" in
+            solution_restore|solution_build)
+                local diagnostic="$scratch/${stage#solution_}.log"
+                if [[ -f "$diagnostic" ]]; then
+                    grep -E '(^|[[:space:]])(error|NU[0-9]{4}|MSB[0-9]{4}|CS[0-9]{4})(:|[[:space:]])' \
+                        "$diagnostic" | sed -E 's#https?://[^[:space:]]+#<URL-REDACTED>#g' \
+                        | tail -n 12 >&2 || true
+                fi
+                ;;
+        esac
+    fi
     exit 1
 }
 
