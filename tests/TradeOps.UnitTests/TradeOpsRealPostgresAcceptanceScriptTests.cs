@@ -162,6 +162,29 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
     }
 
     [Fact]
+    public void RealPostgresAcceptanceScript_RequiresActualShadowRuntimeMarker()
+    {
+        var script = File.ReadAllText(ScriptPath());
+        Assert.Contains("export ReconciliationShadow__Enabled=true", script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "export TRADEOPS_RECON_SHADOW_CONFIRM=SYNTHETIC_MOCK_IBKR_ONLY",
+            script, StringComparison.Ordinal);
+        Assert.Contains("-e ReconciliationShadow__Enabled", script,
+            StringComparison.Ordinal);
+        Assert.Contains("-e TRADEOPS_RECON_SHADOW_CONFIRM", script,
+            StringComparison.Ordinal);
+        Assert.Contains("worker_shadow_canary_missing_or_failed", script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TRADEOPS REAL SHADOW RECONCILIATION PASS providers=2 evaluations=6 candidates=2 unresolved=4 db_writes=0 broker_requests=0",
+            script, StringComparison.Ordinal);
+        Assert.Contains(
+            "TRADEOPS SHADOW RECONCILIATION CANARY PASS providers=2 evaluations=6 candidates=2 unresolved=4 db_writes=0 broker_requests=0 mode=synthetic_only",
+            script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MessagePackDependency_UsesPatchedVersion_AndKeepsNuGetAuditEnabled()
     {
         var root = Path.GetFullPath(Path.Combine(
