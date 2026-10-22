@@ -229,3 +229,21 @@ never automatically deletes unrelated old run directories.
 
 Old acceptance outputs, including any prior `cleanup=PASS` on a
 failed run, do **not** qualify as runtime PostgreSQL acceptance.
+
+
+### Real PostgreSQL smoke errors are now diagnosable
+
+`TradeOps.IbkrOfflinePostgresSmoke` emits only a controlled failure
+`phase`, exception type and (when appropriate) PostgreSQL SQLSTATE.
+It never includes raw database connection strings, passwords, raw
+broker messages or SQL statements. The one-shot WSL acceptance script
+forwards only these sanitized markers when the executable reports an
+error, and still deletes the temporary database/container. Examples:
+
+```text
+IBKR OFFLINE POSTGRES SMOKE FAIL phase=reconciliation_and_atomic_rollback type=PostgresException sqlstate=23505
+TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=real_postgresql_journal_smoke
+```
+
+No real PostgreSQL runtime PASS can be inferred from these diagnostic
+facilities. A complete, verified PASS is still required.
