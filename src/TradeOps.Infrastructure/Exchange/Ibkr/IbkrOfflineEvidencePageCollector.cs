@@ -75,15 +75,38 @@ public sealed class IbkrOfflineEvidencePageCollector
             throw Invalid();
         }
 
-        // Reject obviously oversized synthetic fixtures before serialization.
-        // Replays are fingerprinted by value, not IReadOnlyList reference identity.
-        if (page.Orders.Any(order => order is null
-            || order.Executions is null
-            || order.Executions.Count > MaxExecutions))
+        // Bound all nested collections and free-form strings before JSON
+        // fingerprinting. Otherwise 256 orders each holding 4,096 execution
+        // rows could cause unbounded memory use BEFORE normal validation.
+        var preflightExecutions = 0;
+        foreach (var order in page.Orders)
         {
-            throw Invalid();
+            if (order is null || order.Executions is null
+                || order.Executions.Count > MaxExecutions - preflightExecutions)
+            {
+                throw Invalid();
+            }
+
+            CheckKey(order.AccountKey);
+            CheckKey(order.ClientOrderId);
+            CheckKey(order.BrokerOrderId);
+            CheckKey(order.Symbol);
+            preflightExecutions += order.Executions.Count;
+            foreach (var execution in order.Executions)
+            {
+                if (execution is null)
+                {
+                    throw Invalid();
+                }
+
+                CheckKey(execution.ExecutionId);
+                CheckKey(execution.AccountKey);
+                CheckKey(execution.ClientOrderId);
+                CheckKey(execution.BrokerOrderId);
+            }
         }
 
+        // Replays are fingerprinted by value, not list reference identity.
         // Fingerprints include the nested normalized execution evidence.
         // Conflicting retries never mutate state.
         var digest = Convert.ToHexString(
