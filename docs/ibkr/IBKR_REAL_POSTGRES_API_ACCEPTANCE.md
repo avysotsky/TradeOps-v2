@@ -247,3 +247,25 @@ TRADEOPS REAL POSTGRES ACCEPTANCE FAIL stage=real_postgresql_journal_smoke
 
 No real PostgreSQL runtime PASS can be inferred from these diagnostic
 facilities. A complete, verified PASS is still required.
+
+  
+### Security audit restore blocker — MessagePack (October 22, 2026)
+
+After enabling a real NuGet restore, the official advisory feed identified
+`MessagePack 3.1.8` with `NU1902`; the strict offline IBKR demo
+correctly treated this warning as an error. This was a genuine
+dependency security finding rather than a PostgreSQL failure. The
+vendor advisory GHSA-qhrr-8q5h-9q3h / CVE-2026-92707 identifies a
+denial-of-service allocation issue with affected 3.x versions below
+3.1.9. The package reference in
+`src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj` is now
+pinned to `MessagePack 3.1.12` (released 2026-10-12), above the patched
+minimum; no suppression via `NoWarn`, `NU1902`, or disabled NuGet audit.
+The ordinary WSL2 unit-test gate also checks the vulnerable version
+cannot be reintroduced silently.
+
+Source: https://github.com/MessagePack-CSharp/MessagePack-CSharp/security/advisories/GHSA-qhrr-8q5h-9q3h
+Package: https://www.nuget.org/packages/MessagePack/3.1.12
+
+The actual local PostgreSQL/API runtime gates remain **NOT RUN**
+until the new qualified HEAD is executed in WSL2.
