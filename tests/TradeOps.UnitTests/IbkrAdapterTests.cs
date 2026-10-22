@@ -120,9 +120,10 @@ public sealed class IbkrAdapterTests
                 Assert.Contains(
                     "symbol=IBM",
                     request.RequestUri.Query);
-                Assert.Contains(
-                    "secType=STK",
-                    request.RequestUri.Query);
+                Assert.DoesNotContain(
+                    "secType=",
+                    request.RequestUri.Query,
+                    StringComparison.OrdinalIgnoreCase);
 
                 return Json(
                     HttpStatusCode.OK,
@@ -169,6 +170,76 @@ public sealed class IbkrAdapterTests
 
         Assert.Equal(8314, resolved.Conid);
         Assert.Equal("IBM", resolved.Symbol);
+    }
+
+    [Fact]
+    public async Task Resolver_IgnoresNonStockMatchesAfterSearchWithoutSecType()
+    {
+        var requests = new List<string>();
+        var factory = new StaticHttpClientFactory(new StubHandler(request =>
+        {
+            var url = request.RequestUri!;
+            requests.Add(url.PathAndQuery);
+
+            if (url.AbsolutePath.EndsWith("/iserver/secdef/search",
+                    StringComparison.Ordinal))
+            {
+                Assert.Equal("?symbol=AAPL", url.Query);
+                return Json(HttpStatusCode.OK, """
+                    [
+                      { "conid": "900001", "symbol": "AAPL" },
+                      { "conid": "265598", "symbol": "AAPL" }
+                    ]
+                    """);
+            }
+
+            if (url.AbsolutePath.EndsWith("/iserver/contract/900001/info",
+                    StringComparison.Ordinal))
+            {
+                return Json(HttpStatusCode.OK, """
+                    {
+                      "conid": 900001, "ticker": "AAPL",
+                      "secType": "OPT", "currency": "USD",
+                      "listingExchange": "SMART"
+                    }
+                    """);
+            }
+
+            Assert.EndsWith("/iserver/contract/265598/info",
+                url.AbsolutePath, StringComparison.Ordinal);
+            return Json(HttpStatusCode.OK, """
+                {
+                  "conid": 265598, "ticker": "AAPL",
+                  "secType": "STK", "currency": "USD",
+                  "listingExchange": "NASDAQ", "validExchanges": "SMART,NASDAQ"
+                }
+                """);
+        }));
+
+        var resolver = new IbkrInstrumentResolver(factory, DefaultOptions());
+        var result = await resolver.ResolveAsync(new InstrumentReference(
+            "AAPL", AssetClass.Stock, "USD", null, "SMART"));
+
+        Assert.Equal(265598, result.Conid);
+        Assert.Equal(3, requests.Count);
+    }
+
+    [Fact]
+    public async Task Resolver_RejectsUnauthenticatedWebApiResponse()
+    {
+        var factory = new StaticHttpClientFactory(new StubHandler(request =>
+        {
+            Assert.Contains("/iserver/secdef/search",
+                request.RequestUri!.AbsolutePath);
+            return Json(HttpStatusCode.Unauthorized, """{"error":"unauthorized"}""");
+        }));
+        var resolver = new IbkrInstrumentResolver(factory, DefaultOptions());
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => resolver.ResolveAsync(new InstrumentReference(
+                "AAPL", AssetClass.Stock, "USD")));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, exception.StatusCode);
     }
 
     [Fact]
