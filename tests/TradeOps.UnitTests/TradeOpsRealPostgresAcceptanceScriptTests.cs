@@ -69,6 +69,69 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
             $"Acceptance Bash syntax invalid (exit {process.ExitCode}): {error}");
     }
 
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 91)]
+    public void StopApi_ReturnsSuccessOnlyWhenDisposableContainerIsAbsent(
+        bool containerStillExists, int expectedExitCode)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var source = File.ReadAllText(ScriptPath());
+        var from = source.IndexOf("\nstop_api() {\n", StringComparison.Ordinal);
+        var until = source.IndexOf("\nstart_api() {\n", StringComparison.Ordinal);
+        Assert.True(from >= 0 && until > from,
+            "Cannot isolate the production Bash stop_api implementation.");
+        var function = source[from..until];
+        var before = """
+            set -Eeuo pipefail
+            dotnet_mode=docker
+            api_container=disposable-acceptance-fixture
+            fail() { exit 91; }
+            docker() {
+                if [[ "$1" == rm ]]; then return 0; fi
+                if [[ "$1" == inspect ]]; then
+                    if [[ "$simulated_still_running" == true ]]; then
+                        return 0
+                    fi
+                    return 1
+                fi
+                return 92
+            }
+
+            """;
+        var script = before + "\nsimulated_still_running=" +
+            (containerStillExists ? "true" : "false") +
+            "\n" + function + "\nstop_api\nprintf 'STOP_API_DONE\\n'\n";
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = "bash",
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        };
+        process.StartInfo.ArgumentList.Add("-c");
+        process.StartInfo.ArgumentList.Add(script);
+        Assert.True(process.Start(), "Cannot execute isolated Bash stop_api fixture.");
+        if (!process.WaitForExit(15000))
+        {
+            process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException(
+                "Bash stop_api fixture exceeded 15 seconds.");
+        }
+
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        Assert.True(process.ExitCode == expectedExitCode,
+            $"stop_api exit {process.ExitCode} != {expectedExitCode}: {error}");
+        Assert.Equal(!containerStillExists,
+            output.Contains("STOP_API_DONE", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void MessagePackDependency_UsesPatchedVersion_AndKeepsNuGetAuditEnabled()
     {
