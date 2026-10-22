@@ -50,9 +50,11 @@ var schema = "ibkr_smoke_" + Guid.NewGuid().ToString("N");
 var schemaWasCreated = false;
 var failure = false;
 var completedCases = 0;
+var phase = "bootstrap";
 
 try
 {
+    phase = "create_schema";
     await using (var admin = new NpgsqlConnection(rootBuilder.ConnectionString))
     {
         await admin.OpenAsync();
@@ -61,6 +63,7 @@ try
         schemaWasCreated = true;
     }
 
+    phase = "prepare_disposable_schema";
     // Every journal operation is restricted to a freshly created,
     // collision-resistant schema within an explicitly disposable local DB.
     var scopedBuilder = new NpgsqlConnectionStringBuilder(rootBuilder.ConnectionString)
@@ -88,11 +91,14 @@ try
         await reconciliationSchema.ExecuteNonQueryAsync();
     }
 
+    phase = "journal_transactions_and_concurrency";
     await RunAsync(scopedBuilder.ConnectionString,
         () => completedCases++);
+    phase = "reconciliation_and_atomic_rollback";
     await RunReconciliationAsync(scopedBuilder.ConnectionString,
         () => completedCases++);
 
+    phase = "schema_sql_row_verification";
     // Independently validate schema and rows stayed within the smoke schema.
     await using (var connection = new NpgsqlConnection(scopedBuilder.ConnectionString))
     {
@@ -104,9 +110,16 @@ try
         completedCases++;
     }
 }
-catch
+catch (Exception exception)
 {
     failure = true;
+    // Do NOT print exception.Message/ToString: connection strings, SQL
+    // statements or synthetic evidence might accidentally appear there.
+    var sqlState = exception is PostgresException postgres
+        ? postgres.SqlState
+        : "none";
+    Console.Error.WriteLine(
+        $"IBKR OFFLINE POSTGRES SMOKE FAIL phase={phase} type={exception.GetType().Name} sqlstate={sqlState}");
 }
 finally
 {
@@ -120,9 +133,14 @@ finally
                 $"DROP SCHEMA \"{schema}\" CASCADE", admin);
             await drop.ExecuteNonQueryAsync();
         }
-        catch
+        catch (Exception exception)
         {
             failure = true;
+            var sqlState = exception is PostgresException postgres
+                ? postgres.SqlState
+                : "none";
+            Console.Error.WriteLine(
+                $"IBKR OFFLINE POSTGRES SMOKE FAIL phase=cleanup type={exception.GetType().Name} sqlstate={sqlState}");
         }
     }
 }
