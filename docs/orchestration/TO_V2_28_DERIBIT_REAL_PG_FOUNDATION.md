@@ -61,3 +61,71 @@ These environment variables are consumed only by the explicit CLI; there is no a
 - Real Deribit position persistence: **NOT RUN** until owner approval.
 - Genuine Deribit executions persisted: **NOT IMPLEMENTED / NOT PROVEN**.
 - Deribit broker account mutations: **NONE added**.
+
+
+## Owner's WSL2 inventory and dedicated PostgreSQL 17 proposal (2026-10-23)
+
+Owner-supplied read-only Docker listing:
+
+- `jobradar-pr-autotest-postgres` — `postgres:17-bookworm`, up 3 days; belongs to JobRadar tests.
+- `external-agent-postgres` — `postgres:17-bookworm`, healthy, up 3 days; belongs to external-agent.
+- No running or stopped container named for TradeOps; `docker volume ls` shows no named TradeOps evidence volume. Anonymous volumes exist and ownership is not yet proven. **Never infer that either existing PG17 container or volume is free for TradeOps.**
+- The 2026-10-23 owner-provided listing is an observation only. No Docker inspect, persistent DB query, or backup verification has been performed by the assistant.
+
+The safe next target is a **new independent** `postgres:17-bookworm` service in
+`deploy/deribit-evidence/docker-compose.pg17.yml`, isolated from the repository-root
+legacy `docker-compose.yml` and from existing JobRadar and external-agent resources.
+
+The proposal has these explicit identities:
+
+| Item | Proposed value |
+| --- | --- |
+| Compose project | `tradeops-deribit-evidence` |
+| Container | `tradeops-deribit-evidence-pg17` |
+| PostgreSQL major | 17 (actual server must be checked after startup) |
+| Database | `tradeops_evidence` |
+| Data volume | `tradeops-deribit-evidence-pg17-data` |
+| Host publish | `127.0.0.1:54329 -> 5432` (WSL2/Windows loopback) |
+| Credential bootstrap secret | WSL-only absolute path supplied via `TRADEOPS_EVIDENCE_PG_BOOTSTRAP_PASSWORD_FILE` |
+| Position-import DB role | `tradeops_evidence_writer`, non-superuser, insert-only for evidence snapshots/positions |
+| Migration/bootstrap | Separate owner-controlled review; NO startup SQL |
+
+The Compose file does NOT mount or reuse JobRadar / external-agent volumes, does NOT
+set a default password, does NOT embed Deribit credentials, and does NOT invoke a
+migration. The bootstrap PostgreSQL administrator is distinct from the eventual
+import role. The role proposal in
+`deploy/deribit-evidence/TO_V2_28_PROPOSED_WRITER_ROLE.sql` refuses to operate
+outside the exact dedicated DB or PostgreSQL 17 and refuses to overwrite an
+existing writer. It must be executed only after the isolated schema is explicitly
+approved, migrated and verified; password setup is an interactive private step.
+
+### Safe read-only operator preflight
+
+These may be run from Windows PowerShell before approving any deployment:
+
+```powershell
+wsl.exe -- docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+wsl.exe -- docker volume ls
+wsl.exe -- docker inspect --format '{{.Name}} {{range .Mounts}}{{.Type}}:{{.Name}}->{{.Destination}} {{end}}' jobradar-pr-autotest-postgres external-agent-postgres
+```
+
+This reveals mount names, **not environment variables, passwords, SQL rows,
+trade IDs, vault files or API credentials**. Docker inspection of configuration
+`Config.Env` is forbidden for shared containers because it can expose secrets.
+
+For the proposed deployment, do NOT run `docker compose up` until explicitly
+approving the new independent PostgreSQL instance and local secret path.
+After approval, a private password file is created outside Git with owner-only
+permissions, the Compose config is validated, then `up -d` starts the
+independent service. Schema migration and real account import still need
+**distinct explicit approvals**.
+
+**Prohibited commands for this workstream:** `docker volume prune`,
+`docker system prune --volumes`, `docker compose down -v`,
+`docker volume rm` and any migration against JobRadar/external-agent.
+Keep a retention-controlled off-volume backup and perform a verified test restore
+before importing real Deribit snapshots. Volume persistence alone is not backup.
+
+**Acceptance labels:** PR code/build Gate A NOT PROVEN; disposable PG17 Gate B
+NOT PROVEN; owner target/backup/migration Gate C NOT APPROVED; actual Deribit
+positions persisted NOT PROVEN; executions persisted NOT IMPLEMENTED.
