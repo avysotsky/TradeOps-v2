@@ -202,6 +202,48 @@ public sealed class DeribitLiveReadOnlyClientTests
         Assert.Equal(1, calls);
     }
 
+    [Fact]
+    public async Task TypedPositionRead_OnlyOneMainnetGetAndPreservesNativeSignedSize()
+    {
+        var calls = 0;
+        using var http = NewClient(request =>
+        {
+            calls++;
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("www.deribit.com", request.RequestUri!.Host);
+            Assert.Equal("/api/v2/private/get_positions?currency=any",
+                request.RequestUri.PathAndQuery);
+            Assert.Null(request.Content);
+            return Ok("""
+                {"jsonrpc":"2.0","result":[
+                    {"instrument_name":"BTC-PERPETUAL","kind":"future",
+                     "direction":"sell","size":-200,"size_currency":0.004}
+                ]}
+                """);
+        });
+
+        var snapshot = await NewProbe(http).ReadPositionEvidenceAsync();
+        Assert.Equal(1, calls);
+        Assert.Single(snapshot.Positions);
+        Assert.Equal(-200m, snapshot.Positions[0].NativeSize);
+        Assert.Equal(0.004m, snapshot.Positions[0].BaseCurrencySize);
+        Assert.True(snapshot.ResponseReceivedAt >= snapshot.RequestStartedAt);
+    }
+
+    [Fact]
+    public async Task TypedPositionRead_InvalidPayloadFailsClosed()
+    {
+        var calls = 0;
+        using var http = NewClient(_ =>
+        {
+            calls++;
+            return Ok("""{"jsonrpc":"2.0","result":{"invalid":true}}""");
+        });
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            NewProbe(http).ReadPositionEvidenceAsync());
+        Assert.Equal(1, calls);
+    }
+
     private static DeribitLiveReadOnlyClient NewProbe(HttpClient http) =>
         new(http, "read-only-id", "read-only-secret");
 
