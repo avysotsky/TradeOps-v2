@@ -89,6 +89,50 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
             parsedPositions.Count(p => p.Kind == "option_combo"));
     }
 
+    /// <summary>
+    /// Additional fixed read endpoint. Existing 3-request account probe
+    /// remains unchanged. No trade IDs or raw response bodies are printed.
+    /// </summary>
+    public Task<DeribitTradeWindowEvidence> CollectTradeHistoryAsync(
+        string currency, long startMs, long endMs, bool historical,
+        CancellationToken cancellationToken = default)
+    {
+        DeribitTradeHistoryCollector.ValidateScope(currency, startMs, endMs);
+        ValidateReadOnlyCredentials();
+        return DeribitTradeHistoryCollector.CollectAsync(
+            currency, startMs, endMs, historical,
+            async (ccy, from, to, historic, token) =>
+            {
+                var uri = new Uri(
+                    "https://www.deribit.com/api/v2/private/get_user_trades_by_currency_and_time"
+                    + "?currency=" + ccy
+                    + "&start_timestamp=" + from.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "&end_timestamp=" + to.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "&count=" + DeribitTradeHistoryCollector.PageSize
+                    + "&sorting=asc"
+                    + "&historical=" + (historic ? "true" : "false"));
+
+                var credentials = Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes(clientId + ":" + clientSecret));
+                var response = await FetchAsync(uri, credentials, token);
+                return DeribitReadOnlyEvidenceParser.ParseTradePage(
+                    response, ccy, from, to, historic);
+            }, cancellationToken);
+    }
+
+    private void ValidateReadOnlyCredentials()
+    {
+        if (string.IsNullOrWhiteSpace(clientId)
+            || string.IsNullOrWhiteSpace(clientSecret)
+            || clientId.Contains(':')
+            || clientId.Any(char.IsControl)
+            || clientSecret.Any(char.IsControl))
+        {
+            throw new InvalidOperationException(
+                "Separate Deribit production READ-ONLY credentials required.");
+        }
+    }
+
     private async Task<JsonElement> FetchAsync(Uri uri, string credentials,
         CancellationToken cancellationToken)
     {
@@ -99,8 +143,11 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
             || uri.Port != 443
             || uri.UserInfo.Length != 0
             || uri.Fragment.Length != 0
-            || !new[] { SummariesUri, PositionsUri, OrdersUri }
-                .Contains(uri))
+            || (!new[] { SummariesUri, PositionsUri, OrdersUri }
+                .Contains(uri)
+                && !string.Equals(uri.AbsolutePath,
+                    "/api/v2/private/get_user_trades_by_currency_and_time",
+                    StringComparison.Ordinal)))
         {
             throw Invalid();
         }
