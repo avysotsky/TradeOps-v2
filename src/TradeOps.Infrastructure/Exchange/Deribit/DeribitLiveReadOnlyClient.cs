@@ -90,6 +90,26 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
     }
 
     /// <summary>
+    /// Explicit typed read of a single authenticated mainnet position response.
+    /// Transport remains GET-only and isolated from live trading DI.
+    /// These timestamps bracket the request, not an atomic exchange snapshot.
+    /// </summary>
+    public async Task<DeribitReadOnlyPositionRead> ReadPositionEvidenceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ValidateReadOnlyCredentials();
+        var started = DateTimeOffset.UtcNow;
+        var credentials = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes(clientId + ":" + clientSecret));
+        var positions = await FetchAsync(PositionsUri, credentials,
+            cancellationToken).ConfigureAwait(false);
+        var parsed = DeribitReadOnlyEvidenceParser.ParsePositions(positions);
+        var received = DateTimeOffset.UtcNow;
+        return new DeribitReadOnlyPositionRead(
+            started, received, parsed);
+    }
+
+    /// <summary>
     /// Additional fixed read endpoint. Existing 3-request account probe
     /// remains unchanged. No trade IDs or raw response bodies are printed.
     /// </summary>
@@ -199,3 +219,8 @@ public sealed record DeribitLiveReadOnlyCounts(
     int AccountCurrencies, int Positions, int OpenOrders,
     int Futures = 0, int Options = 0,
     int FutureCombos = 0, int OptionCombos = 0);
+
+public sealed record DeribitReadOnlyPositionRead(
+    DateTimeOffset RequestStartedAt,
+    DateTimeOffset ResponseReceivedAt,
+    IReadOnlyList<DeribitPositionEvidence> Positions);
