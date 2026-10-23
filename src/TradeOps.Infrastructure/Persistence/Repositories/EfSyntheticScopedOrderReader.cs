@@ -95,6 +95,20 @@ public sealed class EfSyntheticScopedOrderReader(TradeOpsDbContext database)
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(order);
 
+        if (!(providerKey is "Mock" or "IbkrOffline")
+            || string.IsNullOrWhiteSpace(accountKey)
+            || accountKey.Length > 128
+            || accountKey != accountKey.Trim()
+            || accountKey.Any(char.IsControl)
+            || !Enum.IsDefined(order.Side)
+            || !Enum.IsDefined(order.Status)
+            || order.RequestedQuantity <= 0m
+            || order.FilledQuantity < 0m
+            || order.FilledQuantity > order.RequestedQuantity)
+        {
+            throw Invalid();
+        }
+
         if (scope.OrderId != order.Id
             || !string.Equals(scope.ProviderKey, providerKey,
                 StringComparison.Ordinal)
@@ -111,8 +125,7 @@ public sealed class EfSyntheticScopedOrderReader(TradeOpsDbContext database)
                 scope.InstrumentKey,
                 (providerKey == "Mock"
                     ? "MOCK:"
-                    : providerKey == "IbkrOffline"
-                        ? "SYNTHETIC-IBKR-SYMBOL:" : "INVALID:") + order.Symbol,
+                    : "SYNTHETIC-IBKR-SYMBOL:") + order.Symbol,
                 StringComparison.Ordinal))
         {
             throw Invalid();
