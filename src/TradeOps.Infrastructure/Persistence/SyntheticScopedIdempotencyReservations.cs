@@ -11,7 +11,9 @@ public sealed class SyntheticScopedOrderReservation
     public required string AccountKey { get; set; }
     public required string ClientOrderId { get; set; }
     public Guid LocalOrderId { get; set; }
-    public string? BrokerOrderId { get; set; }
+    // A reservation is permitted only AFTER a synthetic broker ID exists.
+    // First binding of an unbound ID is NOT authorized by this ledger.
+    public required string BrokerOrderId { get; set; }
     public required string InstrumentKey { get; set; }
     public required string Side { get; set; }
     public required string OrderType { get; set; }
