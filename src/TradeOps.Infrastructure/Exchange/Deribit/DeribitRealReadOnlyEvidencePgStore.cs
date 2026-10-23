@@ -131,6 +131,9 @@ public sealed class DeribitRealReadOnlyEvidencePgStore
             }
         }
 
+        // SELECT-only binding check: PostgreSQL FOR SHARE additionally needs
+        // UPDATE privileges, which this importer must NEVER receive.
+        // Bindings are provisioned/changed only by separate owner administration.
         await using (var binding = new NpgsqlCommand(
             """
             SELECT 1 FROM broker_evidence.account_bindings
@@ -138,7 +141,6 @@ public sealed class DeribitRealReadOnlyEvidencePgStore
                 AND environment = 'mainnet'
                 AND provenance = 'OwnerApprovedLocalCredentialBinding'
                 AND credential_id_sha256 = @fingerprint
-            FOR SHARE
             """, connection, transaction))
         {
             binding.Parameters.AddWithValue("binding", capture.BindingId);
