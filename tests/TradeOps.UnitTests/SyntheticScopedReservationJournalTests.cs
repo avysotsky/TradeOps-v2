@@ -115,7 +115,10 @@ public sealed class SyntheticScopedReservationJournalTests
             }
 
             var operations = differ.GetDifferences(
-                snapshot.Model.GetRelationalModel(), live.GetRelationalModel());
+                db.GetService<IModelRuntimeInitializer>()
+                    .Initialize(snapshot.Model, designTime: true, validation: false)
+                    .GetRelationalModel(),
+                live.GetRelationalModel());
             foreach (var operation in operations)
             {
                 var weight = operation.GetType().Name switch
