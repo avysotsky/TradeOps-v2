@@ -82,6 +82,15 @@ public sealed class SyntheticScopedReservationJournalTests
     }
 
     [Fact]
+    public void DedicatedMigrationSnapshot_IsCompatibleWithActualEfModel()
+    {
+        // EF Core 10 MigrateAsync may fail closed on a model/snapshot diff.
+        // Exercise exactly that preflight WITHOUT any database connection.
+        using var db = ModelOnly();
+        Assert.False(db.Database.HasPendingModelChanges());
+    }
+
+    [Fact]
     public void Migration_RegistersOnlyNewReservations_WithoutAlterOfExistingTables()
     {
         using var db = ModelOnly();
