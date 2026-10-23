@@ -116,7 +116,7 @@ public sealed class SyntheticScopedReservationJournalTests
 
             var operations = differ.GetDifferences(
                 db.GetService<IModelRuntimeInitializer>()
-                    .Initialize(snapshot.Model, designTime: true, validation: false)
+                    .Initialize(snapshot.Model, designTime: true, validationLogger: null)
                     .GetRelationalModel(),
                 live.GetRelationalModel());
             foreach (var operation in operations)
