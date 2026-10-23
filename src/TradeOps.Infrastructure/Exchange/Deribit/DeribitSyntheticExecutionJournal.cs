@@ -20,6 +20,7 @@ public sealed class DeribitSyntheticExecutionJournal
         if (b.Host != "127.0.0.1"
             || string.IsNullOrWhiteSpace(b.Database)
             || !b.Database.StartsWith("tradeops_api_smoke_", StringComparison.Ordinal)
+            || b.Database.Length <= "tradeops_api_smoke_".Length
             || b.Database.Length > 63
             || !b.Database.All(c => c is >= 'a' and <= 'z'
                 or >= '0' and <= '9' or '_')
@@ -37,6 +38,7 @@ public sealed class DeribitSyntheticExecutionJournal
         ArgumentNullException.ThrowIfNull(item);
         if (!Safe(item.AccountKey, 128)
             || !item.AccountKey.StartsWith("synthetic-account-", StringComparison.Ordinal)
+            || item.AccountKey.Length <= "synthetic-account-".Length
             || !Safe(item.ExecutionId, 160)
             || !Safe(item.BrokerOrderId, 160)
             || !Safe(item.InstrumentName, 160)
