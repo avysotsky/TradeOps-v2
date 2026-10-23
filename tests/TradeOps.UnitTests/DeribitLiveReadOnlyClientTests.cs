@@ -130,6 +130,78 @@ public sealed class DeribitLiveReadOnlyClientTests
         Assert.Equal(broken == "positions" ? 2 : 3, calls);
     }
 
+    [Fact]
+    public async Task HistoryEndpoint_OnlyReadGetWithBoundedParamsAndBasicAuth()
+    {
+        var calls = 0;
+        using var http = NewClient(request =>
+        {
+            calls++;
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Null(request.Content);
+            Assert.Equal("https", request.RequestUri!.Scheme);
+            Assert.Equal("www.deribit.com", request.RequestUri.Host);
+            Assert.Equal("/api/v2/private/get_user_trades_by_currency_and_time",
+                request.RequestUri.AbsolutePath);
+            Assert.Contains("currency=BTC", request.RequestUri.Query);
+            Assert.Contains("start_timestamp=100", request.RequestUri.Query);
+            Assert.Contains("end_timestamp=200", request.RequestUri.Query);
+            Assert.Contains("count=1000", request.RequestUri.Query);
+            Assert.Contains("historical=true", request.RequestUri.Query);
+            Assert.Equal(Basic, request.Headers.Authorization!.Scheme);
+            Assert.Equal(AuthorizationValue,
+                request.Headers.Authorization.Parameter);
+            return Ok("""
+                {"jsonrpc":"2.0","result":{"has_more":false,"trades":[
+                    {"trade_id":"BTC-t1","order_id":"BTC-o1",
+                     "instrument_name":"BTC-PERPETUAL","direction":"buy",
+                     "amount":100,"price":60000,
+                     "fee":0.00001,"fee_currency":"BTC","timestamp":150}
+                ]}}
+                """);
+        });
+
+        var result = await NewProbe(http)
+            .CollectTradeHistoryAsync("BTC", 100, 200, historical: true);
+        Assert.Equal(1, calls);
+        Assert.Equal(1, result.UniqueTrades);
+        Assert.Equal(1, result.PageCalls);
+        Assert.False(result.HistoricalCoverageProven);
+    }
+
+    [Fact]
+    public async Task HistoryInvalidCurrency_DoesNotTransmitAnyRequest()
+    {
+        var calls = 0;
+        using var http = NewClient(_ =>
+        {
+            calls++;
+            return Ok("{}");
+        });
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => NewProbe(http).CollectTradeHistoryAsync(
+                "../BTC", 100, 200, historical: true));
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task HistoryHttpFailure_DoesNotContinueOrReauthenticate()
+    {
+        var calls = 0;
+        using var http = NewClient(_ =>
+        {
+            calls++;
+            return new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("rate limit")
+            };
+        });
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => NewProbe(http).CollectTradeHistoryAsync(
+                "BTC", 100, 200, historical: false));
+        Assert.Equal(1, calls);
+    }
+
     private static DeribitLiveReadOnlyClient NewProbe(HttpClient http) =>
         new(http, "read-only-id", "read-only-secret");
 
