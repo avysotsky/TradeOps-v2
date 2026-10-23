@@ -26,6 +26,31 @@ placement/retry/cancel authorization. The tables do not imply that any
 broker accepted an order. They cannot be used to automatically
 resubmit an `Unknown` order. All rows are local synthetic fixtures.
 
+## Critical EF Core isolation correction
+
+The original draft applied reservation entity configurations to the
+live `TradeOpsDbContext`; independent WSL2 tests failed. A controlled
+source-tree rollback proved the runner itself was healthy
+(899/899 PASS), while both a full and a minimal reservation mapping
+inside the live model produced `TEST_FAILED`. Those draft commits
+are superseded.
+
+The corrected implementation uses `ScopedReservationsDbContext`
+with **its own model snapshot and explicitly invoked migration** under
+`Persistence/ScopedReservationMigrations`. The live
+`TradeOpsDbContext` excludes both reservation configurations from
+its assembly scanner and retains **exactly the previously accepted
+model and migration history contract**. No API/Worker DI registration
+of the new context exists.
+
+Only the disposable-loopback PostgreSQL smoke executable constructs
+`ScopedReservationsDbContext`, explicitly calls
+`Database.MigrateAsync()`, and then exercises its isolated journal.
+This new migration is never auto-run by the production API/Worker
+main context. A new xUnit guard checks both that the reservations
+model has the exact execution FK and that the main model does not
+contain either reservation entity or its migration.
+
 ## Tables and invariants
 
 ### `SyntheticScopedOrderReservations`
@@ -107,7 +132,9 @@ unless:
 - No arbitrary search_path or libpq options are set.
 
 It runs against the already-bootstrapped **real disposable API
-PostgreSQL 17** only, after Api/Worker are stopped, testing:
+PostgreSQL 17** only, after Api/Worker are stopped. The test-only
+`ScopedReservationsDbContext` explicitly applies its migration to
+that database, separate from the main API migration context, then tests:
 
 1. New migration is present; both reservation tables start empty.
 2. Two Mock accounts use identical external `ClientOrderId`,
