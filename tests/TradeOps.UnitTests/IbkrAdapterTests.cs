@@ -436,8 +436,8 @@ public sealed class IbkrAdapterTests
 
     [Theory]
     [InlineData("{}")]
-    [InlineData("{\\"orders\\":null}")]
-    [InlineData("{\\"orders\\":{}}")]
+    [InlineData("""{"orders":null}""")]
+    [InlineData("""{"orders":{}}""")]
     public async Task OpenOrders_MalformedSnapshot_IsNotAnEmptyOrderList(
         string response)
     {
