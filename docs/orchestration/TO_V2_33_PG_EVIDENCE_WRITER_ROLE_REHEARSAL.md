@@ -96,3 +96,24 @@ New SHA independent .NET build/xUnit Gate A: NOT YET VERIFIED.
 Owner's real role rehearsal Gate B: NOT YET RUN.
 Persistent role deployment and real Deribit capture: NOT AUTHORIZED.
 Keep PR Draft/unmerged.
+
+
+## Compatibility correction discovered during review
+
+The upstream C# writer's binding check used `SELECT ... FOR SHARE`.
+PostgreSQL requires an additional `UPDATE` privilege when `FOR SHARE`
+is requested; that conflicts with the account-binding SELECT-only role.
+This PR removes the row lock from the C# verification query rather than
+granting any UPDATE permission on broker/account identity. The runtime
+still checks the approved binding ID, mainnet/provider, provenance and
+credential-ID fingerprint within the same snapshot transaction and
+refuses unmatched bindings. No binding mutation method is added.
+
+Owner-controlled binding changes must not occur concurrently with captures;
+future binding provisioning should enforce immutable account binding rows
+at the database level before recurring capture or credential rotation.
+The current NOLOGIN rehearsal does not authorize a persistent account
+binding or capture.
+
+Regression tests guard that the real writer cannot reintroduce a
+`FOR SHARE`/`FOR UPDATE` clause requiring UPDATE grants.
