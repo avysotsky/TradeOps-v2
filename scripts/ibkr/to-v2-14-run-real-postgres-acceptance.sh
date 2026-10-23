@@ -96,6 +96,8 @@ run_dotnet() {
             -e NUGET_HTTP_CACHE_PATH=/acceptance-nuget/http \
             -e TRADEOPS_IBKR_OFFLINE_SMOKE_CONFIRM \
             -e TRADEOPS_IBKR_OFFLINE_SMOKE_PG \
+            -e TRADEOPS_SYNTHETIC_RESERVATION_PG \
+            -e TRADEOPS_SYNTHETIC_RESERVATION_CONFIRM \
             --entrypoint dotnet \
             "$dotnet_image" "$@"
     fi
@@ -196,6 +198,7 @@ cleanup() {
     unset password signal_key operator_key POSTGRES_PASSWORD
     unset ConnectionStrings__TradeOpsDb TRADEOPS_IBKR_OFFLINE_SMOKE_PG
     unset ReconciliationShadow__Enabled TRADEOPS_RECON_SHADOW_CONFIRM
+    unset TRADEOPS_SYNTHETIC_RESERVATION_PG TRADEOPS_SYNTHETIC_RESERVATION_CONFIRM
     if [[ "$code" -eq 0 && "$cleanup_failed" -eq 0 && "$completed" == 1 ]]; then
         printf 'TRADEOPS REAL POSTGRES ACCEPTANCE PASS sha=%s pg=17 journal=PASS api=PASS restart=PASS worker=PASS cleanup=PASS broker_requests=0\n' "$head"
         exit 0
@@ -507,5 +510,20 @@ scope_marker='TRADEOPS REAL BROKER SCOPE SQL PASS synthetic_only=true legacy_uns
 grep -Fxq "$scope_marker" "$scratch/scope-sql.log" ||
     fail "synthetic_broker_scope_marker_missing"
 printf '%s\n' "$scope_marker"
+
+# TO-V2-21: exercise the ACTUAL new EF-backed durable reservation journal
+# against this one disposable API database after Api/Worker have stopped.
+# The journal never touches Orders/Fills or sends a broker command.
+export TRADEOPS_SYNTHETIC_RESERVATION_CONFIRM=DISPOSABLE_SCOPED_RESERVATION_PG_ONLY
+export TRADEOPS_SYNTHETIC_RESERVATION_PG="Host=127.0.0.1;Port=${pg_port};Database=${api_db};Username=postgres;Password=${password}"
+if ! run_dotnet host 120     "tools/TradeOps.ScopedReservationsPostgresSmoke/bin/Release/net10.0/TradeOps.ScopedReservationsPostgresSmoke.dll"     > "$scratch/scoped-reservations.log" 2>&1; then
+    grep -E '^SCOPED RESERVATION SMOKE (FAIL|NOT RUN)'         "$scratch/scoped-reservations.log" | tail -n 5 >&2 || true
+    fail "scoped_idempotency_postgres_smoke"
+fi
+reservation_marker='TRADEOPS SCOPED RESERVATION SMOKE PASS orders=6 executions=4 concurrency=PASS scope=PASS replay=PASS conflicts=PASS legacy_unchanged=true broker_requests=0'
+grep -Fxq "$reservation_marker" "$scratch/scoped-reservations.log" ||
+    fail "scoped_idempotency_smoke_marker_missing"
+printf '%s\n' "$reservation_marker"
+unset TRADEOPS_SYNTHETIC_RESERVATION_PG TRADEOPS_SYNTHETIC_RESERVATION_CONFIRM
 
 completed=1
