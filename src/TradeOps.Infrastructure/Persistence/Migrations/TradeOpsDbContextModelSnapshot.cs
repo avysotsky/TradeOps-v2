@@ -371,17 +371,6 @@ partial class TradeOpsDbContextModelSnapshot : ModelSnapshot
             b.ToTable("TradingSignalOutcomeEvents");
         });
 
-        modelBuilder.Entity("TradeOps.Infrastructure.Persistence.SyntheticScopedExecutionReservation", b =>
-        {
-            b.HasOne("TradeOps.Infrastructure.Persistence.SyntheticScopedOrderReservation", null)
-                .WithMany()
-                .HasForeignKey("ProviderKey", "AccountKey", "ClientOrderId", "LocalOrderId", "BrokerOrderId")
-                .HasPrincipalKey("ProviderKey", "AccountKey", "ClientOrderId", "LocalOrderId", "BrokerOrderId")
-                .OnDelete(DeleteBehavior.Restrict)
-                .IsRequired()
-                .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
-        });
-
         modelBuilder.Entity("TradeOps.Infrastructure.Persistence.BrokerOrderIdentity", b =>
         {
             b.HasOne("TradeOps.Domain.Entities.Order", null)
