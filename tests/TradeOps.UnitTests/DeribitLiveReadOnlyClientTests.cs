@@ -31,7 +31,7 @@ public sealed class DeribitLiveReadOnlyClientTests
                 "/api/v2/private/get_account_summaries" =>
                     Ok("""{"result":{"summaries":[{"currency":"BTC"},{"currency":"ETH"}]},"jsonrpc":"2.0"}"""),
                 "/api/v2/private/get_positions?currency=any" =>
-                    Ok("""{"result":[{"instrument_name":"BTC-PERPETUAL"}],"jsonrpc":"2.0"}"""),
+                    Ok("""{"result":[{"instrument_name":"BTC-PERPETUAL","kind":"future","direction":"buy","size":100,"size_currency":0.002}],"jsonrpc":"2.0"}"""),
                 "/api/v2/private/get_open_orders" =>
                     Ok("""{"result":[],"jsonrpc":"2.0"}"""),
                 _ => throw new Xunit.Sdk.XunitException("Forbidden endpoint")
@@ -40,7 +40,7 @@ public sealed class DeribitLiveReadOnlyClientTests
         var counts = await new DeribitLiveReadOnlyClient(
             http, "read-only-id", "read-only-secret").ProbeAsync();
 
-        Assert.Equal(new DeribitLiveReadOnlyCounts(2, 1, 0), counts);
+        Assert.Equal(new DeribitLiveReadOnlyCounts(2, 1, 0, 1, 0, 0, 0), counts);
         Assert.Equal(3, paths.Count);
         Assert.DoesNotContain(paths, p => p.Contains("secret"));
         Assert.DoesNotContain(paths, p => p.Contains("/private/buy"));

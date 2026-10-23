@@ -36,7 +36,7 @@ try
     var counts = await client.ProbeAsync();
 
     Console.WriteLine(
-        $"TRADEOPS DERIBIT LIVE READONLY PASS account_currencies={counts.AccountCurrencies} positions={counts.Positions} open_orders={counts.OpenOrders} mutating_calls=0");
+        $"TRADEOPS DERIBIT LIVE READONLY PASS account_currencies={counts.AccountCurrencies} positions={counts.Positions} open_orders={counts.OpenOrders} futures={counts.Futures} options={counts.Options} future_combos={counts.FutureCombos} option_combos={counts.OptionCombos} mutating_calls=0");
     return 0;
 }
 catch (Exception error)

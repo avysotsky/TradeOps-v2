@@ -67,6 +67,8 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
             throw Invalid();
         }
 
+        var parsedPositions = DeribitReadOnlyEvidenceParser.ParsePositions(positions);
+
         var orders = await FetchAsync(OrdersUri, credentials,
             cancellationToken);
         if (orders.ValueKind != JsonValueKind.Array
@@ -80,7 +82,11 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
         return new DeribitLiveReadOnlyCounts(
             currencies.GetArrayLength(),
             positions.GetArrayLength(),
-            orders.GetArrayLength());
+            orders.GetArrayLength(),
+            parsedPositions.Count(p => p.Kind == "future"),
+            parsedPositions.Count(p => p.Kind == "option"),
+            parsedPositions.Count(p => p.Kind == "future_combo"),
+            parsedPositions.Count(p => p.Kind == "option_combo"));
     }
 
     private async Task<JsonElement> FetchAsync(Uri uri, string credentials,
@@ -143,4 +149,6 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
 }
 
 public sealed record DeribitLiveReadOnlyCounts(
-    int AccountCurrencies, int Positions, int OpenOrders);
+    int AccountCurrencies, int Positions, int OpenOrders,
+    int Futures = 0, int Options = 0,
+    int FutureCombos = 0, int OptionCombos = 0);
