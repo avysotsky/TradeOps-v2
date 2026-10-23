@@ -19,6 +19,9 @@ partial class ScopedReservationsDbContextModelSnapshot : ModelSnapshot
             .HasAnnotation("ProductVersion", "10.0.12")
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+        // Mirror Npgsql's default PostgreSQL value-generation model annotation.
+        modelBuilder.UseIdentityByDefaultColumns();
+
         modelBuilder.Entity<SyntheticScopedOrderReservation>(b =>
         {
             b.ToTable("SyntheticScopedOrderReservations", table =>
