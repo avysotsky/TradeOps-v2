@@ -122,8 +122,8 @@ if ($Action -eq 'Save') {
         $item = [ordered]@{
             schema = 1
             environment = 'DeribitMainnetReadOnly'
-            client_id_dpapi = ConvertFrom-SecureString -SecureString $clientIdSecure
-            client_secret_dpapi = ConvertFrom-SecureString -SecureString $clientSecretSecure
+            client_id_dpapi = (ConvertFrom-SecureString -SecureString $clientIdSecure)
+            client_secret_dpapi = (ConvertFrom-SecureString -SecureString $clientSecretSecure)
         }
 
         $json = $item | ConvertTo-Json -Compress -Depth 3
@@ -205,10 +205,10 @@ try {
     }
 
     $doc = Get-Content -LiteralPath $vaultFile -Raw | ConvertFrom-Json
-    if ($doc.schema -ne 1
-        -or $doc.environment -cne 'DeribitMainnetReadOnly'
-        -or [string]::IsNullOrWhiteSpace($doc.client_id_dpapi)
-        -or [string]::IsNullOrWhiteSpace($doc.client_secret_dpapi)) {
+    if (($doc.schema -ne 1) -or
+        ($doc.environment -cne 'DeribitMainnetReadOnly') -or
+        [string]::IsNullOrWhiteSpace($doc.client_id_dpapi) -or
+        [string]::IsNullOrWhiteSpace($doc.client_secret_dpapi)) {
         throw 'CREDENTIAL_VAULT_INVALID_FORMAT'
     }
 
