@@ -400,6 +400,157 @@ public sealed class IbkrAdapterTests
         Assert.Equal(OrderStatus.PartiallyFilled, order.Status);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task OrderStatus_HttpError_IsNeverConvertedToMissing(
+        HttpStatusCode status)
+    {
+        var statusCalls = 0;
+        var factory = new StaticHttpClientFactory(new StubHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith(
+                    "/iserver/accounts", StringComparison.Ordinal))
+            {
+                return PaperSession();
+            }
+
+            Assert.EndsWith("/iserver/account/order/status/123",
+                request.RequestUri.AbsolutePath, StringComparison.Ordinal);
+            statusCalls++;
+            return Json(status, """{"error":"synthetic-failure"}""");
+        }));
+        var client = CreateClient(factory);
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GetOrderAsync("123", "AAPL"));
+
+        Assert.Equal(status, error.StatusCode);
+        Assert.Equal(1, statusCalls);
+        Assert.False(client.IsConnected);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\\"orders\\":null}")]
+    [InlineData("{\\"orders\\":{}}")]
+    public async Task OpenOrders_MalformedSnapshot_IsNotAnEmptyOrderList(
+        string response)
+    {
+        var client = CreateClient(new StaticHttpClientFactory(
+            new StubHandler(request =>
+                request.RequestUri!.AbsolutePath.EndsWith("/iserver/accounts",
+                    StringComparison.Ordinal)
+                    ? PaperSession()
+                    : Json(HttpStatusCode.OK, response))));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.GetOpenOrdersAsync());
+
+        Assert.Contains("snapshot is incomplete", error.Message);
+    }
+
+    [Fact]
+    public async Task ClientOrderNotVisible_DoesNotProveBrokerAbsence()
+    {
+        var client = CreateClient(new StaticHttpClientFactory(
+            new StubHandler(request =>
+                request.RequestUri!.AbsolutePath.EndsWith("/iserver/accounts",
+                    StringComparison.Ordinal)
+                    ? PaperSession()
+                    : Json(HttpStatusCode.OK, """{"orders":[]}"""))));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.GetOrderByClientOrderIdAsync("previously-sent-coid"));
+
+        Assert.Contains("cannot prove absence", error.Message);
+        Assert.True(client.IsConnected); // Session may be healthy; coverage is not.
+    }
+
+    [Theory]
+    [InlineData("""{"order_id":"123","account":"DIFFERENT"}""")]
+    [InlineData("""{"order_id":"123"}""")]
+    [InlineData("""{"order_id":"456","account":"DU1234567"}""")]
+    public async Task OrderStatus_RejectsUnboundOrMismatchedIdentity(
+        string payload)
+    {
+        var client = CreateClient(new StaticHttpClientFactory(
+            new StubHandler(request =>
+                request.RequestUri!.AbsolutePath.EndsWith("/iserver/accounts",
+                    StringComparison.Ordinal)
+                    ? PaperSession()
+                    : Json(HttpStatusCode.OK, payload))));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.GetOrderAsync("123"));
+        Assert.False(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task PaperSessionLostAfterSuccess_FailsBeforeOrderLookup()
+    {
+        var paperReads = 0;
+        var statusReads = 0;
+        var client = CreateClient(new StaticHttpClientFactory(
+            new StubHandler(request =>
+            {
+                if (request.RequestUri!.AbsolutePath.EndsWith(
+                    "/iserver/accounts", StringComparison.Ordinal))
+                {
+                    paperReads++;
+                    return paperReads == 1
+                        ? PaperSession()
+                        : Json(HttpStatusCode.OK,
+                            """{"isPaper":false,"accounts":["U0000001"]}""");
+                }
+                statusReads++;
+                throw new Xunit.Sdk.XunitException(
+                    "Session failure must prohibit order status lookup.");
+            })));
+
+        await client.EnsureConnectedAsync();
+        Assert.True(client.IsConnected);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.GetOrderAsync("123"));
+
+        Assert.False(client.IsConnected);
+        Assert.Equal(2, paperReads);
+        Assert.Equal(0, statusReads);
+    }
+
+    [Fact]
+    public async Task OrderLookup_RejectsBlankIdsWithoutNetwork()
+    {
+        var requests = 0;
+        var client = CreateClient(new StaticHttpClientFactory(
+            new StubHandler(_ =>
+            {
+                requests++;
+                throw new Xunit.Sdk.XunitException("No request expected.");
+            })));
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => client.GetOrderAsync(" "));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => client.GetOrderByClientOrderIdAsync(""));
+        Assert.Equal(0, requests);
+    }
+
+    private static HttpResponseMessage PaperSession() =>
+        Json(HttpStatusCode.OK,
+            """
+            {
+              "accounts": ["DU1234567"],
+              "selectedAccount": "DU1234567",
+              "isPaper": true
+            }
+            """);
+
     [Fact]
     public async Task Mutations_AreDisabledInFirstPaperMilestone()
     {
