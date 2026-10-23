@@ -38,6 +38,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.ScopedReservations
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitLiveReadOnlySmoke", "tools\TradeOps.DeribitLiveReadOnlySmoke\TradeOps.DeribitLiveReadOnlySmoke.csproj", "{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitHistoryReadOnlySmoke", "tools\TradeOps.DeribitHistoryReadOnlySmoke\TradeOps.DeribitHistoryReadOnlySmoke.csproj", "{C119F98C-6E06-42F6-8C5C-9F04CF638901}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -118,5 +120,9 @@ Global
 		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C119F98C-6E06-42F6-8C5C-9F04CF638901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C119F98C-6E06-42F6-8C5C-9F04CF638901}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C119F98C-6E06-42F6-8C5C-9F04CF638901}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C119F98C-6E06-42F6-8C5C-9F04CF638901}.Release|Any CPU.Build.0 = Release|Any CPU
 EndGlobalSection
 EndGlobal
