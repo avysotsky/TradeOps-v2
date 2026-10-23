@@ -1,90 +1,175 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using TradeOps.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace TradeOps.Infrastructure.Persistence.ScopedReservationMigrations;
 
+// Frozen EF schema at TO-V2-21 migration creation. Do NOT reference live
+// configuration classes here: otherwise later configuration edits would
+// silently move the migration snapshot and defeat drift detection.
 [DbContext(typeof(ScopedReservationsDbContext))]
 partial class ScopedReservationsDbContextModelSnapshot : ModelSnapshot
 {
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
-#pragma warning disable 612, 618
         modelBuilder
-            .HasAnnotation("ProductVersion", "8.0.11")
+            .HasAnnotation("ProductVersion", "10.0.12")
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
-
-        modelBuilder.Entity("TradeOps.Infrastructure.Persistence.SyntheticScopedOrderReservation", b =>
-        {
-            b.Property<string>("ProviderKey").HasMaxLength(64).HasColumnType("character varying(64)");
-            b.Property<string>("AccountKey").HasMaxLength(128).HasColumnType("character varying(128)");
-            b.Property<string>("ClientOrderId").HasMaxLength(100).HasColumnType("character varying(100)");
-            b.Property<Guid>("LocalOrderId").ValueGeneratedNever().HasColumnType("uuid");
-            b.Property<string>("BrokerOrderId").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
-            b.Property<string>("InstrumentKey").IsRequired().HasMaxLength(192).HasColumnType("character varying(192)");
-            b.Property<string>("Side").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
-            b.Property<string>("OrderType").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
-            b.Property<decimal>("RequestedQuantity").HasPrecision(28, 12).HasColumnType("numeric(28,12)");
-            b.Property<decimal?>("Price").HasPrecision(28, 12).HasColumnType("numeric(28,12)");
-            b.Property<string>("Classification").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)");
-            b.Property<DateTimeOffset>("ReservedAt").HasColumnType("timestamp with time zone");
-            b.HasKey("ProviderKey", "AccountKey", "ClientOrderId").HasName("PK_ScopedOrders");
-            b.HasAlternateKey("ProviderKey", "AccountKey", "ClientOrderId", "LocalOrderId", "BrokerOrderId").HasName("AK_ScopedOrders_ExecutionOwner");
-            b.HasIndex("LocalOrderId").IsUnique().HasDatabaseName("UX_ScopedOrders_LocalOrderId");
-            b.HasIndex("ProviderKey", "AccountKey", "BrokerOrderId").IsUnique().HasDatabaseName("UX_ScopedOrders_ProviderAccountBroker");
-            b.ToTable("SyntheticScopedOrderReservations", t =>
-            {
-                t.HasCheckConstraint("CK_ScopedOrders_SyntheticOnly", "\"Classification\" = 'SyntheticOnly'");
-                t.HasCheckConstraint("CK_ScopedOrders_ProviderInstrument",
-                    TradeOps.Infrastructure.Persistence.Configurations.SyntheticReservationChecks.OrderScope);
-                t.HasCheckConstraint("CK_ScopedOrders_Identity",
-                    TradeOps.Infrastructure.Persistence.Configurations.SyntheticReservationChecks.OrderText);
-                t.HasCheckConstraint("CK_ScopedOrders_Terms",
-                    TradeOps.Infrastructure.Persistence.Configurations.SyntheticReservationChecks.OrderTerms);
-            });
-        });
-
-        modelBuilder.Entity("TradeOps.Infrastructure.Persistence.SyntheticScopedExecutionReservation", b =>
-        {
-            b.Property<string>("ProviderKey").HasMaxLength(64).HasColumnType("character varying(64)");
-            b.Property<string>("AccountKey").HasMaxLength(128).HasColumnType("character varying(128)");
-            b.Property<string>("ExecutionId").HasMaxLength(100).HasColumnType("character varying(100)");
-            b.Property<string>("ClientOrderId").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
-            b.Property<Guid>("LocalOrderId").ValueGeneratedNever().HasColumnType("uuid");
-            b.Property<string>("BrokerOrderId").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
-            b.Property<decimal>("Quantity").HasPrecision(28, 12).HasColumnType("numeric(28,12)");
-            b.Property<decimal>("Price").HasPrecision(28, 12).HasColumnType("numeric(28,12)");
-            b.Property<decimal?>("Fee").HasPrecision(28, 12).HasColumnType("numeric(28,12)");
-            b.Property<string>("FeeCurrency").HasMaxLength(20).HasColumnType("character varying(20)");
-            b.Property<string>("Classification").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)");
-            b.Property<DateTimeOffset>("ReservedAt").HasColumnType("timestamp with time zone");
-            b.HasKey("ProviderKey", "AccountKey", "ExecutionId").HasName("PK_ScopedExecutions");
-            b.HasIndex("ProviderKey", "AccountKey", "ClientOrderId", "LocalOrderId", "BrokerOrderId")
-                .HasDatabaseName("IX_ScopedExecutions_ExactOrderBinding");
-            b.ToTable("SyntheticScopedExecutionReservations", t =>
-            {
-                t.HasCheckConstraint("CK_ScopedExecutions_SyntheticOnly", "\"Classification\" = 'SyntheticOnly'");
-                t.HasCheckConstraint("CK_ScopedExecutions_Identity",
-                    TradeOps.Infrastructure.Persistence.Configurations.SyntheticReservationChecks.ExecutionScope);
-                t.HasCheckConstraint("CK_ScopedExecutions_Terms",
-                    TradeOps.Infrastructure.Persistence.Configurations.SyntheticReservationChecks.ExecutionTerms);
-            });
-        });
-
-
-        modelBuilder.Entity("TradeOps.Infrastructure.Persistence.SyntheticScopedExecutionReservation", b =>
-        {
-            b.HasOne("TradeOps.Infrastructure.Persistence.SyntheticScopedOrderReservation", null)
-                .WithMany()
-                .HasForeignKey("ProviderKey", "AccountKey", "ClientOrderId", "LocalOrderId", "BrokerOrderId")
-                .HasPrincipalKey("ProviderKey", "AccountKey", "ClientOrderId", "LocalOrderId", "BrokerOrderId")
-                .OnDelete(DeleteBehavior.Restrict)
-                .IsRequired()
-                .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
-        });
-
-#pragma warning restore 612, 618
+        modelBuilder.ApplyConfiguration(new FrozenOrderReservationConfiguration());
+        modelBuilder.ApplyConfiguration(new FrozenExecutionReservationConfiguration());
     }
 }
+
+
+
+/// <summary>
+/// Separate synthetic-only SQL reservation surface: DOES NOT alter legacy
+/// Orders, Fills, their global indexes or execution/reconciliation runtime.
+/// </summary>
+public sealed class FrozenOrderReservationConfiguration
+    : IEntityTypeConfiguration<SyntheticScopedOrderReservation>
+{
+    public void Configure(EntityTypeBuilder<SyntheticScopedOrderReservation> b)
+    {
+        b.ToTable("SyntheticScopedOrderReservations", table =>
+        {
+            table.HasCheckConstraint("CK_ScopedOrders_SyntheticOnly",
+                "\"Classification\" = 'SyntheticOnly'");
+            table.HasCheckConstraint("CK_ScopedOrders_ProviderInstrument",
+                FrozenReservationChecks.OrderScope);
+            table.HasCheckConstraint("CK_ScopedOrders_Identity", 
+                FrozenReservationChecks.OrderText);
+            table.HasCheckConstraint("CK_ScopedOrders_Terms",
+                FrozenReservationChecks.OrderTerms);
+        });
+
+        b.HasKey(x => new { x.ProviderKey, x.AccountKey, x.ClientOrderId })
+            .HasName("PK_ScopedOrders");
+        b.HasAlternateKey(x => new
+        {
+            x.ProviderKey, x.AccountKey, x.ClientOrderId,
+            x.LocalOrderId, x.BrokerOrderId
+        }).HasName("AK_ScopedOrders_ExecutionOwner");
+
+        b.Property(x => x.ProviderKey).HasMaxLength(64).IsRequired();
+        b.Property(x => x.AccountKey).HasMaxLength(128).IsRequired();
+        b.Property(x => x.ClientOrderId).HasMaxLength(100).IsRequired();
+        b.Property(x => x.LocalOrderId).ValueGeneratedNever();
+        b.Property(x => x.BrokerOrderId).HasMaxLength(100).IsRequired();
+        b.Property(x => x.InstrumentKey).HasMaxLength(192).IsRequired();
+        b.Property(x => x.Side).HasMaxLength(20).IsRequired();
+        b.Property(x => x.OrderType).HasMaxLength(20).IsRequired();
+        b.Property(x => x.RequestedQuantity).HasPrecision(28, 12);
+        b.Property(x => x.Price).HasPrecision(28, 12);
+        b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
+        b.Property(x => x.ReservedAt).IsRequired();
+
+        b.HasIndex(x => x.LocalOrderId).IsUnique()
+            .HasDatabaseName("UX_ScopedOrders_LocalOrderId");
+        b.HasIndex(x => new { x.ProviderKey, x.AccountKey, x.BrokerOrderId })
+            .IsUnique()
+            .HasDatabaseName("UX_ScopedOrders_ProviderAccountBroker");
+    }
+}
+
+/// <summary>
+/// An execution can only reserve against an existing, exact synthetic
+/// order/account/cOID/LocalOrderId/BrokerOrderId binding at SQL FK level.
+/// </summary>
+public sealed class FrozenExecutionReservationConfiguration
+    : IEntityTypeConfiguration<SyntheticScopedExecutionReservation>
+{
+    public void Configure(EntityTypeBuilder<SyntheticScopedExecutionReservation> b)
+    {
+        b.ToTable("SyntheticScopedExecutionReservations", table =>
+        {
+            table.HasCheckConstraint("CK_ScopedExecutions_SyntheticOnly",
+                "\"Classification\" = 'SyntheticOnly'");
+            table.HasCheckConstraint("CK_ScopedExecutions_Identity",
+                FrozenReservationChecks.ExecutionScope);
+            table.HasCheckConstraint("CK_ScopedExecutions_Terms",
+                FrozenReservationChecks.ExecutionTerms);
+        });
+
+        b.HasKey(x => new { x.ProviderKey, x.AccountKey, x.ExecutionId })
+            .HasName("PK_ScopedExecutions");
+        b.Property(x => x.ProviderKey).HasMaxLength(64).IsRequired();
+        b.Property(x => x.AccountKey).HasMaxLength(128).IsRequired();
+        b.Property(x => x.ExecutionId).HasMaxLength(100).IsRequired();
+        b.Property(x => x.ClientOrderId).HasMaxLength(100).IsRequired();
+        b.Property(x => x.LocalOrderId).ValueGeneratedNever();
+        b.Property(x => x.BrokerOrderId).HasMaxLength(100).IsRequired();
+        b.Property(x => x.Quantity).HasPrecision(28, 12);
+        b.Property(x => x.Price).HasPrecision(28, 12);
+        b.Property(x => x.Fee).HasPrecision(28, 12);
+        b.Property(x => x.FeeCurrency).HasMaxLength(20);
+        b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
+        b.Property(x => x.ReservedAt).IsRequired();
+
+        b.HasOne<SyntheticScopedOrderReservation>()
+            .WithMany()
+            .HasForeignKey(x => new
+            {
+                x.ProviderKey, x.AccountKey, x.ClientOrderId,
+                x.LocalOrderId, x.BrokerOrderId
+            })
+            .HasPrincipalKey(x => new
+            {
+                x.ProviderKey, x.AccountKey, x.ClientOrderId,
+                x.LocalOrderId, x.BrokerOrderId
+            })
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
+    }
+}
+
+
+
+/// <summary>
+/// Fixed SQL fragments used by TO-V2-21's model and its initial migration.
+/// Treat the values as an immutable historical migration contract.
+/// </summary>
+internal static class FrozenReservationChecks
+{
+    internal const string OrderScope =
+        "(\"ProviderKey\" = 'Mock' " +
+        "AND left(\"InstrumentKey\", 5) = 'MOCK:' AND length(\"InstrumentKey\") > 5) " +
+        "OR (\"ProviderKey\" = 'IbkrOffline' " +
+        "AND left(\"InstrumentKey\", 22) = 'SYNTHETIC-IBKR-SYMBOL:' " +
+        "AND length(\"InstrumentKey\") > 22)";
+
+    internal const string OrderText =
+        "length(btrim(\"AccountKey\")) > 0 AND \"AccountKey\" = btrim(\"AccountKey\") " +
+        "AND length(btrim(\"ClientOrderId\")) > 0 AND \"ClientOrderId\" = btrim(\"ClientOrderId\") " +
+        "AND length(btrim(\"BrokerOrderId\")) > 0 AND \"BrokerOrderId\" = btrim(\"BrokerOrderId\") " +
+        "AND length(btrim(\"InstrumentKey\")) > 0 AND \"InstrumentKey\" = btrim(\"InstrumentKey\") " +
+        "AND \"LocalOrderId\" <> '00000000-0000-0000-0000-000000000000'::uuid";
+
+    internal const string OrderTerms =
+        "\"Side\" IN ('Buy','Sell') " +
+        "AND \"OrderType\" IN ('Market','Limit','Stop') " +
+        "AND \"RequestedQuantity\" > 0 AND \"RequestedQuantity\" < 10000000000000000 " +
+        "AND (\"Price\" IS NULL OR (\"Price\" > 0 AND \"Price\" < 10000000000000000))";
+
+    internal const string ExecutionScope =
+        "\"ProviderKey\" IN ('Mock','IbkrOffline') " +
+        "AND length(btrim(\"AccountKey\")) > 0 " +
+        "AND \"AccountKey\" = btrim(\"AccountKey\") " +
+        "AND length(btrim(\"ClientOrderId\")) > 0 " +
+        "AND \"ClientOrderId\" = btrim(\"ClientOrderId\") " +
+        "AND length(btrim(\"ExecutionId\")) > 0 " +
+        "AND \"ExecutionId\" = btrim(\"ExecutionId\") " +
+        "AND length(btrim(\"BrokerOrderId\")) > 0 " +
+        "AND \"BrokerOrderId\" = btrim(\"BrokerOrderId\") " +
+        "AND \"LocalOrderId\" <> '00000000-0000-0000-0000-000000000000'::uuid";
+
+    internal const string ExecutionTerms =
+        "\"Quantity\" > 0 AND \"Quantity\" < 10000000000000000 " +
+        "AND \"Price\" > 0 AND \"Price\" < 10000000000000000 " +
+        "AND (\"Fee\" IS NULL OR (\"Fee\" >= 0 AND \"Fee\" < 10000000000000000))";
+}
+
