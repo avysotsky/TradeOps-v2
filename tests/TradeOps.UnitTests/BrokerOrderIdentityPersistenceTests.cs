@@ -127,6 +127,150 @@ public sealed class BrokerOrderIdentityPersistenceTests
     }
 
     [Fact]
+    public void ReadOnlyProjection_AcceptsOnlyExactSyntheticLocalIdentity()
+    {
+        var (scope, localOrder) = SyntheticPair();
+        var record = EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+            scope, localOrder, "Mock", "synthetic-account");
+
+        Assert.NotNull(record);
+        Assert.Equal(localOrder.Id, record!.OrderId);
+        Assert.Equal(localOrder.Symbol, record.Symbol);
+        Assert.Equal("MOCK:BTCUSDT", record.InstrumentKey);
+        Assert.Equal(localOrder.ClientOrderId, record.ClientOrderId);
+        Assert.Equal(localOrder.ExchangeOrderId, record.BrokerOrderId);
+
+        // Terminal rows can still exist but are not reconciliation candidates.
+        Assert.Null(EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+            scope, Copy(localOrder, status: TradeOps.Domain.Enums.OrderStatus.Filled),
+            "Mock", "synthetic-account"));
+    }
+
+    [Fact]
+    public void ReadOnlyProjection_RejectsEveryCrossScopeAndForgedInstrument()
+    {
+        var (scope, local) = SyntheticPair();
+        var forged = new[]
+        {
+            Copy(scope, provider: "IbkrOffline"),
+            Copy(scope, account: "different-account"),
+            Copy(scope, instrument: "MOCK:ETHUSDT"),
+            Copy(scope, instrument: "SYNTHETIC-IBKR-SYMBOL:BTCUSDT"),
+            Copy(scope, clientOrderId: "another-client"),
+            Copy(scope, brokerOrderId: "other-broker"),
+            Copy(scope, classification: "BrokerVerified"),
+            Copy(scope, orderId: Guid.NewGuid())
+        };
+
+        foreach (var invalid in forged)
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                    invalid, local, "Mock", "synthetic-account"));
+        }
+
+        Assert.Throws<InvalidOperationException>(() =>
+            EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                scope, Copy(local, symbol: "ETHUSDT"),
+                "Mock", "synthetic-account"));
+        Assert.Throws<InvalidOperationException>(() =>
+            EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                scope, Copy(local, clientOrderId: "other-client"),
+                "Mock", "synthetic-account"));
+        Assert.Throws<InvalidOperationException>(() =>
+            EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                scope, Copy(local, brokerOrderId: "other-broker"),
+                "Mock", "synthetic-account"));
+        Assert.Throws<InvalidOperationException>(() =>
+            EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                scope, Copy(local, filled: 10m),
+                "Mock", "synthetic-account"));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                scope, local, "IbkrPaper", "synthetic-account"));
+    }
+
+    [Fact]
+    public void ReadOnlyProjection_IbkrOfflineAcceptsOnlySyntheticNamespace()
+    {
+        var (scope, order) = SyntheticPair();
+        scope.ProviderKey = "IbkrOffline";
+        scope.InstrumentKey = "SYNTHETIC-IBKR-SYMBOL:BTCUSDT";
+
+        var result = EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+            scope, order, "IbkrOffline", "synthetic-account");
+
+        Assert.NotNull(result);
+        Assert.Equal("IbkrOffline", result!.ProviderKey);
+        Assert.Throws<InvalidOperationException>(() =>
+            EfSyntheticScopedOrderReader.ProjectCheckedSyntheticScope(
+                scope, order, "Mock", "synthetic-account"));
+    }
+
+    private static (BrokerOrderIdentity Scope, TradeOps.Domain.Entities.Order Local)
+        SyntheticPair()
+    {
+        var id = Guid.NewGuid();
+        var order = new TradeOps.Domain.Entities.Order
+        {
+            Id = id,
+            ClientOrderId = "synthetic-client",
+            ExchangeOrderId = "synthetic-broker-id",
+            Symbol = "BTCUSDT",
+            Side = TradeOps.Domain.Enums.OrderSide.Buy,
+            Status = TradeOps.Domain.Enums.OrderStatus.Unknown,
+            RequestedQuantity = 5m,
+            FilledQuantity = 1m
+        };
+        var scope = new BrokerOrderIdentity
+        {
+            OrderId = id,
+            ProviderKey = "Mock",
+            AccountKey = "synthetic-account",
+            InstrumentKey = "MOCK:BTCUSDT",
+            ClientOrderId = "synthetic-client",
+            BrokerOrderId = "synthetic-broker-id",
+            RecordedAt = DateTimeOffset.UtcNow
+        };
+        return (scope, order);
+    }
+
+    private static TradeOps.Domain.Entities.Order Copy(
+        TradeOps.Domain.Entities.Order order,
+        string? symbol = null, string? clientOrderId = null,
+        string? brokerOrderId = null,
+        TradeOps.Domain.Enums.OrderStatus? status = null, decimal? filled = null) =>
+        new()
+        {
+            Id = order.Id,
+            ClientOrderId = clientOrderId ?? order.ClientOrderId,
+            ExchangeOrderId = brokerOrderId ?? order.ExchangeOrderId,
+            Symbol = symbol ?? order.Symbol,
+            Side = order.Side,
+            Status = status ?? order.Status,
+            RequestedQuantity = order.RequestedQuantity,
+            FilledQuantity = filled ?? order.FilledQuantity
+        };
+
+    private static BrokerOrderIdentity Copy(BrokerOrderIdentity record,
+        Guid? orderId = null, string? provider = null,
+        string? account = null, string? instrument = null,
+        string? clientOrderId = null, string? brokerOrderId = null,
+        string? classification = null) =>
+        new()
+        {
+            OrderId = orderId ?? record.OrderId,
+            ProviderKey = provider ?? record.ProviderKey,
+            AccountKey = account ?? record.AccountKey,
+            InstrumentKey = instrument ?? record.InstrumentKey,
+            ClientOrderId = clientOrderId ?? record.ClientOrderId,
+            BrokerOrderId = brokerOrderId ?? record.BrokerOrderId,
+            Classification = classification ?? record.Classification,
+            RecordedAt = record.RecordedAt
+        };
+
+    [Fact]
     public void SyntheticOnlyClassification_IsExplicit_NoTrustUpgradeInEntity()
     {
         var record = new BrokerOrderIdentity
