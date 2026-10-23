@@ -35,6 +35,10 @@ source_identity="$(docker exec -u postgres "$source_container" psql -X -q -A -t 
 
 # This workstream is for a PRE-MIGRATION backup only; do not use it after
 # creating broker_evidence or for any future real Deribit position/trade data.
+backup_parent="${backup_dir%/backups}"
+[[ -d "$backup_parent" && ! -L "$backup_parent" ]] || fail BACKUP_PARENT_UNSAFE
+[[ "$(stat -c '%u' "$backup_parent")" == "$(id -u)" ]] ||
+    fail BACKUP_PARENT_OWNER
 [[ ! -L "$backup_dir" ]] || fail BACKUP_DIR_SYMLINK
 mkdir -p -- "$backup_dir"
 [[ -d "$backup_dir" && ! -L "$backup_dir" ]] || fail BACKUP_DIR_UNSAFE
@@ -48,8 +52,11 @@ verified=0
 
 cleanup() {
     if [[ -n "$restore_container" ]]; then
-        # Only the disposable container created by this exact process.
-        docker rm -f "$restore_container" >/dev/null 2>&1 || true
+        # Never remove a container without matching the per-run nonce label.
+        label="$(docker inspect -f '{{ index .Config.Labels "com.tradeops.restore_nonce" }}' "$restore_container" 2>/dev/null || true)"
+        if [[ "$label" == "$suffix" ]]; then
+            docker rm -f "$restore_container" >/dev/null 2>&1 || true
+        fi
     fi
     if [[ "$verified" != 1 ]]; then
         rm -f -- "$backup_file" "$backup_file.sha256"
@@ -86,6 +93,7 @@ docker run --detach --rm \
     --env POSTGRES_HOST_AUTH_METHOD=trust \
     --env POSTGRES_DB="$restore_db" \
     --label com.tradeops.component=one-shot-empty-db-restore-check \
+    --label "com.tradeops.restore_nonce=$suffix" \
     postgres:17-bookworm > /dev/null ||
     fail RESTORE_CONTAINER_START_FAILED
 
@@ -117,6 +125,8 @@ restore_identity="$(docker exec -u postgres "$restore_container" psql \
 chmod 600 -- "$backup_file.sha256"
 
 # The temporary container must be gone before we claim PASS.
+[[ "$(docker inspect -f '{{ index .Config.Labels "com.tradeops.restore_nonce" }}' "$restore_container")" == "$suffix" ]] ||
+    fail RESTORE_CONTAINER_OWNERSHIP_MISMATCH
 docker rm -f "$restore_container" >/dev/null 2>&1 ||
     fail RESTORE_CONTAINER_CLEANUP_FAILED
 restore_container=''
