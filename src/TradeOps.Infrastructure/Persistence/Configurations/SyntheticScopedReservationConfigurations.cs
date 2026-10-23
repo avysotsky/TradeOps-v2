@@ -87,19 +87,7 @@ public sealed class SyntheticScopedExecutionReservationConfiguration
         b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
         b.Property(x => x.ReservedAt).IsRequired();
 
-        b.HasOne<SyntheticScopedOrderReservation>()
-            .WithMany()
-            .HasForeignKey(x => new
-            {
-                x.ProviderKey, x.AccountKey, x.ClientOrderId,
-                x.LocalOrderId, x.BrokerOrderId
-            })
-            .HasPrincipalKey(x => new
-            {
-                x.ProviderKey, x.AccountKey, x.ClientOrderId,
-                x.LocalOrderId, x.BrokerOrderId
-            })
-            .OnDelete(DeleteBehavior.Restrict)
-            .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
+        // SQL-level composite FK still exists in the additive migration.
+        // Diagnostic isolation: EF relationship metadata is temporarily omitted.
     }
 }
