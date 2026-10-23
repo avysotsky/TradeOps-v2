@@ -85,12 +85,15 @@ public sealed class EfSyntheticScopedOrderReader(TradeOpsDbContext database)
                     StringComparison.Ordinal)
                 || !string.Equals(scope.BrokerOrderId, order.ExchangeOrderId,
                     StringComparison.Ordinal)
-                || !(providerKey == "Mock"
-                    && scope.InstrumentKey.StartsWith("MOCK:",
-                        StringComparison.Ordinal)
-                    || providerKey == "IbkrOffline"
-                    && scope.InstrumentKey.StartsWith("SYNTHETIC-IBKR-SYMBOL:",
-                        StringComparison.Ordinal)))
+                // The sidecar namespace alone is not enough. A
+                // synthetically declared instrument must match the local
+                // order's full symbol EXACTLY; do not silently rebind a
+                // BTCUSDT order to an ETHUSDT synthetic instrument.
+                || !string.Equals(
+                    scope.InstrumentKey,
+                    (providerKey == "Mock"
+                        ? "MOCK:" : "SYNTHETIC-IBKR-SYMBOL:") + order.Symbol,
+                    StringComparison.Ordinal))
             {
                 throw Invalid();
             }
