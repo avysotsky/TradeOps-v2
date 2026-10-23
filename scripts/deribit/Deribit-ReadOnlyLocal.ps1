@@ -67,7 +67,7 @@ function Set-UserOnlyAcl([string]$Path, [bool]$Directory) {
 }
 
 function Get-PlainFromSecure([Security.SecureString]$Value) {
-    $credential = [Security.PSCredential]::new('local-only', $Value)
+    $credential = [System.Management.Automation.PSCredential]::new('local-only', $Value)
     return $credential.GetNetworkCredential().Password
 }
 
