@@ -1,16 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TradeOps.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace TradeOps.Infrastructure.Persistence.ScopedReservationMigrations;
 
-// Frozen EF schema at TO-V2-21 migration creation. Do NOT reference live
-// configuration classes here: otherwise later configuration edits would
-// silently move the migration snapshot and defeat drift detection.
+// Frozen historic migration snapshot, expressed without IEntityTypeConfiguration
+// classes. Otherwise ApplyConfigurationsFromAssembly in the LIVE DbContext
+// would accidentally discover extra synthetic reservation configurations.
 [DbContext(typeof(ScopedReservationsDbContext))]
 partial class ScopedReservationsDbContextModelSnapshot : ModelSnapshot
 {
@@ -19,114 +18,93 @@ partial class ScopedReservationsDbContextModelSnapshot : ModelSnapshot
         modelBuilder
             .HasAnnotation("ProductVersion", "10.0.12")
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
-        modelBuilder.ApplyConfiguration(new FrozenOrderReservationConfiguration());
-        modelBuilder.ApplyConfiguration(new FrozenExecutionReservationConfiguration());
-    }
-}
 
-
-
-/// <summary>
-/// Separate synthetic-only SQL reservation surface: DOES NOT alter legacy
-/// Orders, Fills, their global indexes or execution/reconciliation runtime.
-/// </summary>
-public sealed class FrozenOrderReservationConfiguration
-    : IEntityTypeConfiguration<SyntheticScopedOrderReservation>
-{
-    public void Configure(EntityTypeBuilder<SyntheticScopedOrderReservation> b)
-    {
-        b.ToTable("SyntheticScopedOrderReservations", table =>
+        modelBuilder.Entity<SyntheticScopedOrderReservation>(b =>
         {
-            table.HasCheckConstraint("CK_ScopedOrders_SyntheticOnly",
-                "\"Classification\" = 'SyntheticOnly'");
-            table.HasCheckConstraint("CK_ScopedOrders_ProviderInstrument",
-                FrozenReservationChecks.OrderScope);
-            table.HasCheckConstraint("CK_ScopedOrders_Identity", 
-                FrozenReservationChecks.OrderText);
-            table.HasCheckConstraint("CK_ScopedOrders_Terms",
-                FrozenReservationChecks.OrderTerms);
+            b.ToTable("SyntheticScopedOrderReservations", table =>
+                    {
+                        table.HasCheckConstraint("CK_ScopedOrders_SyntheticOnly",
+                            "\"Classification\" = 'SyntheticOnly'");
+                        table.HasCheckConstraint("CK_ScopedOrders_ProviderInstrument",
+                            FrozenReservationChecks.OrderScope);
+                        table.HasCheckConstraint("CK_ScopedOrders_Identity", 
+                            FrozenReservationChecks.OrderText);
+                        table.HasCheckConstraint("CK_ScopedOrders_Terms",
+                            FrozenReservationChecks.OrderTerms);
+                    });
+            
+                    b.HasKey(x => new { x.ProviderKey, x.AccountKey, x.ClientOrderId })
+                        .HasName("PK_ScopedOrders");
+                    b.HasAlternateKey(x => new
+                    {
+                        x.ProviderKey, x.AccountKey, x.ClientOrderId,
+                        x.LocalOrderId, x.BrokerOrderId
+                    }).HasName("AK_ScopedOrders_ExecutionOwner");
+            
+                    b.Property(x => x.ProviderKey).HasMaxLength(64).IsRequired();
+                    b.Property(x => x.AccountKey).HasMaxLength(128).IsRequired();
+                    b.Property(x => x.ClientOrderId).HasMaxLength(100).IsRequired();
+                    b.Property(x => x.LocalOrderId).ValueGeneratedNever();
+                    b.Property(x => x.BrokerOrderId).HasMaxLength(100).IsRequired();
+                    b.Property(x => x.InstrumentKey).HasMaxLength(192).IsRequired();
+                    b.Property(x => x.Side).HasMaxLength(20).IsRequired();
+                    b.Property(x => x.OrderType).HasMaxLength(20).IsRequired();
+                    b.Property(x => x.RequestedQuantity).HasPrecision(28, 12);
+                    b.Property(x => x.Price).HasPrecision(28, 12);
+                    b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
+                    b.Property(x => x.ReservedAt).IsRequired();
+            
+                    b.HasIndex(x => x.LocalOrderId).IsUnique()
+                        .HasDatabaseName("UX_ScopedOrders_LocalOrderId");
+                    b.HasIndex(x => new { x.ProviderKey, x.AccountKey, x.BrokerOrderId })
+                        .IsUnique()
+                        .HasDatabaseName("UX_ScopedOrders_ProviderAccountBroker");
         });
 
-        b.HasKey(x => new { x.ProviderKey, x.AccountKey, x.ClientOrderId })
-            .HasName("PK_ScopedOrders");
-        b.HasAlternateKey(x => new
+        modelBuilder.Entity<SyntheticScopedExecutionReservation>(b =>
         {
-            x.ProviderKey, x.AccountKey, x.ClientOrderId,
-            x.LocalOrderId, x.BrokerOrderId
-        }).HasName("AK_ScopedOrders_ExecutionOwner");
-
-        b.Property(x => x.ProviderKey).HasMaxLength(64).IsRequired();
-        b.Property(x => x.AccountKey).HasMaxLength(128).IsRequired();
-        b.Property(x => x.ClientOrderId).HasMaxLength(100).IsRequired();
-        b.Property(x => x.LocalOrderId).ValueGeneratedNever();
-        b.Property(x => x.BrokerOrderId).HasMaxLength(100).IsRequired();
-        b.Property(x => x.InstrumentKey).HasMaxLength(192).IsRequired();
-        b.Property(x => x.Side).HasMaxLength(20).IsRequired();
-        b.Property(x => x.OrderType).HasMaxLength(20).IsRequired();
-        b.Property(x => x.RequestedQuantity).HasPrecision(28, 12);
-        b.Property(x => x.Price).HasPrecision(28, 12);
-        b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
-        b.Property(x => x.ReservedAt).IsRequired();
-
-        b.HasIndex(x => x.LocalOrderId).IsUnique()
-            .HasDatabaseName("UX_ScopedOrders_LocalOrderId");
-        b.HasIndex(x => new { x.ProviderKey, x.AccountKey, x.BrokerOrderId })
-            .IsUnique()
-            .HasDatabaseName("UX_ScopedOrders_ProviderAccountBroker");
-    }
-}
-
-/// <summary>
-/// An execution can only reserve against an existing, exact synthetic
-/// order/account/cOID/LocalOrderId/BrokerOrderId binding at SQL FK level.
-/// </summary>
-public sealed class FrozenExecutionReservationConfiguration
-    : IEntityTypeConfiguration<SyntheticScopedExecutionReservation>
-{
-    public void Configure(EntityTypeBuilder<SyntheticScopedExecutionReservation> b)
-    {
-        b.ToTable("SyntheticScopedExecutionReservations", table =>
-        {
-            table.HasCheckConstraint("CK_ScopedExecutions_SyntheticOnly",
-                "\"Classification\" = 'SyntheticOnly'");
-            table.HasCheckConstraint("CK_ScopedExecutions_Identity",
-                FrozenReservationChecks.ExecutionScope);
-            table.HasCheckConstraint("CK_ScopedExecutions_Terms",
-                FrozenReservationChecks.ExecutionTerms);
+            b.ToTable("SyntheticScopedExecutionReservations", table =>
+                    {
+                        table.HasCheckConstraint("CK_ScopedExecutions_SyntheticOnly",
+                            "\"Classification\" = 'SyntheticOnly'");
+                        table.HasCheckConstraint("CK_ScopedExecutions_Identity",
+                            FrozenReservationChecks.ExecutionScope);
+                        table.HasCheckConstraint("CK_ScopedExecutions_Terms",
+                            FrozenReservationChecks.ExecutionTerms);
+                    });
+            
+                    b.HasKey(x => new { x.ProviderKey, x.AccountKey, x.ExecutionId })
+                        .HasName("PK_ScopedExecutions");
+                    b.Property(x => x.ProviderKey).HasMaxLength(64).IsRequired();
+                    b.Property(x => x.AccountKey).HasMaxLength(128).IsRequired();
+                    b.Property(x => x.ExecutionId).HasMaxLength(100).IsRequired();
+                    b.Property(x => x.ClientOrderId).HasMaxLength(100).IsRequired();
+                    b.Property(x => x.LocalOrderId).ValueGeneratedNever();
+                    b.Property(x => x.BrokerOrderId).HasMaxLength(100).IsRequired();
+                    b.Property(x => x.Quantity).HasPrecision(28, 12);
+                    b.Property(x => x.Price).HasPrecision(28, 12);
+                    b.Property(x => x.Fee).HasPrecision(28, 12);
+                    b.Property(x => x.FeeCurrency).HasMaxLength(20);
+                    b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
+                    b.Property(x => x.ReservedAt).IsRequired();
+            
+                    b.HasOne<SyntheticScopedOrderReservation>()
+                        .WithMany()
+                        .HasForeignKey(x => new
+                        {
+                            x.ProviderKey, x.AccountKey, x.ClientOrderId,
+                            x.LocalOrderId, x.BrokerOrderId
+                        })
+                        .HasPrincipalKey(x => new
+                        {
+                            x.ProviderKey, x.AccountKey, x.ClientOrderId,
+                            x.LocalOrderId, x.BrokerOrderId
+                        })
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
         });
-
-        b.HasKey(x => new { x.ProviderKey, x.AccountKey, x.ExecutionId })
-            .HasName("PK_ScopedExecutions");
-        b.Property(x => x.ProviderKey).HasMaxLength(64).IsRequired();
-        b.Property(x => x.AccountKey).HasMaxLength(128).IsRequired();
-        b.Property(x => x.ExecutionId).HasMaxLength(100).IsRequired();
-        b.Property(x => x.ClientOrderId).HasMaxLength(100).IsRequired();
-        b.Property(x => x.LocalOrderId).ValueGeneratedNever();
-        b.Property(x => x.BrokerOrderId).HasMaxLength(100).IsRequired();
-        b.Property(x => x.Quantity).HasPrecision(28, 12);
-        b.Property(x => x.Price).HasPrecision(28, 12);
-        b.Property(x => x.Fee).HasPrecision(28, 12);
-        b.Property(x => x.FeeCurrency).HasMaxLength(20);
-        b.Property(x => x.Classification).HasMaxLength(32).IsRequired();
-        b.Property(x => x.ReservedAt).IsRequired();
-
-        b.HasOne<SyntheticScopedOrderReservation>()
-            .WithMany()
-            .HasForeignKey(x => new
-            {
-                x.ProviderKey, x.AccountKey, x.ClientOrderId,
-                x.LocalOrderId, x.BrokerOrderId
-            })
-            .HasPrincipalKey(x => new
-            {
-                x.ProviderKey, x.AccountKey, x.ClientOrderId,
-                x.LocalOrderId, x.BrokerOrderId
-            })
-            .OnDelete(DeleteBehavior.Restrict)
-            .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
     }
 }
-
 
 
 /// <summary>
