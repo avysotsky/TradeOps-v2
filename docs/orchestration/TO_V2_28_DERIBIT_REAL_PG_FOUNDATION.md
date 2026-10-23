@@ -129,3 +129,38 @@ before importing real Deribit snapshots. Volume persistence alone is not backup.
 **Acceptance labels:** PR code/build Gate A NOT PROVEN; disposable PG17 Gate B
 NOT PROVEN; owner target/backup/migration Gate C NOT APPROVED; actual Deribit
 positions persisted NOT PROVEN; executions persisted NOT IMPLEMENTED.
+
+
+## Owner approval and one-shot empty PG17 deployment handoff
+
+The owner explicitly approved **creation of the dedicated empty PostgreSQL 17
+container and persistent volume only**. This approval does NOT cover executing
+`TO_V2_28_BROKER_EVIDENCE_SCHEMA_PROPOSED.sql`, roles SQL, account bindings,
+real broker API access, execution importer, live API/Worker integration, or
+modification/deletion of any previously existing Docker resource.
+
+Two exact-SHA scripts were added to this Draft PR:
+- `scripts/deribit/Deploy-EmptyEvidencePg17.ps1`: PowerShell 5.1 owner-local
+  entry point; fetches branch and refuses HEAD != owner-supplied exact SHA,
+  then stages only the pinned Compose and Bash files in a disposable temp
+  directory, syntax-checks WSL Bash and executes it.
+- `deploy/deribit-evidence/deploy-empty-pg17.sh`: WSL preflight and
+  one-time creation; rejects collisions with existing container, volume,
+  Compose network and listening WSL port; generates a 32-byte CSPRNG
+  bootstrap password in WSL under
+  `~/.local/share/tradeops/deribit-evidence-pg17/` (private, 0600),
+  validates pinned Compose, starts **only** the isolated PostgreSQL service,
+  and confirms container healthy, PostgreSQL major 17, new named volume
+  mounted and absence of `broker_evidence` schema.
+
+The operator invokes the exact-SHA PowerShell source from the immutable Git
+object after checking fetched branch HEAD, without changing the repo checkout
+or Windows machine-wide execution policy. A real deployment is accepted ONLY
+when the owner reports
+`TRADEOPS_PG17_EMPTY_DEPLOY_PASS ...`. Branch or script creation is **not**
+evidence that the container was started.
+
+On failure: stop and inspect non-secret error codes. Do not automatically
+retry a partially created container/volume; never `down -v` or prune.
+Make sure the independent container is correctly initialized before
+provisioning a separate non-superuser writer or installing schema.
