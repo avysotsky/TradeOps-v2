@@ -67,8 +67,8 @@ function Set-UserOnlyAcl([string]$Path, [bool]$Directory) {
 }
 
 function Get-PlainFromSecure([Security.SecureString]$Value) {
-    return [Security.PSCredential]::new('local-only', $Value).
-        GetNetworkCredential().Password
+    $credential = [Security.PSCredential]::new('local-only', $Value)
+    return $credential.GetNetworkCredential().Password
 }
 
 if ($Action -eq 'Status') {
@@ -131,7 +131,7 @@ if ($Action -eq 'Save') {
             'Deribit.Mainnet.ReadOnly.' + [Guid]::NewGuid().ToString('N') + '.tmp')
 
         [IO.File]::WriteAllText(
-            $temporaryFile, $json, (New-Object Text.UTF8Encoding($false)))
+            $temporaryFile, $json, ([System.Text.UTF8Encoding]::new($false)))
         Set-UserOnlyAcl $temporaryFile $false
         Move-Item -LiteralPath $temporaryFile -Destination $vaultFile -Force
         $temporaryFile = $null
