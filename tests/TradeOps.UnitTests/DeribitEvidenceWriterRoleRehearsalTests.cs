@@ -42,6 +42,20 @@ public sealed class DeribitEvidenceWriterRoleRehearsalTests
     }
 
     [Fact]
+    public void ActualDeribitWriter_UsesSelectOnlyBindingLookup()
+    {
+        var code = File.ReadAllText(Path.Combine(Root(), "src",
+            "TradeOps.Infrastructure", "Exchange", "Deribit",
+            "DeribitRealReadOnlyEvidencePgStore.cs"));
+        Assert.Contains("SELECT 1 FROM broker_evidence.account_bindings", code);
+        Assert.Contains("AND credential_id_sha256 = @fingerprint", code);
+        // FOR SHARE would require additional UPDATE rights in PostgreSQL,
+        // which cannot be granted on account identity metadata.
+        Assert.DoesNotContain("\n            FOR SHARE\n", code);
+        Assert.DoesNotContain("\n            FOR UPDATE\n", code);
+    }
+
+    [Fact]
     public void Fixture_ActuallyUsesWriterAndVerifiesDeniedOperations()
     {
         var sql = File.ReadAllText(Path.Combine(Root(), "deploy",
