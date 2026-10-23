@@ -66,6 +66,22 @@ public static class DeribitTradeHistoryCollector
                     "Deribit trade-history page scope is inconsistent.");
             }
 
+            // The first, truncated page is only a signal to subdivide.
+            // It is NOT authoritative evidence for a fully covered segment;
+            // collect records exclusively from page-exhausted leaf windows.
+            if (page.HasMore)
+            {
+                if (from == to)
+                    throw new InvalidOperationException(
+                        "Deribit trade-history is truncated within a single millisecond.");
+
+                var middle = from + (to - from) / 2;
+                var nextStart = middle == from ? from + 1 : middle;
+                pending.Push((nextStart, to));
+                pending.Push((from, middle));
+                continue;
+            }
+
             foreach (var item in page.Trades)
             {
                 // Never trust a callback to preserve the parser's timestamp
@@ -91,21 +107,8 @@ public static class DeribitTradeHistoryCollector
                         "Deribit trade-history evidence budget exceeded.");
             }
 
-            if (!page.HasMore)
-                continue;
-
-            // No ID cursor exists on the time-scoped endpoint. Split
-            // the INCLUSIVE range, dedup boundary timestamp by trade_id.
-            // If more than one page shares one millisecond, do not guess:
-            // explicit failure, never a silently incomplete "success".
-            if (from == to)
-                throw new InvalidOperationException(
-                    "Deribit trade-history is truncated within a single millisecond.");
-
-            var middle = from + (to - from) / 2;
-            var nextStart = middle == from ? from + 1 : middle;
-            pending.Push((nextStart, to));
-            pending.Push((from, middle));
+            // Exhausted leaf segment accepted. Never assume this proves
+            // exchange indexing completeness or other account coverage.
         }
 
         return new DeribitTradeWindowEvidence(

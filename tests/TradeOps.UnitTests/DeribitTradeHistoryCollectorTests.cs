@@ -56,7 +56,7 @@ public sealed class DeribitTradeHistoryCollectorTests
 
         Assert.Equal(3, evidence.PageCalls);
         Assert.Equal(2, evidence.UniqueTrades);
-        Assert.Equal(2, evidence.DuplicateBoundaryTrades);
+        Assert.Equal(1, evidence.DuplicateBoundaryTrades);
         Assert.Contains((100, 150), scopes);
         Assert.Contains((150, 200), scopes);
     }
