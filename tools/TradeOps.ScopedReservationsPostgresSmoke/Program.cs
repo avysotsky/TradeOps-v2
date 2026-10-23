@@ -193,6 +193,32 @@ try
         SyntheticReservationDisposition.IdentityConflict) == 1,
         "one_execution_payload_conflict");
 
+    phase = "database_five_part_fk_direct_probe";
+    // Probe PostgreSQL itself, bypassing the journal's parent preflight:
+    // an execution using a wrong broker ID MUST fail FK 23503.
+    var fkRejected = false;
+    await using (var db = new TradeOpsDbContext(options))
+    {
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $@"INSERT INTO ""SyntheticScopedExecutionReservations""
+                    (""ProviderKey"", ""AccountKey"", ""ExecutionId"",
+                     ""ClientOrderId"", ""LocalOrderId"", ""BrokerOrderId"",
+                     ""Quantity"", ""Price"", ""Classification"", ""ReservedAt"")
+                    VALUES ({a.ProviderKey}, {a.AccountKey},
+                            {"synthetic-bad-fk-exec"}, {a.ClientOrderId},
+                            {a.LocalOrderId}, {"wrong-broker-binding"},
+                            {1m}, {100m}, {"SyntheticOnly"}, now())");
+        }
+        catch (PostgresException error) when (
+            error.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            fkRejected = true;
+        }
+    }
+    Check(fkRejected, "postgres_fk_bypass_blocked");
+
     phase = "durability_counts_and_legacy_protection";
     await using (var db = new TradeOpsDbContext(options))
     {
