@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using TradeOps.Application.Interfaces;
 using TradeOps.Application.Models;
@@ -128,6 +129,40 @@ public sealed class OrderRecoveryTests
         Assert.Equal(0, status.OrdersUpdated);
         Assert.Equal(1, status.OrderIssues);
         Assert.Equal(1, status.OrdersMissingOnExchange);
+    }
+
+    [Fact]
+    public async Task ReconcileAsync_Broker503_FailsRunWithoutMarkingOrderMissing()
+    {
+        var signal = CreateSignal();
+        var repository = new InMemoryOrderRepository();
+        var order = CreateExchangeOrder(signal, OrderStatus.Accepted);
+        order.ExchangeOrderId = "exchange-recovered";
+        repository.Orders.Add(order);
+        var exchange = new RecoveryExchangeClient
+        {
+            LookupByExchangeOrderIdException = new HttpRequestException(
+                "synthetic IBKR session cache unavailable",
+                null,
+                HttpStatusCode.ServiceUnavailable)
+        };
+        var runStatus = new InMemoryOperationalRunStatusRepository();
+        var service = CreateReconciliationService(exchange, repository, runStatus);
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.ReconcileAsync());
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, error.StatusCode);
+        Assert.Equal(OrderStatus.Accepted, order.Status);
+        Assert.Equal(0m, order.FilledQuantity);
+        Assert.Equal("exchange-recovered", order.ExchangeOrderId);
+        Assert.Equal(0, exchange.PlaceOrderCallCount);
+
+        var record = await runStatus.GetAsync(OperationalRunTypes.OrderReconciliation);
+        Assert.NotNull(record);
+        Assert.False(record.IsRunning);
+        Assert.False(record.Succeeded);
+        Assert.Equal(0, record.OrdersMissingOnExchange);
     }
 
     private static OrderReconciliationService CreateReconciliationService(
@@ -294,6 +329,7 @@ public sealed class OrderRecoveryTests
     private sealed class RecoveryExchangeClient : IExchangeClient
     {
         public Exception? PlaceOrderException { get; init; }
+        public Exception? LookupByExchangeOrderIdException { get; init; }
         public Order? LookupByClientOrderIdResult { get; set; }
         public int PlaceOrderCallCount { get; private set; }
         public int LookupByClientOrderIdCallCount { get; private set; }
@@ -331,7 +367,9 @@ public sealed class OrderRecoveryTests
         public Task<Order?> GetOrderAsync(
             string exchangeOrderId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Order?>(null);
+            LookupByExchangeOrderIdException is { } failure
+                ? Task.FromException<Order?>(failure)
+                : Task.FromResult<Order?>(null);
 
         public Task<Order?> GetOrderByClientOrderIdAsync(
             string clientOrderId,
