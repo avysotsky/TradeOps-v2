@@ -45,22 +45,32 @@ if (!string.Equals(builder.Host, "127.0.0.1", StringComparison.Ordinal)
 
 var options = new DbContextOptionsBuilder<TradeOpsDbContext>()
     .UseNpgsql(builder.ConnectionString).Options;
+var reservationOptions = new DbContextOptionsBuilder<ScopedReservationsDbContext>()
+    .UseNpgsql(builder.ConnectionString).Options;
 var phase = "initial";
 long existingLegacyOrderCount = -1;
 long existingLegacyFillCount = -1;
 long existingLegacyScopeCount = -1;
 try
 {
-    await using (var db = new TradeOpsDbContext(options))
+    // This is an explicit, disposable-only migration for a different
+    // DbContext. The live TradeOpsDbContext does NOT apply these tables
+    // at API startup or include them in its ModelSnapshot.
+    await using (var reservationDb =
+        new ScopedReservationsDbContext(reservationOptions))
     {
-        var migrations = await db.Database.GetAppliedMigrationsAsync();
+        await reservationDb.Database.MigrateAsync();
+        var migrations = await reservationDb.Database.GetAppliedMigrationsAsync();
         Check(migrations.Contains(
             "20261023120000_AddSyntheticScopedIdempotencyReservations"),
             "migration_not_applied");
-        Check(await db.SyntheticScopedOrderReservations.CountAsync() == 0,
+        Check(await reservationDb.SyntheticScopedOrderReservations.CountAsync() == 0,
             "unexpected_existing_order_reservations");
-        Check(await db.SyntheticScopedExecutionReservations.CountAsync() == 0,
+        Check(await reservationDb.SyntheticScopedExecutionReservations.CountAsync() == 0,
             "unexpected_existing_execution_reservations");
+    }
+    await using (var db = new TradeOpsDbContext(options))
+    {
         existingLegacyOrderCount = await db.Orders.LongCountAsync();
         existingLegacyFillCount = await db.Fills.LongCountAsync();
         existingLegacyScopeCount = await db.BrokerOrderIdentities.LongCountAsync();
@@ -220,12 +230,16 @@ try
     Check(fkRejected, "postgres_fk_bypass_blocked");
 
     phase = "durability_counts_and_legacy_protection";
+    await using (var reservationDb =
+        new ScopedReservationsDbContext(reservationOptions))
+    {
+        Check(await reservationDb.SyntheticScopedOrderReservations.CountAsync() == 6,
+            "synthetic_order_reservation_count");
+        Check(await reservationDb.SyntheticScopedExecutionReservations.CountAsync() == 4,
+            "synthetic_execution_reservation_count");
+    }
     await using (var db = new TradeOpsDbContext(options))
     {
-        Check(await db.SyntheticScopedOrderReservations.CountAsync() == 6,
-            "synthetic_order_reservation_count");
-        Check(await db.SyntheticScopedExecutionReservations.CountAsync() == 4,
-            "synthetic_execution_reservation_count");
         Check(await db.Orders.LongCountAsync() == existingLegacyOrderCount,
             "legacy_order_changed");
         Check(await db.BrokerOrderIdentities.LongCountAsync() == existingLegacyScopeCount,
@@ -249,14 +263,14 @@ catch (Exception exception)
 
 async Task<SyntheticReservationResult> ReserveOrder(ScopedOrderFingerprint x)
 {
-    await using var context = new TradeOpsDbContext(options);
+    await using var context = new ScopedReservationsDbContext(reservationOptions);
     return await new EfSyntheticScopedReservationJournal(context)
         .ReserveOrderAsync(x);
 }
 
 async Task<SyntheticReservationResult> ReserveExecution(ScopedExecutionFingerprint x)
 {
-    await using var context = new TradeOpsDbContext(options);
+    await using var context = new ScopedReservationsDbContext(reservationOptions);
     return await new EfSyntheticScopedReservationJournal(context)
         .ReserveExecutionAsync(x);
 }
