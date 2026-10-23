@@ -11,6 +11,11 @@ public sealed class TradeOpsDbContext(DbContextOptions<TradeOpsDbContext> option
     // Additive explicit broker scope; historical orders remain unscoped.
     public DbSet<BrokerOrderIdentity> BrokerOrderIdentities => Set<BrokerOrderIdentity>();
 
+    // Isolated synthetic-only SQL reservations; no live Order/Fill writes.
+    public DbSet<SyntheticScopedOrderReservation> SyntheticScopedOrderReservations => Set<SyntheticScopedOrderReservation>();
+
+    public DbSet<SyntheticScopedExecutionReservation> SyntheticScopedExecutionReservations => Set<SyntheticScopedExecutionReservation>();
+
     public DbSet<OrderLifecycleEvent> OrderLifecycleEvents => Set<OrderLifecycleEvent>();
 
     public DbSet<OperationalRunStatus> OperationalRunStatuses => Set<OperationalRunStatus>();
