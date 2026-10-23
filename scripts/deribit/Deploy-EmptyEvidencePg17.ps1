@@ -59,7 +59,7 @@ try {
         }
 
         # LF + UTF-8 without BOM so WSL bash reads the source literally.
-        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [System.IO.File]::WriteAllText(
             (Join-Path $stage $item.FileName),
             (($lines -join "`n") + "`n"),
@@ -76,6 +76,11 @@ try {
     $scriptWsl = (& wsl.exe -- wslpath -a $scriptWindows).Trim()
     if ($LASTEXITCODE -ne 0 -or -not $scriptWsl.StartsWith('/')) {
         throw 'SCRIPT_WSL_PATH_FAILED'
+    }
+
+    & wsl.exe -- bash -n $scriptWsl
+    if ($LASTEXITCODE -ne 0) {
+        throw 'PINNED_BASH_DEPLOY_SYNTAX_INVALID'
     }
 
     Write-Host ('TRADEOPS_PG17_DEPLOY_START pinned_sha=' + $ExpectedHead)
