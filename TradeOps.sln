@@ -114,9 +114,9 @@ Global
         {B2CF9CC8-9615-4C36-B90C-2DA293147B8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {B2CF9CC8-9615-4C36-B90C-2DA293147B8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {B2CF9CC8-9615-4C36-B90C-2DA293147B8F}.Release|Any CPU.Build.0 = Release|Any CPU
-    \t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-\t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-\t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-\t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.Build.0 = Release|Any CPU
 EndGlobalSection
 EndGlobal
