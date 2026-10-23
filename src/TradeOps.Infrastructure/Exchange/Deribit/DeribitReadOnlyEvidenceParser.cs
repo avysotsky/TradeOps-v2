@@ -35,7 +35,7 @@ public static class DeribitReadOnlyEvidenceParser
                 throw Invalid();
 
             var size = RequiredDecimal(row, "size");
-            if (size < 0m || (size == 0m) != (direction == "zero"))
+            if (size < 0m || (size > 0m && direction == "zero"))
                 throw Invalid();
 
             var sizeCurrency = OptionalDecimal(row, "size_currency");

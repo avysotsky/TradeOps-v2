@@ -39,7 +39,6 @@ public sealed class DeribitReadOnlyEvidenceParserTests
     [InlineData("""[{"instrument_name":"X","kind":"spot","direction":"buy","size":1}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"up","size":1}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":-1}]""")]
-    [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":0}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"zero","size":1}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":"5"}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"option","direction":"buy","size":1,"size_currency":0.1}]""")]
@@ -50,6 +49,16 @@ public sealed class DeribitReadOnlyEvidenceParserTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             DeribitReadOnlyEvidenceParser.ParsePositions(Json(source)));
+    }
+
+    [Fact]
+    public void Positions_ZeroSizeWithBuyDirectionAllowedAsInOfficialApiExample()
+    {
+        var positions = DeribitReadOnlyEvidenceParser.ParsePositions(Json("""
+            [{"instrument_name":"BTC-PERPETUAL","kind":"future",
+              "direction":"buy","size":0,"size_currency":0}]
+            """));
+        Assert.Equal(0m, Assert.Single(positions).NativeSize);
     }
 
     [Fact]
