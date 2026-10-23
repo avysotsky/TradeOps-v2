@@ -67,16 +67,41 @@ try {
         )
     }
 
+    # WSL command forwarding can consume Windows backslash characters.
+    # Use forward-slash drive paths (C:/...) when invoking wslpath.
+    # Capture its output BEFORE Trim() so native failures fail explicitly.
+    function Convert-ToVerifiedWslPath {
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$WindowsPath,
+            [Parameter(Mandatory=$true)]
+            [string]$ErrorCode
+        )
+        $portablePath = $WindowsPath.Replace([char]92, [char]47)
+        $lines = @(& wsl.exe -- wslpath -u -a $portablePath)
+        if ($LASTEXITCODE -ne 0 -or $lines.Count -ne 1) {
+            throw $ErrorCode
+        }
+        $converted = [string]$lines[0]
+        if ([string]::IsNullOrWhiteSpace($converted)) {
+            throw $ErrorCode
+        }
+        $converted = $converted.Trim()
+        if (-not $converted.StartsWith('/')) {
+            throw $ErrorCode
+        }
+        return $converted
+    }
+
     $composeWindows = Join-Path $stage 'docker-compose.pg17.yml'
     $scriptWindows = Join-Path $stage 'deploy-empty-pg17.sh'
-    $composeWsl = (& wsl.exe -- wslpath -a $composeWindows).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $composeWsl.StartsWith('/')) {
-        throw 'COMPOSE_WSL_PATH_FAILED'
-    }
-    $scriptWsl = (& wsl.exe -- wslpath -a $scriptWindows).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $scriptWsl.StartsWith('/')) {
-        throw 'SCRIPT_WSL_PATH_FAILED'
-    }
+    $composeWsl = Convert-ToVerifiedWslPath -WindowsPath $composeWindows -ErrorCode 'COMPOSE_WSL_PATH_FAILED'
+    $scriptWsl = Convert-ToVerifiedWslPath -WindowsPath $scriptWindows -ErrorCode 'SCRIPT_WSL_PATH_FAILED'
+
+    & wsl.exe -- test -f $composeWsl
+    if ($LASTEXITCODE -ne 0) { throw 'COMPOSE_WSL_FILE_NOT_FOUND' }
+    & wsl.exe -- test -f $scriptWsl
+    if ($LASTEXITCODE -ne 0) { throw 'SCRIPT_WSL_FILE_NOT_FOUND' }
 
     & wsl.exe -- bash -n $scriptWsl
     if ($LASTEXITCODE -ne 0) {
