@@ -8,11 +8,11 @@ namespace TradeOps.Infrastructure.Persistence.Repositories;
 /// <summary>
 /// Durable, synthetic-only reservations. These are NOT orders or fills in
 /// production tables; no broker, payment, Worker or API paths call this.
-/// INSERT..ON CONFLICT DO NOTHING lets PostgreSQL unique constraints
+/// This class requires an explicitly constructed ScopedReservationsDbContext.\n/// INSERT..ON CONFLICT DO NOTHING lets PostgreSQL unique constraints
 /// arbitrate concurrent requests, then the committed immutable row is
 /// compared with the complete incoming payload.
 /// </summary>
-public sealed class EfSyntheticScopedReservationJournal(TradeOpsDbContext db)
+public sealed class EfSyntheticScopedReservationJournal(ScopedReservationsDbContext db)
 {
     public async Task<SyntheticReservationResult> ReserveOrderAsync(
         ScopedOrderFingerprint item,
