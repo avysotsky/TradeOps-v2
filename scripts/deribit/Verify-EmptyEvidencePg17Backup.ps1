@@ -39,7 +39,7 @@ try {
         throw 'PINNED_BACKUP_BASH_MISSING'
     }
     $localScript = Join-Path $stage 'backup-verify-empty-pg17.sh'
-    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText(
         $localScript, (($source -join "`n") + "`n"), $utf8
     )
