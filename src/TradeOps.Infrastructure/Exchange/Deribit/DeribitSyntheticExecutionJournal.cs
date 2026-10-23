@@ -39,6 +39,9 @@ public sealed class DeribitSyntheticExecutionJournal
         if (!Safe(item.AccountKey, 128)
             || !item.AccountKey.StartsWith("synthetic-account-", StringComparison.Ordinal)
             || item.AccountKey.Length <= "synthetic-account-".Length
+            || !item.AccountKey.All(c => c is >= 'A' and <= 'Z'
+                or >= 'a' and <= 'z' or >= '0' and <= '9'
+                or '-' or '_')
             || !Safe(item.ExecutionId, 160)
             || !Safe(item.BrokerOrderId, 160)
             || !Safe(item.InstrumentName, 160)
