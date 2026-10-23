@@ -101,5 +101,13 @@ public sealed class SyntheticScopedExecutionReservationConfiguration
             })
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
+
+        // Match the actual migration index name; EF would otherwise create
+        // a convention-named FK index absent from our frozen snapshot.
+        b.HasIndex(x => new
+        {
+            x.ProviderKey, x.AccountKey, x.ClientOrderId,
+            x.LocalOrderId, x.BrokerOrderId
+        }).HasDatabaseName("IX_ScopedExecutions_ExactOrderBinding");
     }
 }

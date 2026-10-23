@@ -1,7 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using TradeOps.Application.Models;
 using TradeOps.Domain.Enums;
 using TradeOps.Infrastructure.Persistence;
@@ -50,6 +48,14 @@ public sealed class SyntheticScopedReservationJournalTests
         Assert.Equal(fk.Properties.Select(p => p.Name),
             fk.PrincipalKey.Properties.Select(p => p.Name));
 
+        Assert.Contains(execution.GetIndexes(), index =>
+            index.Properties.Select(p => p.Name).SequenceEqual(new[]
+            {
+                "ProviderKey", "AccountKey", "ClientOrderId",
+                "LocalOrderId", "BrokerOrderId"
+            }) && index.GetDatabaseName() ==
+                "IX_ScopedExecutions_ExactOrderBinding");
+
         Assert.Contains(order.GetIndexes(), index => index.IsUnique
             && index.Properties.Select(p => p.Name)
                 .SequenceEqual(new[] { "LocalOrderId" }));
@@ -85,84 +91,10 @@ public sealed class SyntheticScopedReservationJournalTests
     [Fact]
     public void DedicatedMigrationSnapshot_IsCompatibleWithActualEfModel()
     {
-        // EF Core 10 MigrateAsync may fail closed on a model/snapshot diff.
-        // Exercise exactly that preflight WITHOUT any database connection.
+        // EF 10 MigrateAsync rejects pending changes. This is a strict,
+        // connection-free guard against drift in the frozen migrations model.
         using var db = ModelOnly();
-        // EF Core 10 MigrateAsync fails closed if the frozen snapshot
-        // doesn't match the design-time model. Keep this as a permanent gate.
-        // Temporary diagnostic: migration drift is analysed separately
-        // below. Restore Assert.False before qualification.
-        var pending = db.Database.HasPendingModelChanges();
-        Assert.True(pending || !pending);
-    }
-
-    // DIAGNOSTIC ONLY. Encode the EF migration operation types into the
-    // bounded count of passing theory cases; relay does not expose TRX
-    // failure messages. Remove before final qualification.
-    public static IEnumerable<object[]> PendingMigrationOperations()
-    {
-        var result = new List<object[]> { new object[] { "baseline", 0 } };
-        try
-        {
-            using var db = ModelOnly();
-            var snapshot = db.GetService<IMigrationsAssembly>().ModelSnapshot;
-            var live = db.GetService<IDesignTimeModel>().Model;
-            var differ = db.GetService<IMigrationsModelDiffer>();
-            if (snapshot is null)
-            {
-                for (int i = 0; i < 79; i++) result.Add(new object[] { "null-snapshot", i });
-                return result;
-            }
-
-            var operations = differ.GetDifferences(
-                db.GetService<IModelRuntimeInitializer>()
-                    .Initialize(snapshot.Model, designTime: true, validationLogger: null)
-                    .GetRelationalModel(),
-                live.GetRelationalModel());
-            foreach (var operation in operations)
-            {
-                var weight = operation.GetType().Name switch
-                {
-                    "AlterColumnOperation" => 2,
-                    "AddColumnOperation" => 5,
-                    "DropColumnOperation" => 11,
-                    "CreateTableOperation" => 17,
-                    "DropTableOperation" => 29,
-                    "AddForeignKeyOperation" => 37,
-                    "DropForeignKeyOperation" => 41,
-                    "CreateIndexOperation" => 43,
-                    "DropIndexOperation" => 47,
-                    "AddCheckConstraintOperation" => 53,
-                    "DropCheckConstraintOperation" => 59,
-                    "AlterDatabaseOperation" => 61,
-                    _ => 71
-                };
-                for (int i = 0; i < weight; i++)
-                    result.Add(new object[] { operation.GetType().Name, i });
-            }
-        }
-        catch (Exception e)
-        {
-            var weight = e switch
-            {
-                InvalidOperationException => 83,
-                ArgumentException => 89,
-                NullReferenceException => 97,
-                _ => 101
-            };
-            for (int i = 0; i < weight; i++)
-                result.Add(new object[] { "exception", i });
-        }
-
-        return result;
-    }
-
-    [Theory]
-    [MemberData(nameof(PendingMigrationOperations))]
-    public void Diagnostic_MigrationOperationSignature(string kind, int iteration)
-    {
-        Assert.NotNull(kind);
-        Assert.True(iteration >= 0);
+        Assert.False(db.Database.HasPendingModelChanges());
     }
 
     [Fact]

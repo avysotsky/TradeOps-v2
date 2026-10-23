@@ -105,6 +105,14 @@ partial class ScopedReservationsDbContextModelSnapshot : ModelSnapshot
                         })
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_ScopedExecutions_ExactOrderBinding");
+
+                    // Freeze the generated FK index, including its explicit
+                    // name. Without it EF sees a pending CreateIndexOperation.
+                    b.HasIndex(x => new
+                    {
+                        x.ProviderKey, x.AccountKey, x.ClientOrderId,
+                        x.LocalOrderId, x.BrokerOrderId
+                    }).HasDatabaseName("IX_ScopedExecutions_ExactOrderBinding");
         });
     }
 }
