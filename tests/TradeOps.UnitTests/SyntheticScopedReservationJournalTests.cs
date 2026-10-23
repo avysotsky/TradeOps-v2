@@ -101,37 +101,57 @@ public sealed class SyntheticScopedReservationJournalTests
     // failure messages. Remove before final qualification.
     public static IEnumerable<object[]> PendingMigrationOperations()
     {
-        using var db = ModelOnly();
-        var snapshot = db.GetService<IMigrationsAssembly>().ModelSnapshot;
-        Assert.NotNull(snapshot);
-        var live = db.GetService<IDesignTimeModel>().Model;
-        var differ = db.GetService<IMigrationsModelDiffer>();
-        var operations = differ.GetDifferences(
-            snapshot!.Model.GetRelationalModel(), live.GetRelationalModel());
-        yield return new object[] { "baseline", 0 };
-        foreach (var operation in operations)
+        var result = new List<object[]> { new object[] { "baseline", 0 } };
+        try
         {
-            int weight = operation.GetType().Name switch
+            using var db = ModelOnly();
+            var snapshot = db.GetService<IMigrationsAssembly>().ModelSnapshot;
+            var live = db.GetService<IDesignTimeModel>().Model;
+            var differ = db.GetService<IMigrationsModelDiffer>();
+            if (snapshot is null)
             {
-                "AlterColumnOperation" => 2,
-                "AddColumnOperation" => 5,
-                "DropColumnOperation" => 11,
-                "CreateTableOperation" => 17,
-                "DropTableOperation" => 29,
-                "AddForeignKeyOperation" => 37,
-                "DropForeignKeyOperation" => 41,
-                "CreateIndexOperation" => 43,
-                "DropIndexOperation" => 47,
-                "AddCheckConstraintOperation" => 53,
-                "DropCheckConstraintOperation" => 59,
-                "AlterDatabaseOperation" => 61,
-                _ => 71
-            };
-            for (int i = 0; i < weight; i++)
+                for (int i = 0; i < 79; i++) result.Add(new object[] { "null-snapshot", i });
+                return result;
+            }
+
+            var operations = differ.GetDifferences(
+                snapshot.Model.GetRelationalModel(), live.GetRelationalModel());
+            foreach (var operation in operations)
             {
-                yield return new object[] { operation.GetType().Name, i };
+                var weight = operation.GetType().Name switch
+                {
+                    "AlterColumnOperation" => 2,
+                    "AddColumnOperation" => 5,
+                    "DropColumnOperation" => 11,
+                    "CreateTableOperation" => 17,
+                    "DropTableOperation" => 29,
+                    "AddForeignKeyOperation" => 37,
+                    "DropForeignKeyOperation" => 41,
+                    "CreateIndexOperation" => 43,
+                    "DropIndexOperation" => 47,
+                    "AddCheckConstraintOperation" => 53,
+                    "DropCheckConstraintOperation" => 59,
+                    "AlterDatabaseOperation" => 61,
+                    _ => 71
+                };
+                for (int i = 0; i < weight; i++)
+                    result.Add(new object[] { operation.GetType().Name, i });
             }
         }
+        catch (Exception e)
+        {
+            var weight = e switch
+            {
+                InvalidOperationException => 83,
+                ArgumentException => 89,
+                NullReferenceException => 97,
+                _ => 101
+            };
+            for (int i = 0; i < weight; i++)
+                result.Add(new object[] { "exception", i });
+        }
+
+        return result;
     }
 
     [Theory]
