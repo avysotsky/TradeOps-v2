@@ -35,12 +35,13 @@ public static class DeribitReadOnlyEvidenceParser
                 throw Invalid();
 
             var size = RequiredDecimal(row, "size");
-            if (size < 0m || (size > 0m && direction == "zero"))
+            // Some Deribit position surfaces encode SHORT size with a
+            // negative sign. Preserve both the native sign and direction;
+            // neither value is safe to silently convert into contracts.
+            if (direction == "zero" && size != 0m)
                 throw Invalid();
 
             var sizeCurrency = OptionalDecimal(row, "size_currency");
-            if (sizeCurrency is < 0m)
-                throw Invalid();
 
             // The response documents size_currency only for futures.
             // For an option this is not a permissible quantity substitute.

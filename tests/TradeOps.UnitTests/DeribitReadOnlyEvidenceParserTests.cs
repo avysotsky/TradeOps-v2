@@ -38,17 +38,28 @@ public sealed class DeribitReadOnlyEvidenceParserTests
     [InlineData("""[{}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"spot","direction":"buy","size":1}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"up","size":1}]""")]
-    [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":-1}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"zero","size":1}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":"5"}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"option","direction":"buy","size":1,"size_currency":0.1}]""")]
-    [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":1,"size_currency":-2}]""")]
     [InlineData("""[{"instrument_name":"X","kind":"future","direction":"buy","size":1},{"instrument_name":"X","kind":"option","direction":"sell","size":2}]""")]
     [InlineData("""[{"instrument_name":" X","kind":"future","direction":"buy","size":1}]""")]
     public void Positions_InvalidOrUntrustedEvidence_FailsClosed(string source)
     {
         Assert.Throws<InvalidOperationException>(() =>
             DeribitReadOnlyEvidenceParser.ParsePositions(Json(source)));
+    }
+
+    [Fact]
+    public void Positions_PreserveSignedShortPositionWithoutGuessingUnits()
+    {
+        var positions = DeribitReadOnlyEvidenceParser.ParsePositions(Json("""
+            [{"instrument_name":"BTC-30OCT26","kind":"future",
+              "direction":"sell","size":-1000,"size_currency":-0.02}]
+            """));
+        var shortPosition = Assert.Single(positions);
+        Assert.Equal(-1000m, shortPosition.NativeSize);
+        Assert.Equal(-0.02m, shortPosition.BaseCurrencySize);
+        Assert.Equal("sell", shortPosition.Direction);
     }
 
     [Fact]
