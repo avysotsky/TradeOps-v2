@@ -46,6 +46,9 @@ if (!string.Equals(builder.Host, "127.0.0.1", StringComparison.Ordinal)
 var options = new DbContextOptionsBuilder<TradeOpsDbContext>()
     .UseNpgsql(builder.ConnectionString).Options;
 var phase = "initial";
+long existingLegacyOrderCount = -1;
+long existingLegacyFillCount = -1;
+long existingLegacyScopeCount = -1;
 try
 {
     await using (var db = new TradeOpsDbContext(options))
@@ -58,6 +61,13 @@ try
             "unexpected_existing_order_reservations");
         Check(await db.SyntheticScopedExecutionReservations.CountAsync() == 0,
             "unexpected_existing_execution_reservations");
+        existingLegacyOrderCount = await db.Orders.LongCountAsync();
+        existingLegacyFillCount = await db.Fills.LongCountAsync();
+        existingLegacyScopeCount = await db.BrokerOrderIdentities.LongCountAsync();
+        Check(existingLegacyOrderCount == 1,
+            "expected_one_disposable_api_order");
+        Check(existingLegacyScopeCount == 0,
+            "unexpected_legacy_scope_rows");
     }
 
     const string client = "synthetic-shared-coid";
@@ -190,11 +200,11 @@ try
             "synthetic_order_reservation_count");
         Check(await db.SyntheticScopedExecutionReservations.CountAsync() == 4,
             "synthetic_execution_reservation_count");
-        Check(await db.Orders.CountAsync() == 1,
+        Check(await db.Orders.LongCountAsync() == existingLegacyOrderCount,
             "legacy_order_changed");
-        Check(await db.BrokerOrderIdentities.CountAsync() == 0,
+        Check(await db.BrokerOrderIdentities.LongCountAsync() == existingLegacyScopeCount,
             "legacy_scope_sidecar_mutated");
-        Check(await db.Fills.CountAsync() == 0,
+        Check(await db.Fills.LongCountAsync() == existingLegacyFillCount,
             "legacy_fills_changed");
     }
 
