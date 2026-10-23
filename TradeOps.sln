@@ -36,6 +36,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.IbkrOfflinePostgre
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.ScopedReservationsPostgresSmoke", "tools\TradeOps.ScopedReservationsPostgresSmoke\TradeOps.ScopedReservationsPostgresSmoke.csproj", "{B2CF9CC8-9615-4C36-B90C-2DA293147B8F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitLiveReadOnlySmoke", "tools\TradeOps.DeribitLiveReadOnlySmoke\TradeOps.DeribitLiveReadOnlySmoke.csproj", "{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -112,5 +114,9 @@ Global
         {B2CF9CC8-9615-4C36-B90C-2DA293147B8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {B2CF9CC8-9615-4C36-B90C-2DA293147B8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {B2CF9CC8-9615-4C36-B90C-2DA293147B8F}.Release|Any CPU.Build.0 = Release|Any CPU
-    EndGlobalSection
+    \t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+\t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+\t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+\t\t{D41B5AA1-977A-4DD4-B0EB-84BD8CC4B64F}.Release|Any CPU.Build.0 = Release|Any CPU
+EndGlobalSection
 EndGlobal
