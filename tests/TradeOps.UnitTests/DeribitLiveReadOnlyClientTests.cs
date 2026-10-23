@@ -127,7 +127,7 @@ public sealed class DeribitLiveReadOnlyClientTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             NewProbe(http).ProbeAsync());
-        Assert.Equal(broken == "positions" ? 3 : 3, calls);
+        Assert.Equal(broken == "positions" ? 2 : 3, calls);
     }
 
     private static DeribitLiveReadOnlyClient NewProbe(HttpClient http) =>

@@ -61,12 +61,15 @@ public sealed class DeribitLiveReadOnlyClient(HttpClient httpClient,
 
         var positions = await FetchAsync(PositionsUri, credentials,
             cancellationToken);
+        if (positions.ValueKind != JsonValueKind.Array
+            || positions.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.Object))
+        {
+            throw Invalid();
+        }
+
         var orders = await FetchAsync(OrdersUri, credentials,
             cancellationToken);
-
-        if (positions.ValueKind != JsonValueKind.Array
-            || orders.ValueKind != JsonValueKind.Array
-            || positions.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.Object)
+        if (orders.ValueKind != JsonValueKind.Array
             || orders.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.Object))
         {
             throw Invalid();
