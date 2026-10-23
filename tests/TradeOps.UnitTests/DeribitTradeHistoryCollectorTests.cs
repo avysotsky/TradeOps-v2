@@ -72,7 +72,8 @@ public sealed class DeribitTradeHistoryCollectorTests
                             ? Page(ccy, start, end, hist, true,
                                 Trade("t1", 150))
                             : Page(ccy, start, end, hist, false,
-                                Trade("t1", 150, 99999m)))));
+                                Trade("t1", 150,
+                                    start == 100 ? 50000m : 99999m)))));
     }
 
     [Fact]
