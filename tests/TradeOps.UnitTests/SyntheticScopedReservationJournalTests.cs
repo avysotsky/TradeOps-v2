@@ -87,10 +87,9 @@ public sealed class SyntheticScopedReservationJournalTests
         // EF Core 10 MigrateAsync may fail closed on a model/snapshot diff.
         // Exercise exactly that preflight WITHOUT any database connection.
         using var db = ModelOnly();
-        // Diagnostic: distinguish a returned mismatch from a thrown EF exception.
-        // This temporary probe will be reverted into a strict gate.
-        var pending = db.Database.HasPendingModelChanges();
-        Assert.True(pending || !pending);
+        // EF Core 10 MigrateAsync fails closed if the frozen snapshot
+        // doesn't match the design-time model. Keep this as a permanent gate.
+        Assert.False(db.Database.HasPendingModelChanges());
     }
 
     [Fact]
