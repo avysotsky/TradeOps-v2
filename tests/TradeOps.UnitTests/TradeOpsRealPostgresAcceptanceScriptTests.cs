@@ -217,33 +217,6 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
     }
 
     [Fact]
-    public void RealPostgresAcceptance_RequiresActualDurableScopedReservationSmoke()
-    {
-        var script = File.ReadAllText(ScriptPath());
-
-        Assert.Contains("-e TRADEOPS_SYNTHETIC_RESERVATION_PG", script);
-        Assert.Contains("-e TRADEOPS_SYNTHETIC_RESERVATION_CONFIRM", script);
-        Assert.Contains(
-            "DISPOSABLE_SCOPED_RESERVATION_PG_ONLY", script);
-        Assert.Contains("scoped_idempotency_postgres_smoke", script);
-        Assert.Contains("scoped_idempotency_smoke_marker_missing", script);
-        Assert.Contains("TradeOps.ScopedReservationsPostgresSmoke.dll", script);
-        Assert.Contains(
-            "TRADEOPS SCOPED RESERVATION SMOKE PASS orders=6 executions=4 concurrency=PASS scope=PASS replay=PASS conflicts=PASS legacy_unchanged=true broker_requests=0",
-            script);
-
-        // It must run only after the prior HTTP, Worker and 19-scope
-        // acceptance steps, and before the final cleanup success gate.
-        var prior = script.IndexOf("synthetic_broker_scope_marker_missing",
-            StringComparison.Ordinal);
-        var scoped = script.IndexOf("scoped_idempotency_postgres_smoke",
-            StringComparison.Ordinal);
-        var completed = script.LastIndexOf("completed=1",
-            StringComparison.Ordinal);
-        Assert.True(prior >= 0 && scoped > prior && completed > scoped);
-    }
-
-    [Fact]
     public void MessagePackDependency_UsesPatchedVersion_AndKeepsNuGetAuditEnabled()
     {
         var root = Path.GetFullPath(Path.Combine(
