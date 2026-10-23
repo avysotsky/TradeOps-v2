@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TradeOps.Domain.Entities;
 using TradeOps.Domain.Enums;
 
 namespace TradeOps.Infrastructure.Persistence.Repositories;
@@ -71,49 +72,65 @@ public sealed class EfSyntheticScopedOrderReader(TradeOpsDbContext database)
         var candidates = new List<SyntheticScopedOrderCandidate>();
         foreach (var item in joined)
         {
-            var scope = item.scope;
-            var order = item.order;
-
-            // A malicious/manual SQL insert with a mismatched cOID,
-            // broker ID or instrument classification MUST NOT become
-            // an accepted read-only reconciliation identity.
-            if (!string.Equals(scope.Classification,
-                    BrokerOrderIdentity.SyntheticClassification,
-                    StringComparison.Ordinal)
-                || scope.OrderId != order.Id
-                || !string.Equals(scope.ClientOrderId, order.ClientOrderId,
-                    StringComparison.Ordinal)
-                || !string.Equals(scope.BrokerOrderId, order.ExchangeOrderId,
-                    StringComparison.Ordinal)
-                // The sidecar namespace alone is not enough. A
-                // synthetically declared instrument must match the local
-                // order's full symbol EXACTLY; do not silently rebind a
-                // BTCUSDT order to an ETHUSDT synthetic instrument.
-                || !string.Equals(
-                    scope.InstrumentKey,
-                    (providerKey == "Mock"
-                        ? "MOCK:" : "SYNTHETIC-IBKR-SYMBOL:") + order.Symbol,
-                    StringComparison.Ordinal))
+            var candidate = ProjectCheckedSyntheticScope(
+                item.scope, item.order, providerKey, accountKey);
+            if (candidate is not null)
             {
-                throw Invalid();
+                candidates.Add(candidate);
             }
-
-            if (order.Status is not (OrderStatus.Submitted
-                or OrderStatus.Accepted
-                or OrderStatus.PartiallyFilled
-                or OrderStatus.Unknown))
-            {
-                continue;
-            }
-
-            candidates.Add(new SyntheticScopedOrderCandidate(
-                order.Id, scope.ProviderKey, scope.AccountKey,
-                scope.InstrumentKey, order.ClientOrderId,
-                scope.BrokerOrderId, order.Symbol, order.Side, order.Status,
-                order.RequestedQuantity, order.FilledQuantity));
         }
 
         return candidates.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Fail-closed LOCAL row consistency check, independently unit-testable
+    /// without a database. Does NOT authenticate any real broker evidence.
+    /// Null means the local order is terminal and not a shadow candidate.
+    /// </summary>
+    public static SyntheticScopedOrderCandidate? ProjectCheckedSyntheticScope(
+        BrokerOrderIdentity scope, Order order,
+        string providerKey, string accountKey)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(order);
+
+        if (scope.OrderId != order.Id
+            || !string.Equals(scope.ProviderKey, providerKey,
+                StringComparison.Ordinal)
+            || !string.Equals(scope.AccountKey, accountKey,
+                StringComparison.Ordinal)
+            || !string.Equals(scope.Classification,
+                BrokerOrderIdentity.SyntheticClassification,
+                StringComparison.Ordinal)
+            || !string.Equals(scope.ClientOrderId, order.ClientOrderId,
+                StringComparison.Ordinal)
+            || !string.Equals(scope.BrokerOrderId, order.ExchangeOrderId,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                scope.InstrumentKey,
+                (providerKey == "Mock"
+                    ? "MOCK:"
+                    : providerKey == "IbkrOffline"
+                        ? "SYNTHETIC-IBKR-SYMBOL:" : "INVALID:") + order.Symbol,
+                StringComparison.Ordinal))
+        {
+            throw Invalid();
+        }
+
+        if (order.Status is not (OrderStatus.Submitted
+            or OrderStatus.Accepted
+            or OrderStatus.PartiallyFilled
+            or OrderStatus.Unknown))
+        {
+            return null;
+        }
+
+        return new SyntheticScopedOrderCandidate(
+            order.Id, scope.ProviderKey, scope.AccountKey,
+            scope.InstrumentKey, order.ClientOrderId,
+            scope.BrokerOrderId, order.Symbol, order.Side, order.Status,
+            order.RequestedQuantity, order.FilledQuantity);
     }
 
     private static InvalidOperationException Invalid() =>
