@@ -26,7 +26,7 @@ public static class MarketStreamEndpoints
 
             // A WebSocket from another site (even on this workstation) is
             // not eligible for Vite auto authorization.
-            if (ctx.Request.Headers.Origin.ToString() != "http://127.0.0.1:5173")
+            if (ctx.Request.Headers["Origin"].ToString() != "http://127.0.0.1:5173")
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
