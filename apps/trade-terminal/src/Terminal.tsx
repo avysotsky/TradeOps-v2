@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { toPriceLadder } from './marketDepth';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
   CircleDollarSign, Clock3, KeyRound, RefreshCw,
@@ -151,6 +152,7 @@ export default function DeribitTerminal() {
   const [marketInstruments, setMarketInstruments] = useState<MarketInstrument[]>([]);
   const [universeCount, setUniverseCount] = useState(0);
   const [book, setBook] = useState<OrderBook | null>(null);
+
   const [tape, setTape] = useState<TradeTape | null>(null);
   const [marketError, setMarketError] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -224,6 +226,10 @@ export default function DeribitTerminal() {
   }, [marketInstrument]);
 
   const [streamState, setStreamState] = useState('connecting');
+  const dom = useMemo(
+    () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null),
+    [book, marketInstrument, streamState]
+  );
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
   const [streamMessages, setStreamMessages] = useState(0);
   // ONE continuous WebSocket for selected instrument: NO 8-second market
@@ -622,23 +628,55 @@ export default function DeribitTerminal() {
                   {streamState === 'synced' && <span>Δ {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}*</span>}
                 </div>
               </div>
-              <div className="book-columns">
-                <div className="book-side">
-                  <div className="book-label buy"><span>Bid price</span><span>Contracts / amount</span></div>
-                  {(book?.instrument === marketInstrument ? book.bids : []).map((x, i) =>
-                    <div className="book-level bid" key={'bid-' + x.price + '-' + i}>
-                      <span>{num(x.price, 6)}</span><strong>{num(x.amount, 5)}</strong>
-                    </div>)}
+              <div className="dom-ladder" aria-label={'Вертикальный стакан ' + marketInstrument}>
+                <div className="dom-head">
+                  <span>Объём</span><span>Цена</span><span>Σ глубина</span>
                 </div>
-                <div className="book-side">
-                  <div className="book-label sell"><span>Ask price</span><span>Contracts / amount</span></div>
-                  {(book?.instrument === marketInstrument ? book.asks : []).map((x, i) =>
-                    <div className="book-level ask" key={'ask-' + x.price + '-' + i}>
-                      <span>{num(x.price, 6)}</span><strong>{num(x.amount, 5)}</strong>
-                    </div>)}
+                <div className="dom-half dom-asks" aria-label="Asks — продавцы сверху">
+                  {dom.asks.map(level => (
+                    <div className={'dom-row ask' + (level.best ? ' best' : '')}
+                      key={'ask-' + level.price}
+                      aria-label={'Ask ' + level.price + ', объём ' + level.amount +
+                        ', накоплено ' + level.cumulative}>
+                      <span className="dom-bar ask-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
+                      <span className="dom-size">{num(level.amount, 6)}</span>
+                      <strong className="dom-price">{num(level.price, marketKind === 'option' ? 8 : 2)}</strong>
+                      <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
+                    </div>
+                  ))}
+                  {dom.asks.length === 0 && <p className="dom-empty">Ожидаем синхронизацию Ask</p>}
+                </div>
+                <div className="dom-mid" aria-label="Спред и средняя цена между лучшими котировками">
+                  {dom.spread ? (
+                    <>
+                      <span className="dom-mid-label">SPREAD</span>
+                      <strong className="dom-mid-price">{num(dom.spread.mid, marketKind === 'option' ? 8 : 2)}</strong>
+                      <span className="dom-mid-spread">
+                        {num(dom.spread.absolute, marketKind === 'option' ? 8 : 2)}
+                        <span className="dom-bps"> · {num(dom.spread.bps, 2)} bps</span>
+                      </span>
+                    </>
+                  ) : <strong className="dom-mid-unsynced">НЕТ ПОДТВЕРЖДЁННОГО СПРЕДА</strong>}
+                </div>
+                <div className="dom-half dom-bids" aria-label="Bids — покупатели снизу">
+                  {dom.bids.map(level => (
+                    <div className={'dom-row bid' + (level.best ? ' best' : '')}
+                      key={'bid-' + level.price}
+                      aria-label={'Bid ' + level.price + ', объём ' + level.amount +
+                        ', накоплено ' + level.cumulative}>
+                      <span className="dom-bar bid-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
+                      <span className="dom-size">{num(level.amount, 6)}</span>
+                      <strong className="dom-price">{num(level.price, marketKind === 'option' ? 8 : 2)}</strong>
+                      <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
+                    </div>
+                  ))}
+                  {dom.bids.length === 0 && <p className="dom-empty">Ожидаем синхронизацию Bid</p>}
                 </div>
               </div>
-              {!book && <p className="empty-feed">Загружаем реальный стакан Deribit…</p>}
+              <div className="dom-legend">
+                <span><i className="dom-legend-swatch ask" /> ASK — предложения на продажу</span>
+                <span><i className="dom-legend-swatch bid" /> BID — заявки на покупку</span>
+              </div>
               <p className="feed-note">
                 Raw L2 snapshot + каждое изменение без 8-секундного polling.
                 Последний change_id: {book?.changeId ?? '—'}, сообщений: {streamMessages}.
