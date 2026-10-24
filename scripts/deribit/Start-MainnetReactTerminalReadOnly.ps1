@@ -197,7 +197,34 @@ try {
         }
     }
 
-    Write-Host 'TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED auto_operator_auth=YES backend=127.0.0.1:5058 frontend=127.0.0.1:5173 exchange_reads=UNVERIFIED live_execution=DISABLED'
+    # Verify the ACTUAL browser path through Vite, not merely both TCP
+    # listeners. A Vite proxy missing its ephemeral key returns HTTP 401.
+    # No broker request or trading call: /status is a local-only route.
+    $sessionVerified = $false
+    $lastAuthFailure = 'NOT_READY'
+    foreach ($attempt in 1..10) {
+        try {
+            $state = Invoke-RestMethod -Uri 'http://127.0.0.1:5173/api/deribit-terminal/status' -Method Get -TimeoutSec 5
+            if ($state.environment -cne 'mainnet' -or
+                $state.tradingEnabled -ne $false -or
+                $state.credentialsConfigured -ne $true) {
+                throw 'MAINNET_READONLY_STATE_MISMATCH'
+            }
+            $sessionVerified = $true
+            break
+        }
+        catch {
+            # Only status code/type are surfaced, never a credential, URL
+            # query or response body.
+            $lastAuthFailure = $_.Exception.GetType().Name
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if (-not $sessionVerified) {
+        throw ('TERMINAL_PROXY_AUTH_FAILED error=' + $lastAuthFailure)
+    }
+
+    Write-Host 'TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED auto_operator_auth=PASS proxy_status=PASS backend=127.0.0.1:5058 frontend=127.0.0.1:5173 exchange_reads=UNVERIFIED live_execution=DISABLED'
     Write-Host 'TRADEOPS_REACT_TERMINAL_URL=http://127.0.0.1:5173'
     Write-Host 'No operator password and no second PowerShell are required.'
     Write-Host 'Press Ctrl+C to stop backend and React.'
