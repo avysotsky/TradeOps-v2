@@ -90,7 +90,7 @@ are installed locally. Do NOT use a manually entered operator passphrase.
 
 Owner result marker (not evidence until owner actually runs the new SHA):
 
-TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED auto_operator_auth=YES backend=127.0.0.1:5058 frontend=127.0.0.1:5173 exchange_reads=UNVERIFIED live_execution=DISABLED
+TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED auto_operator_auth=PASS proxy_status=PASS backend=127.0.0.1:5058 frontend=127.0.0.1:5173 exchange_reads=UNVERIFIED live_execution=DISABLED
 
 The session token is **ephemeral**, not a permanent password.
 It need not be remembered and is not written to disk/chat/GitHub.
