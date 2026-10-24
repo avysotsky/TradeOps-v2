@@ -245,3 +245,32 @@
 }
 .position-market-link:hover { color: #ffffff; text-decoration-color: #9abfff; }
 .position-market-link:focus-visible { outline: 2px solid #99bfff; outline-offset: 3px; }
+
+
+/* TO-V2-41 raw stream status — red during resync/gaps, green only
+   after Deribit snapshot + continuous deltas have been verified. */
+.market-feed .stream-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 13px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #d9e7fa;
+  text-align: right;
+}
+.market-feed .stream-status strong {
+  border: 1px solid #ffffff29;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+.market-feed .stream-status span:last-child {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #e6f2ff;
+}
+@media (max-width: 650px) {
+  .market-feed .stream-status { text-align: left; font-size: 12px; }
+}
