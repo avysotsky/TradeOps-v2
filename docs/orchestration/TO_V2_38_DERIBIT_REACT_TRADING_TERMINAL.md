@@ -7,12 +7,12 @@ user-operated exchange terminal backed by new actual HTTP routes.
 
 - apps/trade-terminal — React 19 + TypeScript + Vite responsive workstation UI.
 - apps/TradeOps.TerminalApi — isolated localhost ASP.NET Core 10 host, no DB, no migrations, no other controllers or workers.
-- src/TradeOps.Api/Controllers/DeribitTerminalController.cs — real Deribit
+- apps/TradeOps.TerminalApi/Controllers/DeribitTerminalController.cs — real Deribit
   market, private account, position and open-order HTTP reads; strictly
   manually confirmed LIMIT post-only execution and individual cancel.
-- src/TradeOps.Api/Program.cs — named Deribit HTTP client with redirects,
+- apps/TradeOps.TerminalApi/Program.cs — named Deribit HTTP client with redirects,
   cookies and proxies disabled.
-- src/TradeOps.Api/appsettings.json — terminal-specific safe config with
+- apps/TradeOps.TerminalApi/appsettings.json — terminal-specific safe config with
   ExecutionEnabled=false and MainnetExecutionEnabled=false by default.
 - tests/TradeOps.UnitTests/DeribitReactTerminalSecurityTests.cs — zero-
   network checks for localhost operator authentication, fail-closed
