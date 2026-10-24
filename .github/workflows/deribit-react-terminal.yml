@@ -65,3 +65,40 @@ jobs:
             -d '{"instrument":"BTC-PERPETUAL","side":"buy","contracts":10,"price":50000}' \
             http://127.0.0.1:5058/api/deribit-terminal/orders/preview)"
           test "$code" = 409
+
+          # Integration regression for the 2026-10-25 React login 401:
+          # Vite must attach the SAME ephemeral session key to proxy GETs.
+          # The key is a fake CI-only value, never an exchange credential.
+          (
+            cd apps/trade-terminal
+            TRADEOPS_TERMINAL_OPERATOR_KEY='ci-terminal-operator-key-no-real-account-123456' \
+              node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort
+          ) > /tmp/tradeops-vite.log 2>&1 &
+          vite_pid=$!
+          for attempt in $(seq 1 40); do
+            code="$(curl --silent -o /dev/null -w '%{http_code}' \
+              http://127.0.0.1:5173/api/deribit-terminal/status || true)"
+            if [ "$code" = 200 ]; then break; fi
+            if [ "$attempt" = 40 ]; then
+              cat /tmp/tradeops-vite.log
+              echo "React proxy GET expected 200; received $code" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          status="$(curl --fail --silent http://127.0.0.1:5173/api/deribit-terminal/status)"
+          STATUS="$status" python3 - <<'PY'
+          import json, os
+          s = json.loads(os.environ['STATUS'])
+          assert s['environment'] == 'testnet'
+          assert s['tradingEnabled'] is False
+          PY
+
+          # Vite must NEVER grant the browser an automatic POST credential.
+          code="$(curl --silent -o /dev/null -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d '{"instrument":"BTC-PERPETUAL","side":"buy","contracts":10,"price":50000}' \
+            http://127.0.0.1:5173/api/deribit-terminal/orders/preview)"
+          test "$code" = 401
+          kill "$vite_pid" 2>/dev/null || true
