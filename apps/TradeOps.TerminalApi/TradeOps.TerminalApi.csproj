@@ -4,7 +4,5 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="..\..\src\TradeOps.Api\Controllers\DeribitTerminalController.cs" Link="Controllers\DeribitTerminalController.cs" />
-  </ItemGroup>
+
 </Project>
