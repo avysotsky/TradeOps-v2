@@ -145,7 +145,7 @@ public sealed class DeribitReactTerminalSecurityTests
     {
         var root = LocateRoot();
         var server = File.ReadAllText(Path.Combine(root,
-            "src/TradeOps.Api/Controllers/DeribitTerminalController.cs"));
+            "apps/TradeOps.TerminalApi/Controllers/DeribitTerminalController.cs"));
         var frontend = File.ReadAllText(Path.Combine(root,
             "apps/trade-terminal/src/Terminal.tsx"));
         var vite = File.ReadAllText(Path.Combine(root,
