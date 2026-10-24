@@ -223,23 +223,140 @@ export default function DeribitTerminal() {
     setTape(null);
   }, [marketInstrument]);
 
+  const [streamState, setStreamState] = useState('connecting');
+  const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
+  const [streamMessages, setStreamMessages] = useState(0);
+  // ONE continuous WebSocket for selected instrument: NO 8-second market
+  // polling. Backend processes every raw L2 delta; only React paints are
+  // coalesced to requestAnimationFrame, without holding up market ingestion.
+  useEffect(() => {
+    if (!key || !status) return;
+    let active = true;
+    let socket: WebSocket | null = null;
+    let reconnect: number | undefined;
+    let frame: number | null = null;
+    let retryMs = 400;
+    const updates: {
+      book?: OrderBook;
+      ticker?: Quote;
+      trades?: TradeTape;
+      state?: string;
+      lag?: number | null;
+      sequence?: number;
+    } = {};
+    setBook(null);
+    setTape(null);
+    setQuote(null);
+    setStreamState('connecting');
+    setExchangeAgeMs(null);
+
+    function renderLatest() {
+      frame = null;
+      if (!active) return;
+      if (updates.state !== undefined) {
+        setStreamState(updates.state);
+        if (updates.state !== 'synced') {
+          setBook(null);
+          setTape(null);
+        }
+      }
+      if (updates.book) setBook(updates.book);
+      if (updates.ticker) setQuote(updates.ticker);
+      if (updates.trades) setTape(updates.trades);
+      if (updates.lag !== undefined) setExchangeAgeMs(updates.lag);
+      if (updates.sequence !== undefined) setStreamMessages(updates.sequence);
+      updates.book = undefined;
+      updates.ticker = undefined;
+      updates.trades = undefined;
+      updates.state = undefined;
+      updates.lag = undefined;
+      updates.sequence = undefined;
+    }
+    function queueRender() {
+      if (frame === null) frame = window.requestAnimationFrame(renderLatest);
+    }
+    function open() {
+      if (!active) return;
+      setStreamState('connecting');
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = protocol + '//' + location.host +
+        '/api/deribit-terminal/market/stream?instrument=' +
+        encodeURIComponent(marketInstrument);
+      socket = new WebSocket(url);
+      socket.onopen = () => { retryMs = 400; };
+      socket.onmessage = event => {
+        if (!active) return;
+        let payload: any;
+        try { payload = JSON.parse(String(event.data)); }
+        catch { socket?.close(); return; }
+        if (payload.instrument !== marketInstrument) return;
+        if (payload.type === 'status') {
+          updates.state = String(payload.state);
+          // Drop older queued prices as soon as stream is not synced.
+          if (payload.state !== 'synced') {
+            updates.book = undefined;
+            updates.ticker = undefined;
+            updates.trades = undefined;
+          }
+        } else if (payload.type === 'book' && payload.state === 'synced') {
+          const b = payload.book as {
+            instrument: string;
+            bids: DepthLevel[];
+            asks: DepthLevel[];
+            changeId: number | null;
+            exchangeTimestamp: number | null;
+            localReceivedAtUnixMs: number;
+          };
+          updates.book = {
+            instrument: b.instrument,
+            bids: b.bids,
+            asks: b.asks,
+            changeId: b.changeId,
+            markPrice: null,
+            timestamp: b.exchangeTimestamp,
+            receivedAtUtc: new Date(b.localReceivedAtUnixMs).toISOString()
+          };
+          updates.state = 'synced';
+          updates.lag = typeof payload.exchangeAgeMs === 'number' ?
+            payload.exchangeAgeMs : null;
+          updates.sequence = Number(payload.messages) || 0;
+        } else if (payload.type === 'ticker') {
+          updates.ticker = payload as Quote;
+        } else if (payload.type === 'trades') {
+          updates.trades = payload as TradeTape;
+        }
+        queueRender();
+      };
+      socket.onclose = () => {
+        if (!active) return;
+        updates.state = 'disconnected';
+        updates.book = undefined;
+        updates.ticker = undefined;
+        updates.trades = undefined;
+        queueRender();
+        reconnect = window.setTimeout(open, retryMs);
+        retryMs = Math.min(retryMs * 2, 10000);
+      };
+      socket.onerror = () => { socket?.close(); };
+    }
+    open();
+    return () => {
+      active = false;
+      if (reconnect !== undefined) window.clearTimeout(reconnect);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (socket) {
+        socket.onclose = null;
+        socket.onmessage = null;
+        socket.close();
+      }
+    };
+  }, [key, status, marketInstrument]);
+
+  // Private account/positions/orders are not market data: their slower
+  // periodic refresh is independent of the raw exchange feed.
   const refresh = useCallback(async () => {
     if (!key || !status) return;
     setRefreshing(true);
-    const name = encodeURIComponent(marketInstrument);
-    const [tickerResult, bookResult, tapeResult] = await Promise.allSettled([
-      api<Quote>(key, '/market/ticker?instrument=' + name),
-      api<OrderBook>(key, '/market/orderbook?instrument=' + name + '&depth=10'),
-      api<TradeTape>(key, '/market/trades?instrument=' + name + '&count=15')
-    ]);
-    if (tickerResult.status === 'fulfilled') setQuote(tickerResult.value);
-    if (bookResult.status === 'fulfilled') setBook(bookResult.value);
-    if (tapeResult.status === 'fulfilled') setTape(tapeResult.value);
-    const errors = [tickerResult, bookResult, tapeResult]
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map(r => (r.reason as Error).message);
-    setMarketError(errors.length ? 'Market Data: ' + errors.join('; ') : '');
-
     if (status.credentialsConfigured) {
       const accountResults = await Promise.allSettled([
         api<Account>(key, '/account?currency=BTC'),
@@ -252,11 +369,11 @@ export default function DeribitTerminal() {
         setAccounts([btc.value, eth.value]);
       if (pos.status === 'fulfilled') setPositions(pos.value);
       if (open.status === 'fulfilled') setOrders(open.value);
-      const failed = accountResults.filter(r => r.status === 'rejected');
-      setError(failed.length ? 'Часть данных счёта Deribit сейчас недоступна.' : '');
+      setError(accountResults.some(r => r.status === 'rejected') ?
+        'Часть данных счёта Deribit сейчас недоступна.' : '');
     }
     setRefreshing(false);
-  }, [key, status, marketInstrument]);
+  }, [key, status]);
 
   useEffect(() => {
     if (!key || !status) return;
@@ -496,8 +613,14 @@ export default function DeribitTerminal() {
           <section className="market-feed-grid">
             <section className="panel market-feed">
               <div className="panel-header">
-                <div><span className="eyebrow">LIVE PUBLIC MARKET / 8 SEC</span><h2>Стакан заявок</h2></div>
-                <span className="count">{marketInstrument}</span>
+                <div><span className="eyebrow">LIVE RAW WEBSOCKET / EVENT-DRIVEN</span><h2>Стакан заявок</h2></div>
+                <div className="stream-status" aria-live="polite">
+                  <strong className={streamState === 'synced' ? 'success-text' : 'red-text'}>
+                    {streamState === 'synced' ? 'LIVE RAW' : streamState.toUpperCase()}
+                  </strong>
+                  <span>{marketInstrument}</span>
+                  {streamState === 'synced' && <span>Δ {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}*</span>}
+                </div>
               </div>
               <div className="book-columns">
                 <div className="book-side">
@@ -516,11 +639,16 @@ export default function DeribitTerminal() {
                 </div>
               </div>
               {!book && <p className="empty-feed">Загружаем реальный стакан Deribit…</p>}
-              <p className="feed-note">Объём и единицы цены — как их возвращает Deribit API, без пересчёта в USD.</p>
+              <p className="feed-note">
+                Raw L2 snapshot + каждое изменение без 8-секундного polling.
+                Последний change_id: {book?.changeId ?? '—'}, сообщений: {streamMessages}.
+                * Δ = время сообщения Deribit → локальные часы; требуется синхронизация времени Windows.
+                Объёмы в исходных единицах Deribit.
+              </p>
             </section>
             <section className="panel market-feed">
               <div className="panel-header">
-                <div><span className="eyebrow">EXECUTED MARKET TRADES</span><h2>Последние сделки</h2></div>
+                <div><span className="eyebrow">LIVE PUBLIC TRADE STREAM</span><h2>Последние сделки</h2></div>
                 <span className="count">{tape?.instrument === marketInstrument ? tape.trades.length : 0}</span>
               </div>
               <div className="tape-header"><span>Время</span><span>Цена</span><span>Amount</span></div>
@@ -530,7 +658,7 @@ export default function DeribitTerminal() {
                   <strong className={x.direction === 'buy' ? 'success-text' : 'red-text'}>{num(x.price, 6)}</strong>
                   <span>{num(x.amount, 5)}</span>
                 </div>)}
-              {!tape && <p className="empty-feed">Загружаем последние сделки…</p>}
+              {!tape && <p className="empty-feed">Ожидание новых сделок из WebSocket…</p>}
               <p className="feed-note">Это публичные сделки рынка, не история твоего счёта.</p>
             </section>
           </section>
