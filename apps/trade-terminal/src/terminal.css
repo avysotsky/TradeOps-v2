@@ -93,3 +93,137 @@
   .data-panel .table-controls { justify-content: flex-start; }
   .data-panel th, .data-panel td { padding-left: 14px; padding-right: 14px; }
 }
+
+
+/* TO-V2-40: actual Deribit public market depth, trades and instrument
+   browser; keep typography legible, with fallback horizontal scrolling. */
+.market-filters {
+  display: grid;
+  grid-template-columns: minmax(110px, .7fr) minmax(120px, .9fr) minmax(160px, 1.4fr);
+  gap: 10px;
+  padding: 0 0 18px;
+  margin-top: -8px;
+}
+.market-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #abbdd2;
+  font-weight: 600;
+  font-size: 12px;
+}
+.market-filters select,
+.market-filters input,
+.ticket select.ticket-value {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #41526b;
+  border-radius: 8px;
+  background: #1c2a3e;
+  color: #f1f6ff;
+  padding: 11px 12px;
+  font-size: 14px;
+}
+.market-filters input::placeholder { color: #92a4bd; }
+.instrument-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: #9daec7;
+  font-size: 12px;
+  margin: -3px 0 21px;
+  line-height: 1.5;
+}
+.instrument-meta strong {
+  color: #edf4ff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+.market-feed-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.market-feed { overflow: hidden; }
+.market-feed .panel-header { gap: 8px; margin-bottom: 18px; }
+.market-feed .count { font-size: 12px; color: #b9cae0; }
+.book-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  min-width: 0;
+}
+.book-side { min-width: 0; }
+.book-label,
+.book-level,
+.tape-header,
+.tape-row {
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  padding: 9px 10px;
+  font-variant-numeric: tabular-nums;
+}
+.book-label {
+  font-size: 12px;
+  color: #c4d2e3;
+  font-weight: 700;
+  border-bottom: 1px solid #ffffff24;
+}
+.book-label.sell { color: #ffadb6; }
+.book-label.buy { color: #8ce1c4; }
+.book-label span:last-child,
+.book-level strong { text-align: right; }
+.book-level {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  min-height: 38px;
+  border-bottom: 1px solid #ffffff0d;
+}
+.book-level span { white-space: nowrap; }
+.book-level strong { font-weight: 500; color: #e1ebfa; }
+.book-level.bid { color: #71d8b5; background: #1b523218; }
+.book-level.ask { color: #ff9aa8; background: #52243118; }
+.tape-header,
+.tape-row {
+  grid-template-columns: 1fr 1.4fr 1.2fr;
+}
+.tape-header {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c4d2e3;
+  border-bottom: 1px solid #ffffff24;
+}
+.tape-row {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  min-height: 38px;
+  color: #cfdded;
+  border-bottom: 1px solid #ffffff0b;
+}
+.tape-row span:nth-child(2), .tape-row strong:nth-child(2) { text-align: right; }
+.tape-row span:nth-child(3) { text-align: right; }
+.feed-note {
+  margin: 18px 0 0;
+  color: #98a9c0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.empty-feed {
+  text-align: center;
+  font-size: 14px;
+  color: #aabbd1;
+  padding: 24px 0;
+}
+@media (max-width: 1130px) {
+  .market-feed-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 650px) {
+  .market-filters { grid-template-columns: 1fr 1fr; }
+  .market-filters label:last-child { grid-column: 1 / -1; }
+  .book-columns { gap: 7px; }
+  .book-label, .book-level { padding: 8px 6px; font-size: 12px; }
+  .market-feed .panel-header { flex-wrap: wrap; }
+}
