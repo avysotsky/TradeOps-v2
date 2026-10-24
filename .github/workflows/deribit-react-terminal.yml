@@ -1,0 +1,67 @@
+name: Deribit React terminal
+
+on:
+  push:
+    branches:
+      - TradeOps/to-v2-38-deribit-react-terminal
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terminal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile standalone terminal API (no PostgreSQL)
+        run: dotnet build apps/TradeOps.TerminalApi/TradeOps.TerminalApi.csproj --configuration Release
+
+      - name: Compile React terminal
+        working-directory: apps/trade-terminal
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Check local auth and fail-closed order route (no Deribit calls)
+        env:
+          DeribitTerminal__Environment: testnet
+          DeribitTerminal__ExecutionEnabled: 'false'
+          DeribitTerminal__MainnetExecutionEnabled: 'false'
+          DeribitTerminal__OperatorKey: 'ci-terminal-operator-key-no-real-account-123456'
+        run: |
+          set -euo pipefail
+          dotnet run --project apps/TradeOps.TerminalApi --configuration Release --no-build > /tmp/tradeops-terminal-api.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            code="$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:5058/api/deribit-terminal/status || true)"
+            if [ "$code" = 401 ]; then break; fi
+            if [ "$attempt" = 40 ]; then cat /tmp/tradeops-terminal-api.log; exit 1; fi
+            sleep 1
+          done
+
+          status="$(curl --fail --silent -H 'X-TradeOps-Terminal-Key: ci-terminal-operator-key-no-real-account-123456' \
+            http://127.0.0.1:5058/api/deribit-terminal/status)"
+          STATUS="$status" python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ['STATUS'])
+          assert data['environment'] == 'testnet'
+          assert data['tradingEnabled'] is False
+          assert data['credentialsConfigured'] is False
+          assert data['instruments'] == ['BTC-PERPETUAL', 'ETH-PERPETUAL']
+          PY
+
+          code="$(curl --silent -o /dev/null -w '%{http_code}' \
+            -H 'X-TradeOps-Terminal-Key: ci-terminal-operator-key-no-real-account-123456' \
+            -H 'Content-Type: application/json' \
+            -d '{"instrument":"BTC-PERPETUAL","side":"buy","contracts":10,"price":50000}' \
+            http://127.0.0.1:5058/api/deribit-terminal/orders/preview)"
+          test "$code" = 409
