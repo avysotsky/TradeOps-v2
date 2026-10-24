@@ -133,7 +133,12 @@ public sealed class DeribitReactTerminalSecurityTests
         Assert.Contains("$env:DeribitTerminal__Environment = 'mainnet'", code);
         Assert.Contains("$env:DeribitTerminal__ExecutionEnabled = 'false'", code);
         Assert.Contains("$env:DeribitTerminal__MainnetExecutionEnabled = 'false'", code);
-        Assert.Contains("Read-Host", code);
+        Assert.DoesNotContain("Read-Host", code);
+        Assert.Contains("New-Object byte[] 48", code);
+        Assert.Contains("RandomNumberGenerator", code);
+        Assert.Contains("TRADEOPS_TERMINAL_OPERATOR_KEY", code);
+        Assert.Contains("Start-Process -FilePath $nodeFound.Source", code);
+        Assert.Contains("TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_PASS", code);
         Assert.DoesNotContain("DeribitTerminal__ExecutionEnabled = 'true'", code);
         Assert.DoesNotContain("DeribitTerminal__MainnetExecutionEnabled = 'true'", code);
         Assert.DoesNotContain("Write-Host $id", code);
@@ -164,6 +169,12 @@ public sealed class DeribitReactTerminalSecurityTests
         Assert.Contains("Проверить заявку", frontend);
         Assert.Contains("Разместить РЕАЛЬНЫЙ ордер", frontend);
         Assert.Contains("127.0.0.1", vite);
+        Assert.Contains("readonlyOperatorKey", vite);
+        Assert.Contains("request.method === 'GET'", vite);
+        Assert.Contains("proxyReq.setHeader('X-TradeOps-Terminal-Key'", vite);
+        Assert.Contains("void connect();", frontend);
+        Assert.DoesNotContain("type=\"password\"", frontend);
+        Assert.DoesNotContain("setTypedKey(", frontend);
     }
 
     private static string LocateRoot()
