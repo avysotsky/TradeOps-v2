@@ -85,16 +85,16 @@ test('one fixed fractional precision across all bid and ask prices', () => {
   assert.equal(formatDomPrice(ladder.spread.absolute, decimals), '0.50');
 });
 
-test('future with whole-dollar levels shows stable tick precision', () => {
+test('future with whole-dollar levels reserves half-tick precision across spread changes', () => {
   const ladder = toPriceLadder({
     asks: [{ price: 3001, amount: 1 }],
     bids: [{ price: 3000, amount: 1 }]
   });
   const decimals = domPriceDecimals(ladder, 0.5, 'future');
-  assert.equal(decimals, 1);
-  assert.equal(formatDomPrice(3001, decimals), '3,001.0');
-  assert.equal(formatDomPrice(3000, decimals), '3,000.0');
-  assert.equal(formatDomPrice(3000.5, decimals), '3,000.5');
+  assert.equal(decimals, 2);
+  assert.equal(formatDomPrice(3001, decimals), '3,001.00');
+  assert.equal(formatDomPrice(3000, decimals), '3,000.00');
+  assert.equal(formatDomPrice(3000.5, decimals), '3,000.50');
 });
 
 test('ETH options share one precision, including 8-digit quotes', () => {
@@ -103,11 +103,11 @@ test('ETH options share one precision, including 8-digit quotes', () => {
     bids: [{ price: 0.001, amount: 3 }, { price: 0.0008, amount: 4 }]
   });
   const decimals = domPriceDecimals(ladder, 0.0001, 'option');
-  assert.equal(decimals, 4);
-  assert.equal(formatDomPrice(ladder.asks[0].price, decimals), '0.0016');
-  assert.equal(formatDomPrice(ladder.asks[1].price, decimals), '0.0012');
-  assert.equal(formatDomPrice(ladder.bids[0].price, decimals), '0.0010');
-  assert.equal(formatDomPrice(ladder.spread.mid, decimals), '0.0011');
+  assert.equal(decimals, 5);
+  assert.equal(formatDomPrice(ladder.asks[0].price, decimals), '0.00160');
+  assert.equal(formatDomPrice(ladder.asks[1].price, decimals), '0.00120');
+  assert.equal(formatDomPrice(ladder.bids[0].price, decimals), '0.00100');
+  assert.equal(formatDomPrice(ladder.spread.mid, decimals), '0.00110');
 
   const small = toPriceLadder({
     asks: [{ price: 0.00000012, amount: 1 }],
