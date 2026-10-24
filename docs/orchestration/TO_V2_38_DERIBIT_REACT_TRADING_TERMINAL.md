@@ -174,3 +174,38 @@ Reference documentation:
 https://docs.deribit.com/articles/deribit-quickstart
 https://docs.deribit.com/articles/authentication
 https://docs.deribit.com/articles/order-management-best-practices
+
+
+## Preferred owner-local MAINNET read-only launch with existing DPAPI vault
+
+The existing local Windows vault created by the qualified
+Deribit-ReadOnlyLocal.ps1 (Save action) is located under CurrentUser
+LOCALAPPDATA/TradeOps/Credentials and contains mainnet READ-ONLY credentials.
+Use it instead of manually entering a ClientId/ClientSecret:
+
+    scripts/deribit/Start-MainnetReactTerminalReadOnly.ps1 -ExpectedHead <PINNED_PR_HEAD>
+
+Run through the exact pinned Git object (do not execute an unqualified
+mutable local script). This Windows script:
+- fetches and checks the exact TradeOps React branch commit SHA;
+- creates a DETACHED temporary worktree and builds the .NET API BEFORE
+  touching the credential vault;
+- validates the local DPAPI vault schema/environment before decrypting;
+- prompts the owner for a new 32+ character operator phrase;
+- runs the mainnet account, positions and orders HTTP API on localhost;
+- FORCES both ExecutionEnabled and MainnetExecutionEnabled to false, even
+  if the user's global config or shell flags were true;
+- prints a temporary React frontend source folder; use a second terminal
+  to run npm install and npm run dev from that folder;
+- clears child process environment variables, disposes SecureStrings
+  and removes the temporary worktree when the API process exits.
+
+The read-only mainnet vault must NEVER be repurposed for mainnet trading.
+Real orders need a separately permissioned trade key and explicitly
+approved local run configuration. This start script has no path for
+enabling any trading mutation.
+
+Note: The existing TradeOps API startup uses its own TradeOpsDb
+EF migrations. If that database is offline/unconfigured, this launcher
+cannot start a backend and the terminal remains unavailable; it must
+not silently create or repoint the distinct dedicated evidence DB.
