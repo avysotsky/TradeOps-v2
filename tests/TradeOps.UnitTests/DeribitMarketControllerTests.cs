@@ -149,8 +149,10 @@ public sealed class DeribitMarketControllerTests
         var market = File.ReadAllText(Path.Combine(root,
             "apps/TradeOps.TerminalApi/Controllers/DeribitMarketController.cs"));
         Assert.Contains("/market/instruments?", code);
-        Assert.Contains("/market/orderbook?instrument=", code);
-        Assert.Contains("/market/trades?instrument=", code);
+        Assert.Contains("new WebSocket(url)", code);
+        Assert.Contains("/market/stream?instrument=", code);
+        Assert.DoesNotContain("/market/orderbook?instrument=", code);
+        Assert.DoesNotContain("/market/trades?instrument=", code);
         Assert.Contains("marketInstrument", code);
         Assert.Contains("instrumentSearch", code);
         Assert.Contains("value={instrument}", code);
