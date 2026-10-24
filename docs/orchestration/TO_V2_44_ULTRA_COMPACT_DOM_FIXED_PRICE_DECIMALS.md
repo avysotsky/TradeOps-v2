@@ -25,8 +25,10 @@ After approving the compact vertical DOM concept, the operator requires:
 - Shared pure formatter `formatDomPrice(value, decimals)` uses BOTH
   minimum and maximum fraction digits, so trailing zeros are preserved.
 - Shared precision `domPriceDecimals(ladder, tickSize, kind)` is
-  determined once from Deribit instrument `tickSize` (when metadata is
-  available), actual bid/ask levels, midpoint and absolute spread.
+  determined once from Deribit instrument `tickSize` **and half tick**
+  (when metadata is available), actual bid/ask levels, midpoint and
+  absolute spread. Reserving half-tick digits stabilizes the display
+  if the bid/ask midpoint shifts between full and half ticks.
 - When instrument metadata is unavailable (e.g. a held contract not
   among first 100 filtered instruments), prices themselves determine
   the required fractional digits, with minimum 1 for futures and
@@ -48,9 +50,10 @@ For example, if tickSize is 0.5 and the midpoint needs 2 decimals:
   BID 2354.0 -> 2,354.00
   BID 2353.5 -> 2,353.50
 
-For options 0.0016 / 0.0012 / 0.0010 / 0.0008:
-  show exactly four digits for each price unless extra precision
-  is required, including the midpoint/spread.
+For option tickSize = 0.0001, the half-tick requires 5 digits,
+  so prices 0.0016 / 0.0012 / 0.0010 / 0.0008 appear as:
+  0.00160 / 0.00120 / 0.00100 / 0.00080,
+  including the midpoint/spread at the same precision.
 
 ## Hard boundaries
 
