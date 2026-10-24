@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toPriceLadder } from '../src/marketDepth.ts';
+import { toPriceLadder, domPriceDecimals, formatDomPrice } from '../src/marketDepth.ts';
 
 test('asks descend toward spread, bids descend away from spread', () => {
   const input = {
@@ -67,4 +67,55 @@ test('Max 10 levels per side and invalid rows excluded', () => {
   assert.equal(out.bids.length, 10);
   assert.equal(out.asks[9].best, true);
   assert.equal(out.bids[0].best, true);
+});
+
+test('one fixed fractional precision across all bid and ask prices', () => {
+  const ladder = toPriceLadder({
+    asks: [{ price: 2355, amount: 5 }, { price: 2354.5, amount: 9 }],
+    bids: [{ price: 2354, amount: 1 }, { price: 2353.5, amount: 2 }]
+  });
+  const decimals = domPriceDecimals(ladder, 0.5, 'future');
+  // 2354.25 midpoint requires an additional digit beyond a 0.5 tick.
+  assert.equal(decimals, 2);
+  assert.deepEqual(ladder.asks.map(x => formatDomPrice(x.price, decimals)),
+    ['2,355.00', '2,354.50']);
+  assert.deepEqual(ladder.bids.map(x => formatDomPrice(x.price, decimals)),
+    ['2,354.00', '2,353.50']);
+  assert.equal(formatDomPrice(ladder.spread.mid, decimals), '2,354.25');
+  assert.equal(formatDomPrice(ladder.spread.absolute, decimals), '0.50');
+});
+
+test('future with whole-dollar levels shows stable tick precision', () => {
+  const ladder = toPriceLadder({
+    asks: [{ price: 3001, amount: 1 }],
+    bids: [{ price: 3000, amount: 1 }]
+  });
+  const decimals = domPriceDecimals(ladder, 0.5, 'future');
+  assert.equal(decimals, 1);
+  assert.equal(formatDomPrice(3001, decimals), '3,001.0');
+  assert.equal(formatDomPrice(3000, decimals), '3,000.0');
+  assert.equal(formatDomPrice(3000.5, decimals), '3,000.5');
+});
+
+test('ETH options share one precision, including 8-digit quotes', () => {
+  const ladder = toPriceLadder({
+    asks: [{ price: 0.0016, amount: 2 }, { price: 0.0012, amount: 3 }],
+    bids: [{ price: 0.001, amount: 3 }, { price: 0.0008, amount: 4 }]
+  });
+  const decimals = domPriceDecimals(ladder, 0.0001, 'option');
+  assert.equal(decimals, 4);
+  assert.equal(formatDomPrice(ladder.asks[0].price, decimals), '0.0016');
+  assert.equal(formatDomPrice(ladder.asks[1].price, decimals), '0.0012');
+  assert.equal(formatDomPrice(ladder.bids[0].price, decimals), '0.0010');
+  assert.equal(formatDomPrice(ladder.spread.mid, decimals), '0.0011');
+
+  const small = toPriceLadder({
+    asks: [{ price: 0.00000012, amount: 1 }],
+    bids: [{ price: 0.0000001, amount: 1 }]
+  });
+  const digits = domPriceDecimals(small, 0.00000001, 'option');
+  assert.equal(digits, 8);
+  assert.equal(formatDomPrice(small.asks[0].price, digits), '0.00000012');
+  assert.equal(formatDomPrice(small.bids[0].price, digits), '0.00000010');
+  assert.equal(formatDomPrice(small.spread.mid, digits), '0.00000011');
 });
