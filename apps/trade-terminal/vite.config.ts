@@ -16,9 +16,20 @@ export default defineConfig({
       '/api/deribit-terminal': {
         target: 'http://127.0.0.1:5058',
         changeOrigin: false,
+        ws: true,
         configure(proxy) {
           proxy.on('proxyReq', (proxyReq, request) => {
             if (request.method === 'GET' &&
+                typeof readonlyOperatorKey === 'string' &&
+                readonlyOperatorKey.length >= 32) {
+              proxyReq.setHeader('X-TradeOps-Terminal-Key', readonlyOperatorKey);
+            }
+          });
+          // WebSocket upgrades are GET but require a distinct proxy event.
+          // Browser JS never receives the random operator token.
+          proxy.on('proxyReqWs', (proxyReq, request) => {
+            if (request.method === 'GET' &&
+                request.headers.origin === 'http://127.0.0.1:5173' &&
                 typeof readonlyOperatorKey === 'string' &&
                 readonlyOperatorKey.length >= 32) {
               proxyReq.setHeader('X-TradeOps-Terminal-Key', readonlyOperatorKey);
