@@ -630,7 +630,7 @@ export default function DeribitTerminal() {
               </div>
               <div className="dom-ladder" aria-label={'Вертикальный стакан ' + marketInstrument}>
                 <div className="dom-head">
-                  <span>Объём</span><span>Цена</span><span>Σ глубина</span>
+                  <span>Цена</span><span>Объём</span><span>Совокупный</span>
                 </div>
                 <div className="dom-half dom-asks" aria-label="Asks — продавцы сверху">
                   {dom.asks.map(level => (
@@ -639,8 +639,8 @@ export default function DeribitTerminal() {
                       aria-label={'Ask ' + level.price + ', объём ' + level.amount +
                         ', накоплено ' + level.cumulative}>
                       <span className="dom-bar ask-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
-                      <span className="dom-size">{num(level.amount, 6)}</span>
                       <strong className="dom-price">{num(level.price, marketKind === 'option' ? 8 : 2)}</strong>
+                      <span className="dom-size">{num(level.amount, 6)}</span>
                       <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
                     </div>
                   ))}
@@ -665,8 +665,8 @@ export default function DeribitTerminal() {
                       aria-label={'Bid ' + level.price + ', объём ' + level.amount +
                         ', накоплено ' + level.cumulative}>
                       <span className="dom-bar bid-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
-                      <span className="dom-size">{num(level.amount, 6)}</span>
                       <strong className="dom-price">{num(level.price, marketKind === 'option' ? 8 : 2)}</strong>
+                      <span className="dom-size">{num(level.amount, 6)}</span>
                       <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
                     </div>
                   ))}
