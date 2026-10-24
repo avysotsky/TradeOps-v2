@@ -66,3 +66,47 @@ export function toPriceLadder(
     }
   };
 }
+
+/**
+ * One immutable decimal scale for EVERY price printed in the same snapshot:
+ * all ask/bid levels, midpoint and absolute spread. Deribit instrument tick
+ * size (when present) sets the lower bound. Observed market prices may demand
+ * extra digits, especially midpoint at a half-tick.
+ *
+ * The original exchange values remain Numbers in the data model. Formatting
+ * affects the UI only; no rounding is used in trading or L2 reconstruction.
+ */
+function observedDecimals(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  // toFixed removes binary floating-point tails introduced by midpoint math;
+  // 8 places is the terminal's present supported DOM precision.
+  const fixed = Math.abs(value).toFixed(8);
+  const fractional = fixed.split('.')[1] ?? '';
+  return fractional.replace(/0+$/, '').length;
+}
+
+export function domPriceDecimals(
+  ladder: PriceLadder,
+  tickSize: number | null | undefined,
+  kind: 'future' | 'option'
+): number {
+  const numbers = [
+    ...(tickSize && tickSize > 0 && Number.isFinite(tickSize) ? [tickSize] : []),
+    ...ladder.asks.map(level => level.price),
+    ...ladder.bids.map(level => level.price),
+    ...(ladder.spread ? [ladder.spread.mid, ladder.spread.absolute] : [])
+  ];
+  // An absent instrument descriptor must not cause per-row variation.
+  // Futures carry at least one fractional digit; options at least four.
+  const base = kind === 'option' ? 4 : 1;
+  return Math.min(8, Math.max(base, ...numbers.map(observedDecimals)));
+}
+
+export function formatDomPrice(value: number, decimals: number): string {
+  if (!Number.isFinite(value)) return '—';
+  const places = Math.max(0, Math.min(8, Math.floor(decimals)));
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: places,
+    maximumFractionDigits: places
+  }).format(value);
+}
