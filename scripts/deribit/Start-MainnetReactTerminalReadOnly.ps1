@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $Repo -PathType Container)) {
     throw 'TRADEOPS_REPOSITORY_NOT_FOUND'
 }
 
-$branch = 'TradeOps/to-v2-41-deribit-raw-websocket-depth'
+$branch = 'TradeOps/to-v2-42-deribit-vertical-dom'
 $vaultDir = Join-Path $env:LOCALAPPDATA 'TradeOps\Credentials'
 $vault = Join-Path $vaultDir 'Deribit.Mainnet.ReadOnly.dpapi.json'
 $dotnetFound = Get-Command dotnet.exe -ErrorAction SilentlyContinue
@@ -89,6 +89,8 @@ try {
     try {
         & $npmFound.Source install --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) { throw 'REACT_NPM_INSTALL_FAILED' }
+        & $npmFound.Source run test
+        if ($LASTEXITCODE -ne 0) { throw 'VERTICAL_DOM_TESTS_FAILED' }
         & $npmFound.Source run build
         if ($LASTEXITCODE -ne 0) { throw 'REACT_BUILD_FAILED' }
     }
