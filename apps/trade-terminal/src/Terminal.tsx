@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { toPriceLadder } from './marketDepth';
+import { toPriceLadder, domPriceDecimals, formatDomPrice } from './marketDepth';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
   CircleDollarSign, Clock3, KeyRound, RefreshCw,
@@ -229,6 +229,14 @@ export default function DeribitTerminal() {
   const dom = useMemo(
     () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null),
     [book, marketInstrument, streamState]
+  );
+  const priceDecimals = useMemo(
+    () => domPriceDecimals(
+      dom,
+      marketInstruments.find(item => item.name === marketInstrument)?.tickSize,
+      marketKind
+    ),
+    [dom, marketInstruments, marketInstrument, marketKind]
   );
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
   const [streamMessages, setStreamMessages] = useState(0);
@@ -639,7 +647,7 @@ export default function DeribitTerminal() {
                       aria-label={'Ask ' + level.price + ', объём ' + level.amount +
                         ', накоплено ' + level.cumulative}>
                       <span className="dom-bar ask-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
-                      <strong className="dom-price">{num(level.price, marketKind === 'option' ? 8 : 2)}</strong>
+                      <strong className="dom-price">{formatDomPrice(level.price, priceDecimals)}</strong>
                       <span className="dom-size">{num(level.amount, 6)}</span>
                       <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
                     </div>
@@ -650,9 +658,9 @@ export default function DeribitTerminal() {
                   {dom.spread ? (
                     <>
                       <span className="dom-mid-label">SPREAD</span>
-                      <strong className="dom-mid-price">{num(dom.spread.mid, marketKind === 'option' ? 8 : 2)}</strong>
+                      <strong className="dom-mid-price">{formatDomPrice(dom.spread.mid, priceDecimals)}</strong>
                       <span className="dom-mid-spread">
-                        {num(dom.spread.absolute, marketKind === 'option' ? 8 : 2)}
+                        {formatDomPrice(dom.spread.absolute, priceDecimals)}
                         <span className="dom-bps"> · {num(dom.spread.bps, 2)} bps</span>
                       </span>
                     </>
@@ -665,7 +673,7 @@ export default function DeribitTerminal() {
                       aria-label={'Bid ' + level.price + ', объём ' + level.amount +
                         ', накоплено ' + level.cumulative}>
                       <span className="dom-bar bid-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
-                      <strong className="dom-price">{num(level.price, marketKind === 'option' ? 8 : 2)}</strong>
+                      <strong className="dom-price">{formatDomPrice(level.price, priceDecimals)}</strong>
                       <span className="dom-size">{num(level.amount, 6)}</span>
                       <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
                     </div>
