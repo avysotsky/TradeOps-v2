@@ -276,7 +276,7 @@
 }
 
 
-/* TO-V2-43: compact Deribit-style vertical DOM.
+/* TO-V2-44: ultra-compact Deribit-style vertical DOM.
    PRICE | AMOUNT | CUMULATIVE, with no fractional-grid expansion.
    One thin row per exchange price level; the 16px portfolio tables
    remain unchanged. Rendering still uses the existing RAW WebSocket. */
@@ -285,10 +285,10 @@
   gap: 12px;
 }
 .market-feed-grid > .market-feed:first-child {
-  padding: 11px 12px;
+  padding: 8px 10px;
 }
 .market-feed-grid > .market-feed:first-child .panel-header {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .dom-ladder {
   display: block;
@@ -314,9 +314,9 @@
   padding-right: 5px;
 }
 .dom-head {
-  min-height: 25px;
-  padding-top: 3px;
-  padding-bottom: 3px;
+  min-height: 20px;
+  padding-top: 2px;
+  padding-bottom: 2px;
   font-size: 10px;
   line-height: 14px;
   font-weight: 700;
@@ -328,11 +328,11 @@
 .dom-row {
   position: relative;
   isolation: isolate;
-  min-height: 23px;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  min-height: 18px;
+  padding-top: 1px;
+  padding-bottom: 1px;
   font-size: 12px;
-  line-height: 18px;
+  line-height: 15px;
   color: #d9e3f0;
   border-bottom: 1px solid #ffffff08;
 }
@@ -344,8 +344,8 @@
   text-align: right;
 }
 .dom-row .dom-price {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 15px;
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -353,10 +353,10 @@
 .dom-row.bid .dom-price { color: #65dfb4; }
 .dom-row .dom-cumulative { color: #acc0d7; }
 .dom-row.best {
-  min-height: 24px;
+  min-height: 19px;
   font-weight: 700;
 }
-.dom-row.best .dom-price { font-size: 13px; }
+.dom-row.best .dom-price { font-size: 12px; }
 .dom-row.ask.best {
   background: #74314236;
   border-bottom: 1px solid #ff82954e;
@@ -384,9 +384,9 @@
   background: linear-gradient(90deg, #20745237, #20745205);
 }
 .dom-mid {
-  min-height: 30px;
-  padding-top: 3px;
-  padding-bottom: 3px;
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
   background: #253247;
   border-top: 1px solid #7892ad63;
   border-bottom: 1px solid #7892ad63;
@@ -400,22 +400,22 @@
 }
 .dom-mid-price {
   font-size: 14px;
-  line-height: 17px;
+  line-height: 16px;
   font-weight: 800;
   color: #f9fbff;
   text-align: right;
 }
 .dom-mid-spread {
-  font-size: 11px;
-  line-height: 13px;
+  font-size: 10px;
+  line-height: 14px;
   font-weight: 700;
   color: #e0e8f6;
 }
 .dom-bps {
-  display: block;
-  margin-top: 1px;
+  display: inline;
+  margin-top: 0;
   font-size: 9px;
-  line-height: 11px;
+  line-height: inherit;
   color: #abc3df;
   font-weight: 500;
 }
@@ -426,7 +426,7 @@
   text-align: center;
 }
 .dom-empty {
-  padding: 9px 5px;
+  padding: 6px 5px;
   margin: 0;
   text-align: center;
   color: #a5b7cf;
@@ -435,8 +435,8 @@
 .dom-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px 9px;
-  margin-top: 7px;
+  gap: 4px 8px;
+  margin-top: 5px;
   font-size: 10px;
   color: #aebfd5;
 }
