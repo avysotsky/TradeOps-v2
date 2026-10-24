@@ -133,7 +133,9 @@ try {
     $env:DeribitTerminal__ExecutionEnabled = 'false'
     $env:DeribitTerminal__MainnetExecutionEnabled = 'false'
     $env:DeribitTerminal__MaxContracts = '10'
-    $operatorKey = $null
+    # IMPORTANT: keep the randomly generated session token in memory
+    # until it has ALSO been inherited by the Vite proxy process.
+    # Clearing it here would make all proxied GET calls return HTTP 401.
     $id = $null
     $secret = $null
 
