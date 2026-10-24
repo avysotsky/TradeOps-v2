@@ -23,6 +23,47 @@ type Quote = {
   indexPrice: number | null;
   timestampUtc: string;
 };
+type MarketInstrument = {
+  name: string;
+  kind: string;
+  currency: string;
+  active: boolean;
+  tickSize: number | null;
+  contractSize: number | null;
+  minTradeAmount: number | null;
+  expirationTimestamp: number | null;
+  strike: number | null;
+  optionType: string | null;
+};
+type InstrumentList = {
+  currency: string;
+  kind: string;
+  available: number;
+  items: MarketInstrument[];
+  cachedUntilUtc: string;
+};
+type DepthLevel = { price: number; amount: number };
+type OrderBook = {
+  instrument: string;
+  bids: DepthLevel[];
+  asks: DepthLevel[];
+  markPrice: number | null;
+  changeId: number | null;
+  timestamp: number | null;
+  receivedAtUtc: string;
+};
+type PublicTrade = {
+  tradeId: string | null;
+  direction: string | null;
+  price: number | null;
+  amount: number | null;
+  timestamp: number | null;
+};
+type TradeTape = {
+  instrument: string;
+  trades: PublicTrade[];
+  receivedAtUtc: string;
+};
 type Account = {
   currency: string;
   equity: number | null;
@@ -103,6 +144,15 @@ export default function DeribitTerminal() {
   const [tableFontSize, setTableFontSize] = useState(16);
   const [status, setStatus] = useState<Status | null>(null);
   const [instrument, setInstrument] = useState('BTC-PERPETUAL');
+  const [marketCurrency, setMarketCurrency] = useState<'BTC' | 'ETH'>('ETH');
+  const [marketKind, setMarketKind] = useState<'future' | 'option'>('future');
+  const [instrumentSearch, setInstrumentSearch] = useState('');
+  const [marketInstrument, setMarketInstrument] = useState('ETH-PERPETUAL');
+  const [marketInstruments, setMarketInstruments] = useState<MarketInstrument[]>([]);
+  const [universeCount, setUniverseCount] = useState(0);
+  const [book, setBook] = useState<OrderBook | null>(null);
+  const [tape, setTape] = useState<TradeTape | null>(null);
+  const [marketError, setMarketError] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -140,30 +190,73 @@ export default function DeribitTerminal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Read-only instrument discovery is cached server-side for 60s and
+  // debounced here so option-chain searching doesn't hit Deribit per keystroke.
+  useEffect(() => {
+    if (!key || !status) return;
+    let cancelled = false;
+    const task = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        currency: marketCurrency,
+        kind: marketKind,
+        limit: '100',
+        search: instrumentSearch.trim()
+      });
+      void api<InstrumentList>(key, '/market/instruments?' + query).then(result => {
+        if (!cancelled) {
+          setMarketInstruments(result.items);
+          setUniverseCount(result.available);
+        }
+      }).catch((e: Error) => {
+        if (!cancelled) {
+          setMarketInstruments([]);
+          setMarketError(e.message);
+        }
+      });
+    }, 400);
+    return () => { cancelled = true; window.clearTimeout(task); };
+  }, [key, status, marketCurrency, marketKind, instrumentSearch]);
+
+  useEffect(() => {
+    setQuote(null);
+    setBook(null);
+    setTape(null);
+  }, [marketInstrument]);
+
   const refresh = useCallback(async () => {
     if (!key || !status) return;
     setRefreshing(true);
-    try {
-      const ticker = await api<Quote>(key, '/ticker?instrument=' + encodeURIComponent(instrument));
-      setQuote(ticker);
-      if (status.credentialsConfigured) {
-        const [btc, eth, pos, open] = await Promise.all([
-          api<Account>(key, '/account?currency=BTC'),
-          api<Account>(key, '/account?currency=ETH'),
-          api<Position[]>(key, '/positions'),
-          api<Order[]>(key, '/orders')
-        ]);
-        setAccounts([btc, eth]);
-        setPositions(pos);
-        setOrders(open);
-      }
-      setError('');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setRefreshing(false);
+    const name = encodeURIComponent(marketInstrument);
+    const [tickerResult, bookResult, tapeResult] = await Promise.allSettled([
+      api<Quote>(key, '/market/ticker?instrument=' + name),
+      api<OrderBook>(key, '/market/orderbook?instrument=' + name + '&depth=10'),
+      api<TradeTape>(key, '/market/trades?instrument=' + name + '&count=15')
+    ]);
+    if (tickerResult.status === 'fulfilled') setQuote(tickerResult.value);
+    if (bookResult.status === 'fulfilled') setBook(bookResult.value);
+    if (tapeResult.status === 'fulfilled') setTape(tapeResult.value);
+    const errors = [tickerResult, bookResult, tapeResult]
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map(r => (r.reason as Error).message);
+    setMarketError(errors.length ? 'Market Data: ' + errors.join('; ') : '');
+
+    if (status.credentialsConfigured) {
+      const accountResults = await Promise.allSettled([
+        api<Account>(key, '/account?currency=BTC'),
+        api<Account>(key, '/account?currency=ETH'),
+        api<Position[]>(key, '/positions'),
+        api<Order[]>(key, '/orders')
+      ]);
+      const [btc, eth, pos, open] = accountResults;
+      if (btc.status === 'fulfilled' && eth.status === 'fulfilled')
+        setAccounts([btc.value, eth.value]);
+      if (pos.status === 'fulfilled') setPositions(pos.value);
+      if (open.status === 'fulfilled') setOrders(open.value);
+      const failed = accountResults.filter(r => r.status === 'rejected');
+      setError(failed.length ? 'Часть данных счёта Deribit сейчас недоступна.' : '');
     }
-  }, [key, status, instrument]);
+    setRefreshing(false);
+  }, [key, status, marketInstrument]);
 
   useEffect(() => {
     if (!key || !status) return;
@@ -284,6 +377,7 @@ export default function DeribitTerminal() {
           </div>
 
           {error && <div className="notice danger"><ShieldAlert size={18}/> {error}</div>}
+          {marketError && <div className="notice danger"><ShieldAlert size={18}/> {marketError}</div>}
           {message && <div className="notice positive"><CheckCircle2 size={18}/> {message}</div>}
           {!status.credentialsConfigured && <div className="notice"><KeyRound size={17}/>
             Биржевые credentials на backend ещё не настроены. Публичные котировки доступны; состояние счёта — нет.
@@ -294,10 +388,45 @@ export default function DeribitTerminal() {
               <section className="panel quote-panel">
                 <div className="panel-header">
                   <div><span className="eyebrow">MARKET DATA</span><h2>Котировки Deribit</h2></div>
-                  <select aria-label="Инструмент" value={instrument}
-                    onChange={e => { setInstrument(e.target.value); setPrice(''); setPreview(null); }}>
-                    {status.instruments.map(x => <option key={x} value={x}>{x}</option>)}
+                  <select aria-label="Рыночный инструмент" value={marketInstrument}
+                    onChange={e => setMarketInstrument(e.target.value)}>
+                    {!marketInstruments.some(x => x.name === marketInstrument) &&
+                      <option value={marketInstrument}>{marketInstrument}</option>}
+                    {marketInstruments.map(x => <option key={x.name} value={x.name}>{x.name}</option>)}
                   </select>
+                </div>
+                <div className="market-filters">
+                  <label>Базовая валюта
+                    <select aria-label="Базовая валюта" value={marketCurrency}
+                      onChange={e => {
+                        const ccy = e.target.value as 'BTC' | 'ETH';
+                        setMarketCurrency(ccy);
+                        setMarketInstrument(ccy + '-PERPETUAL');
+                        setInstrumentSearch('');
+                      }}>
+                      <option value="ETH">ETH</option><option value="BTC">BTC</option>
+                    </select>
+                  </label>
+                  <label>Тип инструмента
+                    <select aria-label="Тип рыночного инструмента" value={marketKind}
+                      onChange={e => {
+                        setMarketKind(e.target.value as 'future' | 'option');
+                        setInstrumentSearch('');
+                      }}>
+                      <option value="future">Фьючерсы</option><option value="option">Опционы</option>
+                    </select>
+                  </label>
+                  <label>Поиск
+                    <input aria-label="Поиск инструмента" maxLength={60} type="text"
+                      value={instrumentSearch}
+                      onChange={e => setInstrumentSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+                      placeholder="25DEC26, 3000-C…" />
+                  </label>
+                </div>
+                <div className="instrument-meta">
+                  <span>Выбран: <strong>{marketInstrument}</strong></span>
+                  <span>Найдено: {universeCount}</span>
+                  {marketKind === 'option' && <span>Цены опционов — в валюте котировки контракта</span>}
                 </div>
                 <div className="price-hero">
                   <div><span>MARK PRICE</span><strong>{num(quote?.markPrice, 2)}</strong></div>
@@ -307,7 +436,7 @@ export default function DeribitTerminal() {
                   <div><span><ArrowDownRight size={15}/> BEST BID</span><strong>{num(quote?.bestBidPrice, 2)}</strong></div>
                   <div><span><ArrowUpRight size={15}/> BEST ASK</span><strong>{num(quote?.bestAskPrice, 2)}</strong></div>
                 </div>
-                <div className="panel-foot"><Clock3 size={14}/> Обновление каждые 8 секунд · HTTP polling
+                <div className="panel-foot"><Clock3 size={14}/> Рыночные данные: 8 сек · HTTP · без выставления ордеров
                   {quote && <span>{new Date(quote.timestampUtc).toLocaleTimeString('ru-RU')}</span>}
                 </div>
               </section>
@@ -334,7 +463,11 @@ export default function DeribitTerminal() {
                 <button className={side === 'buy' ? 'active-buy' : ''} onClick={() => setSide('buy')}>Buy / Long</button>
                 <button className={side === 'sell' ? 'active-sell' : ''} onClick={() => setSide('sell')}>Sell / Short</button>
               </div>
-              <label>Инструмент</label><div className="ticket-value">{instrument}</div>
+              <label htmlFor="ticket-instrument">Инструмент заявки (отдельно от стакана)</label>
+              <select id="ticket-instrument" className="ticket-value" value={instrument}
+                onChange={e => { setInstrument(e.target.value); setPrice(''); setPreview(null); }}>
+                {status.instruments.map(x => <option key={x} value={x}>{x}</option>)}
+              </select>
               <label htmlFor="contracts">Количество контрактов</label>
               <input id="contracts" type="number" min="0.01" step="any" max={status.maxContracts}
                 value={contracts} onChange={e => setContracts(e.target.value)} />
@@ -359,6 +492,48 @@ export default function DeribitTerminal() {
                   : 'Включение торговли требует изменения защищённых настроек backend.'}</p>
             </section>
           </div>
+
+          <section className="market-feed-grid">
+            <section className="panel market-feed">
+              <div className="panel-header">
+                <div><span className="eyebrow">LIVE PUBLIC MARKET / 8 SEC</span><h2>Стакан заявок</h2></div>
+                <span className="count">{marketInstrument}</span>
+              </div>
+              <div className="book-columns">
+                <div className="book-side">
+                  <div className="book-label buy"><span>Bid price</span><span>Contracts / amount</span></div>
+                  {(book?.instrument === marketInstrument ? book.bids : []).map((x, i) =>
+                    <div className="book-level bid" key={'bid-' + x.price + '-' + i}>
+                      <span>{num(x.price, 6)}</span><strong>{num(x.amount, 5)}</strong>
+                    </div>)}
+                </div>
+                <div className="book-side">
+                  <div className="book-label sell"><span>Ask price</span><span>Contracts / amount</span></div>
+                  {(book?.instrument === marketInstrument ? book.asks : []).map((x, i) =>
+                    <div className="book-level ask" key={'ask-' + x.price + '-' + i}>
+                      <span>{num(x.price, 6)}</span><strong>{num(x.amount, 5)}</strong>
+                    </div>)}
+                </div>
+              </div>
+              {!book && <p className="empty-feed">Загружаем реальный стакан Deribit…</p>}
+              <p className="feed-note">Объём и единицы цены — как их возвращает Deribit API, без пересчёта в USD.</p>
+            </section>
+            <section className="panel market-feed">
+              <div className="panel-header">
+                <div><span className="eyebrow">EXECUTED MARKET TRADES</span><h2>Последние сделки</h2></div>
+                <span className="count">{tape?.instrument === marketInstrument ? tape.trades.length : 0}</span>
+              </div>
+              <div className="tape-header"><span>Время</span><span>Цена</span><span>Amount</span></div>
+              {(tape?.instrument === marketInstrument ? tape.trades : []).map((x, i) =>
+                <div className="tape-row" key={x.tradeId || i}>
+                  <span>{x.timestamp ? new Date(x.timestamp).toLocaleTimeString('ru-RU') : '—'}</span>
+                  <strong className={x.direction === 'buy' ? 'success-text' : 'red-text'}>{num(x.price, 6)}</strong>
+                  <span>{num(x.amount, 5)}</span>
+                </div>)}
+              {!tape && <p className="empty-feed">Загружаем последние сделки…</p>}
+              <p className="feed-note">Это публичные сделки рынка, не история твоего счёта.</p>
+            </section>
+          </section>
 
           <section className="panel data-panel">
             <div className="panel-header">
