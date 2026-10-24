@@ -1,0 +1,30 @@
+name: Deribit ultra-compact DOM and fixed price scale
+
+on:
+  push:
+    branches:
+      - TradeOps/to-v2-44-ultra-compact-dom-fixed-price-decimals
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  precision-and-density:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test dense price ladder and fixed decimal precision
+        working-directory: apps/trade-terminal
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Confirm unchanged standalone read-only .NET API compilation
+        run: dotnet build apps/TradeOps.TerminalApi/TradeOps.TerminalApi.csproj -c Release
