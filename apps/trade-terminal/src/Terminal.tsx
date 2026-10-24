@@ -429,12 +429,12 @@ export default function DeribitTerminal() {
                   {marketKind === 'option' && <span>Цены опционов — в валюте котировки контракта</span>}
                 </div>
                 <div className="price-hero">
-                  <div><span>MARK PRICE</span><strong>{num(quote?.markPrice, 2)}</strong></div>
-                  <div className="price-sub"><span>Last: {num(quote?.lastPrice, 2)}</span><span>Index: {num(quote?.indexPrice, 2)}</span></div>
+                  <div><span>MARK PRICE</span><strong>{num(quote?.instrument === marketInstrument ? quote.markPrice : null, marketKind === 'option' ? 6 : 2)}</strong></div>
+                  <div className="price-sub"><span>Last: {num(quote?.instrument === marketInstrument ? quote.lastPrice : null, marketKind === 'option' ? 6 : 2)}</span><span>Index: {num(quote?.instrument === marketInstrument ? quote.indexPrice : null, 2)}</span></div>
                 </div>
                 <div className="bid-ask">
-                  <div><span><ArrowDownRight size={15}/> BEST BID</span><strong>{num(quote?.bestBidPrice, 2)}</strong></div>
-                  <div><span><ArrowUpRight size={15}/> BEST ASK</span><strong>{num(quote?.bestAskPrice, 2)}</strong></div>
+                  <div><span><ArrowDownRight size={15}/> BEST BID</span><strong>{num(quote?.instrument === marketInstrument ? quote.bestBidPrice : null, marketKind === 'option' ? 6 : 2)}</strong></div>
+                  <div><span><ArrowUpRight size={15}/> BEST ASK</span><strong>{num(quote?.instrument === marketInstrument ? quote.bestAskPrice : null, marketKind === 'option' ? 6 : 2)}</strong></div>
                 </div>
                 <div className="panel-foot"><Clock3 size={14}/> Рыночные данные: 8 сек · HTTP · без выставления ордеров
                   {quote && <span>{new Date(quote.timestampUtc).toLocaleTimeString('ru-RU')}</span>}
@@ -554,7 +554,16 @@ export default function DeribitTerminal() {
             <div className="table-wrap">
               <table><thead><tr><th>Инструмент</th><th>Тип</th><th>Сторона</th><th className="right">Native size</th><th className="right">Mark</th><th className="right">Floating PnL</th></tr></thead>
                 <tbody>{positions.length ? positions.map((p, i) => <tr key={p.instrument + i}>
-                  <td className="mono strong">{p.instrument}</td><td>{p.kind}</td>
+                  <td className="mono strong">
+                    <button className="position-market-link" type="button"
+                      title="Открыть этот контракт в стакане"
+                      onClick={() => {
+                        setMarketInstrument(p.instrument);
+                        setMarketCurrency(p.instrument.startsWith('BTC') ? 'BTC' : 'ETH');
+                        setMarketKind(p.kind === 'option' ? 'option' : 'future');
+                        setInstrumentSearch('');
+                      }}>{p.instrument}</button>
+                  </td><td>{p.kind}</td>
                   <td className={p.direction === 'buy' ? 'success-text' : 'red-text'}>{p.direction}</td>
                   <td className="right mono">{num(p.nativeSize, 8)}</td>
                   <td className="right mono">{num(p.markPrice)}</td>
