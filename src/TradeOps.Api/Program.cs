@@ -19,6 +19,15 @@ builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddHttpClient("deribit-terminal", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(12);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false,
+    UseCookies = false,
+    UseProxy = false
+});
 builder.Services.AddOptions<SignalIngressAuthOptions>()
     .Bind(builder.Configuration.GetSection(SignalIngressAuthOptions.SectionName))
     .Validate(
