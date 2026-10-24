@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
-  CircleDollarSign, Clock3, RefreshCw,
+  CircleDollarSign, Clock3, KeyRound, RefreshCw,
   ShieldAlert, ShieldCheck, Terminal, X
 } from 'lucide-react';
 
