@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
-  CircleDollarSign, Clock3, KeyRound, LockKeyhole, RefreshCw,
+  CircleDollarSign, Clock3, RefreshCw,
   ShieldAlert, ShieldCheck, Terminal, X
 } from 'lucide-react';
 
@@ -76,8 +76,11 @@ async function api<T>(key: string, route: string, init?: RequestInit): Promise<T
     ...init,
     cache: 'no-store',
     headers: {
-      'X-TradeOps-Terminal-Key': key,
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {})
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      // Read-only GETs are authorized by the Vite server proxy without
+      // revealing its ephemeral operator key to the browser.
+      ...(init?.method && init.method !== 'GET'
+        ? { 'X-TradeOps-Terminal-Key': key } : {})
     }
   });
   const data: unknown = await response.json().catch(() => ({}));
@@ -96,8 +99,7 @@ function num(value?: number | null, digits = 2) {
 }
 
 export default function DeribitTerminal() {
-  const [typedKey, setTypedKey] = useState('');
-  const [key, setKey] = useState('');
+  const [key, setKey] = useState('auto-readonly');
   const [status, setStatus] = useState<Status | null>(null);
   const [instrument, setInstrument] = useState('BTC-PERPETUAL');
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -117,10 +119,12 @@ export default function DeribitTerminal() {
     setError('');
     setLoading(true);
     try {
-      const state = await api<Status>(typedKey, '/status');
+      const state = await api<Status>('', '/status');
+      if (state.tradingEnabled) {
+        throw new Error('Автоматический вход доступен только в режиме просмотра. Отключи execution на backend.');
+      }
       setStatus(state);
-      setKey(typedKey);
-      setTypedKey('');
+      setKey('auto-readonly');
       if (!state.instruments.includes(instrument)) setInstrument(state.instruments[0]);
     } catch (e) {
       setError((e as Error).message);
@@ -128,6 +132,12 @@ export default function DeribitTerminal() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void connect();
+    // Only initial automatic read-only session bootstrap; no password input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!key || !status) return;
@@ -226,18 +236,6 @@ export default function DeribitTerminal() {
     }
   };
 
-  const disconnect = () => {
-    setKey('');
-    setStatus(null);
-    setQuote(null);
-    setAccounts([]);
-    setPositions([]);
-    setOrders([]);
-    setPreview(null);
-    setMessage('');
-    setError('');
-  };
-
   return (
     <main className="terminal">
       <header className="topbar">
@@ -248,7 +246,7 @@ export default function DeribitTerminal() {
           {status && <span className={'environment ' + (status.environment === 'mainnet' ? 'live' : '')}>
             {status.environment === 'mainnet' ? 'MAINNET · REAL FUNDS' : 'TESTNET'}
           </span>}
-          {status && <button className="text-button" onClick={disconnect}><LockKeyhole size={14}/> Закрыть сеанс</button>}
+
         </div>
       </header>
 
@@ -257,19 +255,12 @@ export default function DeribitTerminal() {
           <div className="connect-card">
             <span className="eyebrow">LOCAL OPERATOR ACCESS</span>
             <h1>Deribit Trading Terminal</h1>
-            <p>Веб-интерфейс торговли, котировок и позиций. API-ключ оператора используется только в памяти вкладки; биржевые ключи остаются на сервере.</p>
-            <label htmlFor="operator-key">Ключ оператора TradeOps</label>
-            <div className="input-with-icon"><KeyRound size={17}/>
-              <input id="operator-key" type="password" autoComplete="off"
-                value={typedKey} onChange={e => setTypedKey(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') void connect(); }}
-                placeholder="X-TradeOps-Terminal-Key" />
-            </div>
-            <button className="primary full" disabled={loading || !typedKey} onClick={() => void connect()}>
-              {loading ? 'Подключение…' : 'Открыть терминал'} <ArrowUpRight size={16}/>
+            <p>Вход автоматически авторизуется локальным TradeOps launcher. Никакого пароля оператора вводить не нужно, а биржевые ключи остаются в памяти backend.</p>
+            <button className="primary full" disabled={loading} onClick={() => void connect()}>
+              {loading ? 'Подключаемся…' : 'Повторить подключение'} <ArrowUpRight size={16}/>
             </button>
             {error && <p className="error">{error}</p>}
-            <p className="footnote"><ShieldCheck size={15}/> Только localhost · торговля на сервере выключена по умолчанию</p>
+            <p className="footnote"><ShieldCheck size={15}/> Автоматическая сессия только для просмотра · localhost</p>
           </div>
         </section>
       ) : (
