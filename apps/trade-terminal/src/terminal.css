@@ -274,3 +274,165 @@
 @media (max-width: 650px) {
   .market-feed .stream-status { text-align: left; font-size: 12px; }
 }
+
+
+/* TO-V2-42: Professional vertical price ladder, Deribit-style.
+   ASKs descend from higher prices at top to best ask immediately
+   above the mid; BIDs descend from best bid immediately below it.
+   Background bands represent cumulative resting depth, not trades.
+   Styling only: does not affect the event-driven RAW L2 backend. */
+.dom-ladder {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #38445a;
+  border-radius: 10px;
+  background: #0d1523;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.dom-head,
+.dom-row,
+.dom-mid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr) minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  text-align: right;
+}
+.dom-head {
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #bbcbdf;
+  letter-spacing: .025em;
+  background: #1d293b;
+  border-bottom: 1px solid #ffffff20;
+}
+.dom-head span:nth-child(2),
+.dom-row .dom-price,
+.dom-mid-price {
+  text-align: center;
+}
+.dom-row {
+  position: relative;
+  min-height: 35px;
+  padding: 6px 14px;
+  border-bottom: 1px solid #ffffff0c;
+  font-size: 14px;
+  color: #d4ddeb;
+  line-height: 1.35;
+  isolation: isolate;
+}
+.dom-row > .dom-size,
+.dom-row > .dom-price,
+.dom-row > .dom-cumulative {
+  position: relative;
+  z-index: 1;
+}
+.dom-row.ask .dom-price { color: #ff94a4; }
+.dom-row.bid .dom-price { color: #5de0ae; }
+.dom-row .dom-price { font-size: 15px; font-weight: 750; }
+.dom-row .dom-cumulative { font-size: 13px; color: #abbdd4; }
+.dom-row.best { min-height: 39px; font-weight: 700; }
+.dom-row.ask.best { background: #4e25334a; border-bottom-color: #ff819749; }
+.dom-row.bid.best { background: #1d47364d; border-top: 1px solid #51d39c40; }
+.dom-row.best .dom-price { font-size: 16px; }
+.dom-bar {
+  display: block;
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  z-index: 0;
+  pointer-events: none;
+  max-width: 100%;
+  transition: width 70ms linear;
+}
+.dom-bar.ask-bar {
+  right: 0;
+  background: linear-gradient(90deg, #a03b4b10, #b83a4a35);
+}
+.dom-bar.bid-bar {
+  left: 0;
+  background: linear-gradient(90deg, #20745238, #2074520d);
+}
+.dom-mid {
+  min-height: 54px;
+  padding: 9px 14px;
+  background: #253246;
+  border-top: 1px solid #6985a177;
+  border-bottom: 1px solid #6985a177;
+}
+.dom-mid-label {
+  text-align: right;
+  font-size: 12px;
+  letter-spacing: .1em;
+  font-weight: 700;
+  color: #aec1d9;
+}
+.dom-mid-price {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f9fbff;
+}
+.dom-mid-spread {
+  color: #dae5f4;
+  font-size: 14px;
+  font-weight: 700;
+}
+.dom-bps {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #b6c9e4;
+  font-weight: 500;
+}
+.dom-mid-unsynced {
+  grid-column: 1/-1;
+  color: #ffb2ba;
+  font-size: 13px;
+  text-align: center;
+}
+.dom-empty {
+  padding: 20px 14px;
+  margin: 0;
+  text-align: center;
+  color: #a5b7cf;
+  font-size: 13px;
+}
+.dom-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 17px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: #afc0d6;
+}
+.dom-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.dom-legend-swatch {
+  width: 9px;
+  height: 9px;
+  display: inline-block;
+  border-radius: 2px;
+}
+.dom-legend-swatch.ask { background: #db647a; }
+.dom-legend-swatch.bid { background: #41c494; }
+@media (max-width: 650px) {
+  .dom-head,
+  .dom-row,
+  .dom-mid {
+    column-gap: 5px;
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+  .dom-row { font-size: 12px; }
+  .dom-row .dom-price { font-size: 13px; }
+  .dom-row.best .dom-price { font-size: 14px; }
+  .dom-row .dom-cumulative { font-size: 12px; }
+  .dom-mid-price { font-size: 15px; }
+  .dom-mid-spread { font-size: 12px; }
+  .dom-head { font-size: 11px; }
+}
