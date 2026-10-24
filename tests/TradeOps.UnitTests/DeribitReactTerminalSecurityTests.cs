@@ -149,6 +149,8 @@ public sealed class DeribitReactTerminalSecurityTests
             "Operator token must be preserved until Vite inherits it.");
         Assert.DoesNotContain("$env:DeribitTerminal__MaxContracts = '10'\n    $operatorKey = $null", code);
         Assert.Contains("TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED", code);
+        Assert.Contains("TERMINAL_PROXY_AUTH_FAILED", code);
+        Assert.Contains("Invoke-RestMethod -Uri 'http://127.0.0.1:5173/api/deribit-terminal/status'", code);
         Assert.DoesNotContain("DeribitTerminal__ExecutionEnabled = 'true'", code);
         Assert.DoesNotContain("DeribitTerminal__MainnetExecutionEnabled = 'true'", code);
         Assert.DoesNotContain("Write-Host $id", code);
