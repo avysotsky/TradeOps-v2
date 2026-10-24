@@ -119,6 +119,28 @@ public sealed class DeribitReactTerminalSecurityTests
     }
 
     [Fact]
+    public void ReadOnlyMainnetLauncher_UsesExistingDpapiAndForcesLiveExecutionOff()
+    {
+        var code = File.ReadAllText(Path.Combine(LocateRoot(),
+            "scripts/deribit/Start-MainnetReactTerminalReadOnly.ps1"));
+        Assert.Contains("Deribit.Mainnet.ReadOnly.dpapi.json", code);
+        Assert.Contains("DeribitMainnetReadOnly", code);
+        Assert.Contains("rev-parse FETCH_HEAD", code);
+        Assert.Contains("$actual -cne $ExpectedHead", code);
+        Assert.Contains("worktree add --detach", code);
+        Assert.Contains("& $dotnet build $project -c Release", code);
+        Assert.Contains("ConvertTo-SecureString", code);
+        Assert.Contains("$env:DeribitTerminal__Environment = 'mainnet'", code);
+        Assert.Contains("$env:DeribitTerminal__ExecutionEnabled = 'false'", code);
+        Assert.Contains("$env:DeribitTerminal__MainnetExecutionEnabled = 'false'", code);
+        Assert.Contains("Read-Host", code);
+        Assert.DoesNotContain("DeribitTerminal__ExecutionEnabled = 'true'", code);
+        Assert.DoesNotContain("DeribitTerminal__MainnetExecutionEnabled = 'true'", code);
+        Assert.DoesNotContain("Write-Host $id", code);
+        Assert.DoesNotContain("Write-Host $secret", code);
+    }
+
+    [Fact]
     public void TerminalUsesPostOnlyNoAutotradingAndLocalViteProxy()
     {
         var root = LocateRoot();
