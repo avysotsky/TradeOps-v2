@@ -49,8 +49,8 @@ test('Prices remain native, including small ETH option prices', () => {
   });
   assert.equal(ladder.asks[1].price, 0.001);
   assert.equal(ladder.bids[0].price, 0.0008);
-  assert.equal(ladder.spread.absolute, 0.0002);
-  assert.equal(ladder.spread.mid, 0.0009);
+  assert.ok(Math.abs(ladder.spread.absolute - 0.0002) < 1e-12);
+  assert.ok(Math.abs(ladder.spread.mid - 0.0009) < 1e-12);
 });
 
 test('Max 10 levels per side and invalid rows excluded', () => {
