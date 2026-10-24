@@ -91,7 +91,11 @@ export function domPriceDecimals(
   kind: 'future' | 'option'
 ): number {
   const numbers = [
-    ...(tickSize && tickSize > 0 && Number.isFinite(tickSize) ? [tickSize] : []),
+    // Reserve precision for a half-tick midpoint even when the CURRENT
+    // bid/ask midpoint happens to sit on a whole tick. This prevents
+    // visual decimal-width jumps as market spread changes over time.
+    ...(tickSize && tickSize > 0 && Number.isFinite(tickSize)
+      ? [tickSize, tickSize / 2] : []),
     ...ladder.asks.map(level => level.price),
     ...ladder.bids.map(level => level.price),
     ...(ladder.spread ? [ladder.spread.mid, ladder.spread.absolute] : [])
