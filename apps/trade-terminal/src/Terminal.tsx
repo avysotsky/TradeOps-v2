@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
   CircleDollarSign, Clock3, KeyRound, RefreshCw,
@@ -100,6 +100,7 @@ function num(value?: number | null, digits = 2) {
 
 export default function DeribitTerminal() {
   const [key, setKey] = useState('auto-readonly');
+  const [tableFontSize, setTableFontSize] = useState(16);
   const [status, setStatus] = useState<Status | null>(null);
   const [instrument, setInstrument] = useState('BTC-PERPETUAL');
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -264,7 +265,7 @@ export default function DeribitTerminal() {
           </div>
         </section>
       ) : (
-        <div className="content">
+        <div className="content" style={{ '--table-font-size': `${tableFontSize}px` } as CSSProperties}>
           <section className="headline">
             <div><span className="eyebrow">TRADING WORKSPACE / DERIBIT</span>
               <h1>Trading overview</h1>
@@ -360,7 +361,21 @@ export default function DeribitTerminal() {
           </div>
 
           <section className="panel data-panel">
-            <div className="panel-header"><div><span className="eyebrow">EXCHANGE STATE</span><h2>Открытые позиции</h2></div><span className="count">{positions.length} positions</span></div>
+            <div className="panel-header">
+              <div><span className="eyebrow">EXCHANGE STATE</span><h2>Открытые позиции</h2></div>
+              <div className="table-controls">
+                <span className="count">{positions.length} positions</span>
+                <div className="font-controls" role="group" aria-label="Размер шрифта таблиц">
+                  <button type="button" aria-label="Уменьшить шрифт таблиц" title="Уменьшить шрифт"
+                    disabled={tableFontSize <= 14}
+                    onClick={() => setTableFontSize(size => Math.max(14, size - 2))}>A−</button>
+                  <span aria-live="polite">{tableFontSize} px</span>
+                  <button type="button" aria-label="Увеличить шрифт таблиц" title="Увеличить шрифт"
+                    disabled={tableFontSize >= 20}
+                    onClick={() => setTableFontSize(size => Math.min(20, size + 2))}>A+</button>
+                </div>
+              </div>
+            </div>
             <div className="table-wrap">
               <table><thead><tr><th>Инструмент</th><th>Тип</th><th>Сторона</th><th className="right">Native size</th><th className="right">Mark</th><th className="right">Floating PnL</th></tr></thead>
                 <tbody>{positions.length ? positions.map((p, i) => <tr key={p.instrument + i}>
