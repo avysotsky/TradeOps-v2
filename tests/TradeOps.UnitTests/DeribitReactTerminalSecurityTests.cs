@@ -158,6 +158,30 @@ public sealed class DeribitReactTerminalSecurityTests
     }
 
     [Fact]
+    public void ReadableExchangeTables_UseLargeTypeAndUserFontControls()
+    {
+        var root = LocateRoot();
+        var css = File.ReadAllText(Path.Combine(root,
+            "apps/trade-terminal/src/terminal.css"));
+        var frontend = File.ReadAllText(Path.Combine(root,
+            "apps/trade-terminal/src/Terminal.tsx"));
+
+        // Covers both positions and active-order tables with shared CSS.
+        Assert.Contains(".data-panel td.mono", css);
+        Assert.Contains("font-size: var(--table-font-size, 16px)", css);
+        Assert.Contains(".data-panel th", css);
+        Assert.Contains("min-width: 840px", css);
+        Assert.Contains("overflow-x: auto", css);
+        Assert.Contains("const [tableFontSize, setTableFontSize] = useState(16)", frontend);
+        Assert.Contains("aria-label=\"Размер шрифта таблиц\"", frontend);
+        Assert.Contains("setTableFontSize(size => Math.min(20, size + 2))", frontend);
+        Assert.Contains("setTableFontSize(size => Math.max(14, size - 2))", frontend);
+        Assert.Contains("'--table-font-size'", frontend);
+        Assert.DoesNotContain("localStorage", frontend);
+        Assert.DoesNotContain("sessionStorage", frontend);
+    }
+
+    [Fact]
     public void TerminalUsesPostOnlyNoAutotradingAndLocalViteProxy()
     {
         var root = LocateRoot();
