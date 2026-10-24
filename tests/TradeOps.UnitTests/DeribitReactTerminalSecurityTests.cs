@@ -138,6 +138,16 @@ public sealed class DeribitReactTerminalSecurityTests
         Assert.Contains("RandomNumberGenerator", code);
         Assert.Contains("TRADEOPS_TERMINAL_OPERATOR_KEY", code);
         Assert.Contains("Start-Process -FilePath $nodeFound.Source", code);
+        // Regression: Vite must inherit the SAME session key as .NET.
+        // Clearing $operatorKey before Vite spawn caused HTTP 401.
+        var apiKey = code.IndexOf("$env:DeribitTerminal__OperatorKey = $operatorKey", StringComparison.Ordinal);
+        var viteKey = code.IndexOf("$env:TRADEOPS_TERMINAL_OPERATOR_KEY = $operatorKey", StringComparison.Ordinal);
+        var viteStart = code.IndexOf("$frontendProcess = Start-Process", StringComparison.Ordinal);
+        var keyClear = code.IndexOf("$operatorKey = $null", viteKey, StringComparison.Ordinal);
+        Assert.True(apiKey >= 0 && apiKey < viteKey &&
+            viteKey < viteStart && viteStart < keyClear,
+            "Operator token must be preserved until Vite inherits it.");
+        Assert.DoesNotContain("$env:DeribitTerminal__MaxContracts = '10'\n    $operatorKey = $null", code);
         Assert.Contains("TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED", code);
         Assert.DoesNotContain("DeribitTerminal__ExecutionEnabled = 'true'", code);
         Assert.DoesNotContain("DeribitTerminal__MainnetExecutionEnabled = 'true'", code);
