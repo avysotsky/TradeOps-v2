@@ -62,50 +62,43 @@ on the API server; they are NEVER sent to React. The exact exchange
 destination is fixed to Deribit's test or production host, per the
 server's Environment setting. No redirects or HTTP proxies are used.
 
-## Local first run — two terminals on Windows
+## Local production READ-ONLY first run — ONE PowerShell, ZERO passwords
 
-Prerequisites:
-- .NET 10 SDK, Node.js 20+ and npm
-- NO PostgreSQL required: standalone terminal host starts only the Deribit controller.
-- a local user-chosen operator key of at least 32 characters
+This is the recommended owner workflow. Node.js 24 + npm 11 and .NET 10
+are installed locally. Do NOT use a manually entered operator passphrase.
 
-PowerShell A (API, testnet read-only by default):
+1. Use the SHA-pinned GitHub bootstrap of
+   scripts/deribit/Start-MainnetReactTerminalReadOnly.ps1 at the current
+   reviewed Draft PR head. Launcher validates the exact SHA, creates
+   detached worktree, builds the isolated .NET API and React with
+   npm install + npm run build BEFORE reading any broker credentials.
+2. The launcher decrypts the existing owner's mainnet READ-ONLY Windows
+   CurrentUser DPAPI credential vault, creates a NEW 384-bit random
+   operator session token automatically and starts both localhost servers.
+   It never asks the user to enter, save or remember this session token.
+3. The isolated .NET API inherits the read-only credentials and its
+   session token; React/Vite inherits only the token. Neither receives
+   the other process's private data. Browser JavaScript never sees
+   the actual token: Vite's server-side proxy adds it ONLY to GET
+   /api/deribit-terminal requests. POST requests are not auto-authenticated.
+4. Open http://127.0.0.1:5173 — auto session runs immediately, without
+   a login page or typed passphrase. Live trades stay disabled because
+   the launcher FORCES ExecutionEnabled=false and
+   MainnetExecutionEnabled=false, irrespective of other configs.
+5. Ctrl+C in the owning PowerShell stops both child processes and
+   removes the detached worktree. Do not shut down unrelated containers.
 
-    cd D:\Projects\TradeOps-v2
-    $env:DeribitTerminal__Environment = 'testnet'
-    $env:DeribitTerminal__ExecutionEnabled = 'false'
-    $env:DeribitTerminal__MainnetExecutionEnabled = 'false'
-    $env:DeribitTerminal__MaxContracts = '100'
+Owner result marker (not evidence until owner actually runs the new SHA):
 
-Prompt for a fresh local operator phrase securely:
+TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_PASS auto_operator_auth=YES production_private_reads=YES live_execution=DISABLED
 
-    $secure = Read-Host 'Operator key (32+ chars, re-enter same in browser)' -AsSecureString
-    $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try {
-      $env:DeribitTerminal__OperatorKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-    } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
-
-Do not paste this key into a GitHub issue, terminal command line,
-appsettings.json or chat. Environment variables are readable by the
-same-user local processes: do not treat this mechanism as hardened
-secret management. Leave ClientId/ClientSecret unset initially to
-verify PUBLIC actual quotes only.
-
-    dotnet run --project apps/TradeOps.TerminalApi
-
-PowerShell B (React):
-
-    cd D:\Projects\TradeOps-v2\apps\trade-terminal
-    npm install
-    npm run build
-    npm run dev
-
-Open http://127.0.0.1:5173, enter the operator phrase. Expect testnet
-market quotes and an explicitly locked order ticket. If backend startup
-cannot reach the application's existing TradeOpsDb, start that DB or
-configure its normal connection first; never repoint the main TradeOps
-DB to tradeops_evidence. The Vite development server proxies
-/api/deribit-terminal only to 127.0.0.1:5058.
+The session token is **ephemeral**, not a permanent password.
+It need not be remembered and is not written to disk/chat/GitHub.
+A new one is generated every time the entire terminal starts. The
+Deribit READ-ONLY API key remains persisted only in the existing
+owner-local DPAPI vault. This is NOT login-less public internet
+access; both services bind to loopback only, and Vite's auto-header
+mechanism is for the local READ-ONLY mode.
 
 ## Authenticated Deribit account and testnet order acceptance
 
@@ -175,36 +168,14 @@ https://docs.deribit.com/articles/authentication
 https://docs.deribit.com/articles/order-management-best-practices
 
 
-## Preferred owner-local MAINNET read-only launch with existing DPAPI vault
+## Mainnet production credential boundary
 
-The existing local Windows vault created by the qualified
-Deribit-ReadOnlyLocal.ps1 (Save action) is located under CurrentUser
-LOCALAPPDATA/TradeOps/Credentials and contains mainnet READ-ONLY credentials.
-Use it instead of manually entering a ClientId/ClientSecret:
+The existing owner-local Deribit READ-ONLY DPAPI vault is reused
+automatically. Do not re-enter, paste or put credentials or terminal
+operator keys in chat or Git. Mainnet manual trading will require
+a separate permissioned trading key, an explicit operator decision and
+a separate security/acceptance stage. Auto authorization in the
+Vite server grants GET only, never POST execution.
 
-    scripts/deribit/Start-MainnetReactTerminalReadOnly.ps1 -ExpectedHead <PINNED_PR_HEAD>
-
-Run through the exact pinned Git object (do not execute an unqualified
-mutable local script). This Windows script:
-- fetches and checks the exact TradeOps React branch commit SHA;
-- creates a DETACHED temporary worktree and builds the .NET API BEFORE
-  touching the credential vault;
-- validates the local DPAPI vault schema/environment before decrypting;
-- prompts the owner for a new 32+ character operator phrase;
-- runs the mainnet account, positions and orders HTTP API on localhost;
-- FORCES both ExecutionEnabled and MainnetExecutionEnabled to false, even
-  if the user's global config or shell flags were true;
-- prints a temporary React frontend source folder; use a second terminal
-  to run npm install and npm run dev from that folder;
-- clears child process environment variables, disposes SecureStrings
-  and removes the temporary worktree when the API process exits.
-
-The read-only mainnet vault must NEVER be repurposed for mainnet trading.
-Real orders need a separately permissioned trade key and explicitly
-approved local run configuration. This start script has no path for
-enabling any trading mutation.
-
-The dedicated apps/TradeOps.TerminalApi host does NOT initialize or query
-TradeOpsDb or tradeops_evidence, does not call EF migrations and does not
-expose existing signal/order/worker API routes. Only the DeribitTerminal
-controller is compiled into that host.
+The standalone apps/TradeOps.TerminalApi host does not initialize
+TradeOpsDb, EF migrations or the tradeops_evidence database.
