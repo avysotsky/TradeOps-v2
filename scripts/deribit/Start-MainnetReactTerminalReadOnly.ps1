@@ -70,7 +70,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'TERMINAL_WORKTREE_CREATE_FAILED' }
     $created = $true
 
-    $project = Join-Path $stage 'src\TradeOps.Api\TradeOps.Api.csproj'
+    $project = Join-Path $stage 'apps\TradeOps.TerminalApi\TradeOps.TerminalApi.csproj'
     & $dotnet build $project -c Release
     if ($LASTEXITCODE -ne 0) { throw 'TRADEOPS_REACT_TERMINAL_DOTNET_BUILD_FAILED' }
 
@@ -109,7 +109,7 @@ try {
 
     Write-Host 'TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_START trading_enabled=NO production_private_reads=YES'
     Write-Host ('TRADEOPS_REACT_TERMINAL_FRONTEND_SOURCE=' + (Join-Path $stage 'apps\trade-terminal'))
-    Write-Host 'TRADEOPS_REACT_TERMINAL_URL=http://127.0.0.1:5058'
+    Write-Host 'TRADEOPS_REACT_TERMINAL_API_URL=http://127.0.0.1:5058'
     Write-Host 'In a second PowerShell: cd to FRONTEND_SOURCE above; npm install; npm run dev'
     Write-Host 'Then open http://127.0.0.1:5173 and enter the operator passphrase.'
     Write-Host 'This foreground API terminates with Ctrl+C; trading remains disabled.'
