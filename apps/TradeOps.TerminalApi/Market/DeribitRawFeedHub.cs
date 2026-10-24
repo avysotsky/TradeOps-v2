@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.WebSockets;
@@ -75,7 +76,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(1)
             {
                 SingleReader = true,
-                SingleWriter = true,
+                SingleWriter = false,
                 FullMode = BoundedChannelFullMode.DropOldest,
                 AllowSynchronousContinuations = false
             });
@@ -167,11 +168,23 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             }
                         }, _stop.Token);
 
+                        // Application-level liveness independent of rare book
+                        // changes; Deribit sends heartbeat/test_request and
+                        // closes a client that doesn't respond to public/test.
+                        await SendAsync(ws, new {
+                            jsonrpc = "2.0", id = 4,
+                            method = "public/set_heartbeat",
+                            @params = new { interval = 15 }
+                        }, _stop.Token);
+
                         State("waiting_snapshot");
                         backoff = 500;
                         while (ws.State == WebSocketState.Open && !_stop.IsCancellationRequested)
                         {
-                            using var frame = await ReceiveDocumentAsync(ws, _stop.Token);
+                            using var receiveDeadline =
+                                CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                            receiveDeadline.CancelAfter(TimeSpan.FromSeconds(40));
+                            using var frame = await ReceiveDocumentAsync(ws, receiveDeadline.Token);
                             var root = frame.RootElement;
                             if (root.TryGetProperty("error", out var err) &&
                                 err.ValueKind != JsonValueKind.Null)
@@ -265,29 +278,33 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             CancellationToken ct)
         {
             var bytes = JsonSerializer.SerializeToUtf8Bytes(message);
-            await socket.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+            await socket.SendAsync(bytes.AsMemory(), WebSocketMessageType.Text, true, ct);
         }
 
         private static async Task<JsonDocument> ReceiveDocumentAsync(
             ClientWebSocket socket, CancellationToken ct)
         {
             // Strictly bounded input. Oversized frames trigger resubscription.
-            var buffer = new byte[64 * 1024];
-            using var stream = new MemoryStream();
-            while (true)
+            var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+            try
             {
-                var chunk = await socket.ReceiveAsync(buffer.AsMemory(), ct);
-                if (chunk.MessageType == WebSocketMessageType.Close)
-                    throw new InvalidOperationException("Exchange feed closed.");
-                if (chunk.MessageType != WebSocketMessageType.Text)
-                    throw new InvalidOperationException("Unexpected exchange frame type.");
-                if (stream.Length + chunk.Count > 4 * 1024 * 1024)
-                    throw new InvalidOperationException("Oversized market-data frame.");
-                stream.Write(buffer, 0, chunk.Count);
-                if (chunk.EndOfMessage) break;
+                using var stream = new MemoryStream(16 * 1024);
+                while (true)
+                {
+                    var chunk = await socket.ReceiveAsync(buffer.AsMemory(), ct);
+                    if (chunk.MessageType == WebSocketMessageType.Close)
+                        throw new InvalidOperationException("Exchange feed closed.");
+                    if (chunk.MessageType != WebSocketMessageType.Text)
+                        throw new InvalidOperationException("Unexpected exchange frame type.");
+                    if (stream.Length + chunk.Count > 4 * 1024 * 1024)
+                        throw new InvalidOperationException("Oversized market-data frame.");
+                    stream.Write(buffer, 0, chunk.Count);
+                    if (chunk.EndOfMessage) break;
+                }
+                return JsonDocument.Parse(stream.GetBuffer().AsMemory(0, (int)stream.Length),
+                    new JsonDocumentOptions { MaxDepth = 48 });
             }
-            return JsonDocument.Parse(stream.GetBuffer().AsMemory(0, (int)stream.Length),
-                new JsonDocumentOptions { MaxDepth = 48 });
+            finally { ArrayPool<byte>.Shared.Return(buffer); }
         }
 
         private static string? String(JsonElement e, string key) =>
