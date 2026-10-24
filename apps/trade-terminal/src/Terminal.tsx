@@ -230,14 +230,14 @@ export default function DeribitTerminal() {
     () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null),
     [book, marketInstrument, streamState]
   );
-  const priceDecimals = useMemo(
-    () => domPriceDecimals(
-      dom,
-      marketInstruments.find(item => item.name === marketInstrument)?.tickSize,
-      marketKind
-    ),
-    [dom, marketInstruments, marketInstrument, marketKind]
-  );
+  const priceDecimals = useMemo(() => {
+    const metadata = marketInstruments.find(item => item.name === marketInstrument);
+    // The marketKind filter can change before instrument selection, so
+    // derive kind from the SELECTED symbol, not from pending search filters.
+    const selectedKind = metadata?.kind === 'option' || /-[CP]$/.test(marketInstrument)
+      ? 'option' : 'future';
+    return domPriceDecimals(dom, metadata?.tickSize, selectedKind);
+  }, [dom, marketInstruments, marketInstrument]);
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
   const [streamMessages, setStreamMessages] = useState(0);
   // ONE continuous WebSocket for selected instrument: NO 8-second market
