@@ -227,3 +227,21 @@
   .book-label, .book-level { padding: 8px 6px; font-size: 12px; }
   .market-feed .panel-header { flex-wrap: wrap; }
 }
+
+
+/* Position instrument navigation selects public market depth only, not orders. */
+.position-market-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #c5dcff;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: #577baf;
+  text-underline-offset: 4px;
+}
+.position-market-link:hover { color: #ffffff; text-decoration-color: #9abfff; }
+.position-market-link:focus-visible { outline: 2px solid #99bfff; outline-offset: 3px; }
