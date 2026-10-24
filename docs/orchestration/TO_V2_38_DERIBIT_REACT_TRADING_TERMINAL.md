@@ -6,6 +6,7 @@ user-operated exchange terminal backed by new actual HTTP routes.
 ## Working source
 
 - apps/trade-terminal — React 19 + TypeScript + Vite responsive workstation UI.
+- apps/TradeOps.TerminalApi — isolated localhost ASP.NET Core 10 host, no DB, no migrations, no other controllers or workers.
 - src/TradeOps.Api/Controllers/DeribitTerminalController.cs — real Deribit
   market, private account, position and open-order HTTP reads; strictly
   manually confirmed LIMIT post-only execution and individual cancel.
@@ -65,9 +66,7 @@ server's Environment setting. No redirects or HTTP proxies are used.
 
 Prerequisites:
 - .NET 10 SDK, Node.js 20+ and npm
-- the existing TradeOpsDb connection required by the unmodified API
-  startup; the API currently runs EF migrations on its own TradeOpsDb.
-  This is NOT the separate empty tradeops_evidence database.
+- NO PostgreSQL required: standalone terminal host starts only the Deribit controller.
 - a local user-chosen operator key of at least 32 characters
 
 PowerShell A (API, testnet read-only by default):
@@ -92,7 +91,7 @@ same-user local processes: do not treat this mechanism as hardened
 secret management. Leave ClientId/ClientSecret unset initially to
 verify PUBLIC actual quotes only.
 
-    dotnet run --project src/TradeOps.Api --urls http://127.0.0.1:5058
+    dotnet run --project apps/TradeOps.TerminalApi
 
 PowerShell B (React):
 
@@ -205,7 +204,7 @@ Real orders need a separately permissioned trade key and explicitly
 approved local run configuration. This start script has no path for
 enabling any trading mutation.
 
-Note: The existing TradeOps API startup uses its own TradeOpsDb
-EF migrations. If that database is offline/unconfigured, this launcher
-cannot start a backend and the terminal remains unavailable; it must
-not silently create or repoint the distinct dedicated evidence DB.
+The dedicated apps/TradeOps.TerminalApi host does NOT initialize or query
+TradeOpsDb or tradeops_evidence, does not call EF migrations and does not
+expose existing signal/order/worker API routes. Only the DeribitTerminal
+controller is compiled into that host.
