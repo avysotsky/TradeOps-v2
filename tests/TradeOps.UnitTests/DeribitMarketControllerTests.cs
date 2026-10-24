@@ -98,7 +98,7 @@ public sealed class DeribitMarketControllerTests
         var ctrl = Make(handler);
         var result = Assert.IsType<OkObjectResult>(
             await ctrl.Book("ETH-25DEC26", 10));
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal(2, json.RootElement.GetProperty("bids").GetArrayLength());
         Assert.Equal(15m, json.RootElement.GetProperty("bids")[0].GetProperty("amount").GetDecimal());
         Assert.Equal(2301m, json.RootElement.GetProperty("asks")[0].GetProperty("price").GetDecimal());
@@ -114,7 +114,7 @@ public sealed class DeribitMarketControllerTests
         var ctrl = Make(handler);
         var result = Assert.IsType<OkObjectResult>(
             await ctrl.Trades("ETH-PERPETUAL", 15));
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal("buy", json.RootElement.GetProperty("trades")[0]
             .GetProperty("direction").GetString());
         Assert.Equal(2324.5m, json.RootElement.GetProperty("trades")[0]
@@ -132,7 +132,7 @@ public sealed class DeribitMarketControllerTests
         var ctrl = Make(handler);
         var result = Assert.IsType<OkObjectResult>(
             await ctrl.Instruments("ETH", "option", "3000", 20));
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal(1, json.RootElement.GetProperty("items").GetArrayLength());
         Assert.Equal("ETH-25DEC26-3000-C",
             json.RootElement.GetProperty("items")[0].GetProperty("name").GetString());
