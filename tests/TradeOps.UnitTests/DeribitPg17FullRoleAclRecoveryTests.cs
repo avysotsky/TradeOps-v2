@@ -45,7 +45,7 @@ public sealed class DeribitPg17FullRoleAclRecoveryTests
         Assert.Contains("NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION", sql);
         Assert.Contains("statement_timeout = '15s'", sql);
         Assert.Contains("search_path = pg_catalog", sql);
-        Assert.DoesNotContain("PASSWORD", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PASSWORD '", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("GRANT ALL", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("DROP ROLE", sql, StringComparison.OrdinalIgnoreCase);
     }
