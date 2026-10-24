@@ -171,27 +171,31 @@ try {
         throw 'REACT_VITE_START_FAILED'
     }
 
-    $ready = $false
-    foreach ($attempt in 1..40) {
-        if ($backend.HasExited -or $frontendProcess.HasExited) {
-            throw 'TERMINAL_CHILD_PROCESS_EXITED'
+    foreach ($port in @(5058, 5173)) {
+        $ready = $false
+        foreach ($attempt in 1..40) {
+            if ($backend.HasExited -or $frontendProcess.HasExited) {
+                throw 'TERMINAL_CHILD_PROCESS_EXITED'
+            }
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            try {
+                $tcp.Connect('127.0.0.1', $port)
+                $ready = $true
+                break
+            }
+            catch {
+                Start-Sleep -Milliseconds 500
+            }
+            finally {
+                $tcp.Dispose()
+            }
         }
-        $tcp = New-Object System.Net.Sockets.TcpClient
-        try {
-            $tcp.Connect('127.0.0.1', 5173)
-            $ready = $true
-            break
-        }
-        catch {
-            Start-Sleep -Milliseconds 500
-        }
-        finally {
-            $tcp.Dispose()
+        if (-not $ready) {
+            throw ('TERMINAL_LOCALHOST_PORT_NOT_READY_' + $port)
         }
     }
-    if (-not $ready) { throw 'REACT_LOCALHOST_NOT_READY' }
 
-    Write-Host 'TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_PASS auto_operator_auth=YES production_private_reads=YES live_execution=DISABLED'
+    Write-Host 'TRADEOPS_REACT_TERMINAL_MAINNET_READONLY_STARTED auto_operator_auth=YES backend=127.0.0.1:5058 frontend=127.0.0.1:5173 exchange_reads=UNVERIFIED live_execution=DISABLED'
     Write-Host 'TRADEOPS_REACT_TERMINAL_URL=http://127.0.0.1:5173'
     Write-Host 'No operator password and no second PowerShell are required.'
     Write-Host 'Press Ctrl+C to stop backend and React.'
