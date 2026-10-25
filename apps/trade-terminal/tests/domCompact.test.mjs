@@ -69,3 +69,19 @@ test('read-only event-driven market stream remains isolated from order ticket', 
   assert.doesNotMatch(ui, /\/market\/trades\?instrument=/);
   assert.doesNotMatch(ladder, /onClick|onMouseDown|orders\/preview|orders\/confirm/);
 });
+
+test('RAW book depth selector only exposes bounded 10/25/50 local views', () => {
+  assert.match(ui, /const \[domDepth, setDomDepth\] = useState<DomDepth>\(10\)/);
+  assert.match(ui, /<option value=\{10\}>10<\/option>/);
+  assert.match(ui, /<option value=\{25\}>25<\/option>/);
+  assert.match(ui, /<option value=\{50\}>50<\/option>/);
+  assert.match(ui, /toPriceLadder\([\s\S]*?book : null, domDepth\)/);
+  assert.match(ui, /ownOrdersOutsideDepth\(ownOrders.levels, dom\)/);
+  assert.match(ui, /Мои заявки вне \{domDepth\} уровней/);
+  assert.match(ui, /formatDomPrice\(level.price, priceDecimals\)/);
+  assert.match(css, /\.dom-ladder\s*\{\s*position: relative;\s*max-height: 460px;/);
+  assert.match(ui, /ladderScrollRef/);
+  assert.match(ui, /ladderCenterRef/);
+  assert.doesNotMatch(ui, /\/market\/orderbook\?instrument=/);
+  assert.match(ui, /new WebSocket\(url\)/);
+});
