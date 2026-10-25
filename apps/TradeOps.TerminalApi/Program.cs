@@ -17,6 +17,7 @@ internal static class TerminalApiEntryPoint
         
         builder.Services.AddControllers();
         builder.Services.AddSingleton<DeribitRawFeedHub>();
+        builder.Services.AddSingleton<DeribitClockProbe>();
         builder.Services.AddHttpClient("deribit-terminal", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(12);
