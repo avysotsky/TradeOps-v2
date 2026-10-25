@@ -17,12 +17,22 @@ function OrdersPositions({account}:{account:Account}){const ord=accountOrders(or
 function Trading({account,product}:{account:Account;product:'spot'|'futures'}){const [asset,setAsset]=useState<Asset>('BTC');const [contract,setContract]=useState<string|null>(null);const futuresContracts=instruments.filter(i=>i.product==='futures'&&i.asset===asset);const inst=(product==='futures'&&contract?futuresContracts.find(i=>i.symbol===contract):undefined)??instrumentFor(instruments,product,asset);const book=useMemo(()=>makeBook(inst),[inst]);const [lastSelected,setLastSelected]=useState<number|null>(null);return <><div className="cc-subnav cc-pair"><select aria-label="Instrument asset" value={asset} onChange={e=>{setAsset(e.target.value as Asset);setContract(null);setLastSelected(null)}}>{(product==='spot'?(['BTC','ETH','SOL'] as const):(['BTC','ETH'] as const)).map(v=><option key={v}>{v}</option>)}</select><strong>{inst.symbol}</strong><span>Last <b>{formatUsd(inst.price)}</b></span><span>Mark <b>{formatUsd(inst.mark)}</b></span><span>Index <b>{formatUsd(inst.index)}</b></span>{inst.fundingPercent!==undefined&&<span>Funding <b className="cc-green">{inst.fundingPercent}%</b></span>}</div>{product==='futures'&&<div className="cc-futures-contract-strip" role="group" aria-label="Futures contracts">{futuresContracts.map(i=><button key={i.symbol} type="button" className={inst.symbol===i.symbol?"active":""} aria-pressed={inst.symbol===i.symbol} onClick={()=>{setContract(i.symbol);setLastSelected(null)}}>{i.symbol}</button>)}<span>FIXTURE · no execution</span></div>}<div className="cc-trading"><MiniChart title={inst.symbol+' · Synthetic market data'}/><BookPanel instrument={inst} book={book} select={setLastSelected}/><Ticket key={inst.symbol} instrument={inst} account={account} selectedPrice={lastSelected}/></div>{lastSelected!==null&&<p className="cc-note">Selected mock book price: {formatUsd(lastSelected)}. No order sent.</p>}<OrdersPositions account={account}/></>}
 function SpreadDetails({quote,account,close}:{quote:SpreadQuote;account:Account;close:()=>void}){
   const closeRef=useRef<HTMLButtonElement>(null);
+  const dialogRef=useRef<HTMLElement>(null);
   const legs=spreadLegs(quote);
   useEffect(()=>{
+    const previouslyFocused=document.activeElement instanceof HTMLElement?document.activeElement:null;
     closeRef.current?.focus();
-    const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();close()}};
+    const onKeyDown=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){event.preventDefault();close();return}
+      if(event.key!=='Tab'||!dialogRef.current)return;
+      const controls=Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])'));
+      if(!controls.length)return;
+      const first=controls[0],last=controls[controls.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+    };
     document.addEventListener('keydown',onKeyDown);
-    return ()=>document.removeEventListener('keydown',onKeyDown);
+    return ()=>{document.removeEventListener('keydown',onKeyDown);previouslyFocused?.focus()};
   },[close]);
   return <>
     <section className="cc-card cc-details" aria-label="Selected spread summary">
@@ -32,7 +42,7 @@ function SpreadDetails({quote,account,close}:{quote:SpreadQuote;account:Account;
       <div className="cc-actions"><button disabled type="button">Buy Spread · Disabled</button><button disabled type="button">Sell Spread · Disabled</button></div><p className="cc-note">No OMS execution. Open modal shows two independent synthetic books.</p>
     </section>
     <div className="cc-spread-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)close()}}>
-      <section className="cc-spread-modal" role="dialog" aria-modal="true" aria-labelledby="cc-spread-modal-title">
+      <section ref={dialogRef} className="cc-spread-modal" role="dialog" aria-modal="true" aria-labelledby="cc-spread-modal-title">
         <div className="cc-spread-modal-header">
           <div><h2 id="cc-spread-modal-title">CoinCall Futures Spread · MOCK</h2><p>{quote.longSymbol} / {quote.shortSymbol} · {account.label} · No order transport</p></div>
           <button type="button" ref={closeRef} onClick={close} aria-label="Close spread dialog">Close</button>
