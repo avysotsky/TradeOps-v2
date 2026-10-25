@@ -6,6 +6,7 @@ export const accounts:readonly Account[]=[
 export const instruments:readonly Instrument[]=[
 {symbol:'BTC/USDT',asset:'BTC',product:'spot',quoteCurrency:'USDT',tickSize:0.1,amountStep:0.0001,price:68125.4,mark:68124.9,index:68123.2},
 {symbol:'ETH/USDT',asset:'ETH',product:'spot',quoteCurrency:'USDT',tickSize:0.01,amountStep:0.001,price:3516.42,mark:3515.8,index:3514.88},
+{symbol:'SOL/USDT',asset:'SOL',product:'spot',quoteCurrency:'USDT',tickSize:0.001,amountStep:0.01,price:188.527,mark:188.518,index:188.505},
 {symbol:'BTCUSDT-Perp',asset:'BTC',product:'futures',quoteCurrency:'USDT',tickSize:0.1,amountStep:0.001,price:68148.6,mark:68146.5,index:68123.2,fundingPercent:0.0083},
 {symbol:'ETHUSDT-Perp',asset:'ETH',product:'futures',quoteCurrency:'USDT',tickSize:0.01,amountStep:0.01,price:3518.12,mark:3516.7,index:3514.88,fundingPercent:0.012},
 {symbol:'BTC-30OCT26',asset:'BTC',product:'futures',quoteCurrency:'USDT',tickSize:0.1,amountStep:0.001,price:68224.6,mark:68222.7,index:68123.2,expiry:'30 Oct 2026'},
