@@ -1,0 +1,32 @@
+name: Deribit DOM real-time reference prices and tick specification
+
+on:
+  push:
+    branches:
+      - TradeOps/to-v2-45-dom-last-mark-index-spec-tick
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tick-spec-and-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run price tick rules and compact DOM tests; build React
+        working-directory: apps/trade-terminal
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Build standalone .NET 10 terminal API
+        run: dotnet build apps/TradeOps.TerminalApi/TradeOps.TerminalApi.csproj --configuration Release
+      - name: Verify exact Deribit specification HTTP parsing and no trading
+        run: dotnet test tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj --configuration Release --filter 'FullyQualifiedName~DeribitMarketControllerTests|FullyQualifiedName~DeribitRawBookTests|FullyQualifiedName~DeribitReactTerminalSecurityTests'
