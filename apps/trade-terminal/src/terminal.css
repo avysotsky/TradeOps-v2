@@ -676,3 +676,14 @@
   font-size: 10px;
   line-height: 1.5;
 }
+
+/* Depth of 25/50 stays inside a bounded DOM viewport rather than
+   growing the page to 1,800px and hiding the actionable mid-market. */
+.dom-ladder {
+  position: relative;
+  max-height: 460px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #60738c #152033;
+}
