@@ -8,7 +8,7 @@
 
 Because this is a **Draft PR**, the launcher exists on the CI-01 GitHub branch but might not exist in the owner's current local checkout. A PowerShell `CommandNotFoundException` at `D:\\Projects\\TradeOps-v2\\scripts\\ci\\Run-TradeOpsAcceptance.ps1` means the local script was never invoked. **Do not merge or switch the running repo branch to fix this.**
 
-Copy the following **single PowerShell block**. It fetches the CI-01 source to a remote-tracking ref without writing `FETCH_HEAD`, creates a uniquely named detached *temporary* Git worktree, runs the 3-PR launcher while pointing it at the original repository for source-ref discovery, then removes only that temporary worktree:
+Copy the following **single PowerShell block**. It fetches the CI-01 source to a remote-tracking ref without writing `FETCH_HEAD`, creates a uniquely named detached *temporary* Git worktree, runs the 3-PR Python orchestrator directly inside WSL (bypassing both PowerShell execution policy and Bash CRLF conversion), pointing it at the original repository for source-ref discovery, then removes only that temporary worktree:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -21,7 +21,13 @@ if ($LASTEXITCODE -ne 0) { throw 'CI-01 branch fetch failed' }
 git.exe -C $repo worktree add --detach $tempWorktree "refs/remotes/origin/$branch"
 if ($LASTEXITCODE -ne 0) { throw 'Temporary CI-01 worktree creation failed' }
 try {
-    & (Join-Path $tempWorktree 'scripts\\ci\\Run-TradeOpsAcceptance.ps1') -Repository $repo
+    $scriptWin = Join-Path $tempWorktree 'scripts\\ci\\local_acceptance.py'
+    $wslScript = (& wsl.exe --exec wslpath -u $scriptWin).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot translate Python script path into WSL' }
+    $wslRepo = (& wsl.exe --exec wslpath -u $repo).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot translate repository path into WSL' }
+    & wsl.exe --exec python3 $wslScript all $wslRepo
+    if ($LASTEXITCODE -ne 0) { throw "Acceptance returned exit $LASTEXITCODE; consult WSL summary.json files" }
 }
 finally {
     git.exe -C $repo worktree remove --force $tempWorktree
@@ -29,9 +35,9 @@ finally {
 }
 ```
 
-This fetch/worktree operation does **not** switch or reset any active branch and does not modify any ResidentChat worktree. Subsequent source checks and Docker runs are performed by the launcher. If local policy blocks execution of `.ps1` files, use `Set-ExecutionPolicy -Scope Process Bypass` only if allowed by the machine's policies; never change a system-wide policy for this task.
+This fetch/worktree operation does **not** switch or reset any active branch and does not modify any ResidentChat worktree. Subsequent source checks and Docker runs are performed by the launcher. This bootstrap does not execute `.ps1` or `.sh` files, so neither PowerShell execution policy nor Windows Git's CRLF conversions can prevent it from starting.
 
-## One-command Windows entrypoint
+## Windows entrypoint when the CI-01 files already exist locally
 
 Once this PR branch's scripts are accessible at `D:\Projects\TradeOps-v2`, open PowerShell:
 
@@ -39,13 +45,15 @@ Once this PR branch's scripts are accessible at `D:\Projects\TradeOps-v2`, open 
 & 'D:\Projects\TradeOps-v2\scripts\ci\Run-TradeOpsAcceptance.ps1'
 ```
 
-If script execution policy prevents a `.ps1` launcher, invoke WSL2 directly with **one** PowerShell command:
+Where PowerShell execution policy forbids `.ps1` (as on the owner's machine), invoke WSL Python directly once the files are locally present:
 
 ```powershell
-wsl.exe --exec bash /mnt/d/Projects/TradeOps-v2/scripts/ci/verify-exact-sha.sh all /mnt/d/Projects/TradeOps-v2
+wsl.exe --exec python3 /mnt/d/Projects/TradeOps-v2/scripts/ci/local_acceptance.py all /mnt/d/Projects/TradeOps-v2
 ```
 
-For another checkout path, pass `-Repository 'D:\your\path\TradeOps-v2'` to the launcher. In Ubuntu, use `bash scripts/ci/verify-exact-sha.sh all /mnt/d/Projects/TradeOps-v2`. Individual checks accept `62`, `63` or `64` instead of `all`. **Do not switch any active TradeOps/ResidentChat branch to run this tool**; use a separate checkout containing the CI-01 scripts. The Python driver requires host WSL `git`, `python3`, Docker daemon access and working GitHub Git credentials. It **never requires .NET or Node installed in host Ubuntu**.
+For another checkout path, pass `-Repository 'D:\your\path\TradeOps-v2'` to the launcher. In Ubuntu, use `python3 scripts/ci/local_acceptance.py all /mnt/d/Projects/TradeOps-v2`. Individual checks accept `62`, `63` or `64` instead of `all`. **Do not switch any active TradeOps/ResidentChat branch to run this tool**; use a separate checkout containing the CI-01 scripts. The Python driver requires host WSL `git`, `python3`, Docker daemon access and working GitHub Git credentials. It **never requires .NET or Node installed in host Ubuntu**.
+
+The repository also includes `scripts/ci/.gitattributes` forcing LF for `.sh` and `.py` files, including with Windows Git `core.autocrlf=true`. For the immediate operator recovery, direct Python is the more robust path.
 
 ## Source verification and isolation
 
