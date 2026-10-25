@@ -57,6 +57,10 @@ public sealed class DeribitRawBookTests
         Assert.True(book.Apply(snapshot.RootElement, out _));
         Assert.False(book.Apply(gap.RootElement, out var invalid));
         Assert.Equal("sequence_gap", invalid.State);
+        Assert.Equal("L2_PREV_CHANGE_MISMATCH", book.LastFailure?.Code);
+        Assert.Equal(10, book.LastFailure?.ExpectedChangeId);
+        Assert.Equal(12, book.LastFailure?.PrevChangeId);
+        Assert.Equal(13, book.LastFailure?.ChangeId);
         Assert.Empty(invalid.Bids);
         Assert.Empty(invalid.Asks);
         Assert.Null(invalid.ChangeId);
@@ -80,6 +84,8 @@ public sealed class DeribitRawBookTests
         """);
         Assert.False(book.Apply(crossed.RootElement, out var invalid));
         Assert.Equal("crossed", invalid.State);
+        Assert.Equal("L2_CROSSED", book.LastFailure?.Code);
+        Assert.Equal(200, book.LastFailure?.ChangeId);
         Assert.Empty(invalid.Bids);
         Assert.Empty(invalid.Asks);
 
@@ -90,6 +96,59 @@ public sealed class DeribitRawBookTests
         """);
         Assert.False(book.Apply(foreign.RootElement, out _));
         Assert.Null(book.View("invalid").ChangeId);
+    }
+
+    [Fact]
+    public void InvalidJsonFieldTypesFailClosedWithSanitizedCodeInsteadOfThrowing()
+    {
+        var book = new DeribitRawBook(Instrument);
+        using var valid = Frame("""
+            {"instrument_name":"ETH-PERPETUAL","type":"snapshot","change_id":60,
+             "timestamp":1790000000000,"bids":[["new",100,1]],
+             "asks":[["new",101,1]]}
+            """);
+        Assert.True(book.Apply(valid.RootElement, out _));
+        using var malformed = Frame("""
+            {"instrument_name":123,"type":"change","change_id":61,
+             "prev_change_id":60,"timestamp":1790000000002,
+             "bids":[],"asks":[]}
+            """);
+        Assert.False(book.Apply(malformed.RootElement, out var invalid));
+        Assert.Equal("L2_MALFORMED", book.LastFailure?.Code);
+        Assert.Equal(60, book.LastFailure?.ExpectedChangeId);
+        Assert.Equal(61, book.LastFailure?.ChangeId);
+        Assert.Empty(invalid.Asks);
+        Assert.Empty(invalid.Bids);
+    }
+
+    [Fact]
+    public void ReorderedOrDuplicateChangeIdsMustNotSilentlyAdvanceBook()
+    {
+        var book = new DeribitRawBook(Instrument);
+        using var snapshot = Frame("""
+            {"instrument_name":"ETH-PERPETUAL","type":"snapshot","change_id":1000,
+             "timestamp":1790000000000,"bids":[["new",100,1]],
+             "asks":[["new",101,1]]}
+            """);
+        Assert.True(book.Apply(snapshot.RootElement, out _));
+        using var duplicate = Frame("""
+            {"instrument_name":"ETH-PERPETUAL","type":"change","change_id":1000,
+             "prev_change_id":1000,"timestamp":1790000000001,
+             "bids":[["change",100,500]],"asks":[]}
+            """);
+        Assert.False(book.Apply(duplicate.RootElement, out var invalid));
+        Assert.Equal("L2_PREV_CHANGE_MISMATCH", book.LastFailure?.Code);
+        Assert.Empty(invalid.Bids);
+        Assert.True(book.Apply(snapshot.RootElement, out _));
+        Assert.Null(book.LastFailure);
+        using var skippedNumbersButCorrectLink = Frame("""
+            {"instrument_name":"ETH-PERPETUAL","type":"change","change_id":2040,
+             "prev_change_id":1000,"timestamp":1790000000002,
+             "bids":[["change",100,2]],"asks":[]}
+            """);
+        Assert.True(book.Apply(skippedNumbersButCorrectLink.RootElement, out var result));
+        Assert.Equal(2040, result.ChangeId);
+        Assert.Equal(2m, result.Bids[0].Amount);
     }
 
     [Fact]
