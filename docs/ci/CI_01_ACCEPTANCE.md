@@ -4,6 +4,33 @@
 
 **GitHub Actions is PROHIBITED.** This work neither changes nor runs it; GitHub is used solely for source refs and Draft PR review.
 
+## Bootstrap from Draft PR #66 (when scripts are absent locally)
+
+Because this is a **Draft PR**, the launcher exists on the CI-01 GitHub branch but might not exist in the owner's current local checkout. A PowerShell `CommandNotFoundException` at `D:\\Projects\\TradeOps-v2\\scripts\\ci\\Run-TradeOpsAcceptance.ps1` means the local script was never invoked. **Do not merge or switch the running repo branch to fix this.**
+
+Copy the following **single PowerShell block**. It fetches the CI-01 source to a remote-tracking ref without writing `FETCH_HEAD`, creates a uniquely named detached *temporary* Git worktree, runs the 3-PR launcher while pointing it at the original repository for source-ref discovery, then removes only that temporary worktree:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$repo = 'D:\\Projects\\TradeOps-v2'
+$branch = 'TradeOps/ci-01-exact-sha-dotnet10-react-gates'
+$tempWorktree = Join-Path $env:TEMP ('TradeOps-CI01-' + [guid]::NewGuid().ToString('N'))
+if (-not (Test-Path -LiteralPath $repo)) { throw "Missing repository: $repo" }
+git.exe -C $repo fetch --no-tags --no-write-fetch-head origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
+if ($LASTEXITCODE -ne 0) { throw 'CI-01 branch fetch failed' }
+git.exe -C $repo worktree add --detach $tempWorktree "refs/remotes/origin/$branch"
+if ($LASTEXITCODE -ne 0) { throw 'Temporary CI-01 worktree creation failed' }
+try {
+    & (Join-Path $tempWorktree 'scripts\\ci\\Run-TradeOpsAcceptance.ps1') -Repository $repo
+}
+finally {
+    git.exe -C $repo worktree remove --force $tempWorktree
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Remove only the temporary CI-01 worktree manually: $tempWorktree" }
+}
+```
+
+This fetch/worktree operation does **not** switch or reset any active branch and does not modify any ResidentChat worktree. Subsequent source checks and Docker runs are performed by the launcher. If local policy blocks execution of `.ps1` files, use `Set-ExecutionPolicy -Scope Process Bypass` only if allowed by the machine's policies; never change a system-wide policy for this task.
+
 ## One-command Windows entrypoint
 
 Once this PR branch's scripts are accessible at `D:\Projects\TradeOps-v2`, open PowerShell:
