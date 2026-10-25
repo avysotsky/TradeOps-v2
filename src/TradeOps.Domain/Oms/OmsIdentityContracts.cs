@@ -3,6 +3,12 @@ using TradeOps.Domain.Enums;
 
 namespace TradeOps.Domain.Oms;
 
+/// <summary>Wire/persistence schema for additive typed OMS contracts; bump on breaking changes.</summary>
+public static class OmsContractSchema
+{
+    public const int Version = 1;
+}
+
 /// <summary>Value objects are intentionally independent of the legacy EF Order/Fill entities.</summary>
 internal static class OmsGuard
 {
