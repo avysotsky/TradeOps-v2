@@ -28,7 +28,7 @@ Fully implemented *mock UX*: tab state, typed accounts, deterministic market/boo
 
 Original defect: WeeklyExp and MonthlyExp controls matched their display labels against literal tenor strings 30 Oct / 27 Nov / Perp; therefore selecting them yielded no matches. Typed SpreadQuote.expiryGroup now classifies 30 Oct = Weekly, 27 Nov = Monthly and Perp = Perpetual. Daily/Quarterly show explicit empty fixture results. No live exchange expiry classification is implied.
 
-Book-row selection now also populates the inert order-ticket price field (no order submission). Unit-test declarations increased from 4 to 5 with regression coverage for expiry filtering.
+Book-row selection now also populates the inert order-ticket price field (no order submission). Unit-test declarations increased from 4 to 7: one expiry-filter regression and two static read-only safety gates.
 
 Exact-SHA runner: apps/coincall-terminal/qa/accept-local.sh <SHA>. It uses local WSL2 Docker node:24-bookworm and Playwright Chromium with the built Vite bundle. Refuses a mismatched PR HEAD. Preserves identity.log, worktree.log, build-tests.log, browser.log, browser-check.json, screenshots at 1440x900 and 768x900, plus status.txt. Browser runner executes 14 named assertions (7 at each viewport).
 
