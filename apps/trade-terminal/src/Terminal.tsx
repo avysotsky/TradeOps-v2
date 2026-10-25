@@ -53,6 +53,17 @@ type OrderBook = {
   timestamp: number | null;
   receivedAtUtc: string;
 };
+type FeedDiagnostics = {
+  publicL2State: string;
+  privateOrdersState: string;
+  reasonCode: string | null;
+  failureAtUtc: string | null;
+  expectedChangeId: number | null;
+  prevChangeId: number | null;
+  changeId: number | null;
+  reconnectAttempts: number;
+  counters: Record<string, number>;
+};
 type OwnOrderLevel = {
   direction: 'buy' | 'sell';
   price: number;
@@ -322,6 +333,8 @@ export default function DeribitTerminal() {
 
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
   const [streamMessages, setStreamMessages] = useState(0);
+  const [feedDiagnostics, setFeedDiagnostics] = useState<FeedDiagnostics | null>(null);
+  const [clientWsDisconnects, setClientWsDisconnects] = useState(0);
   // ONE continuous WebSocket for selected instrument: NO 8-second market
   // polling. Backend processes every raw L2 delta; only React paints are
   // coalesced to requestAnimationFrame, without holding up market ingestion.
@@ -340,7 +353,10 @@ export default function DeribitTerminal() {
       lag?: number | null;
       sequence?: number;
       ownOrders?: OwnOrders;
+      diagnostics?: FeedDiagnostics;
     } = {};
+    setFeedDiagnostics(null);
+    setClientWsDisconnects(0);
     setBook(null);
     setTape(null);
     setQuote(null);
@@ -366,6 +382,7 @@ export default function DeribitTerminal() {
       if (updates.trades) setTape(updates.trades);
       if (updates.lag !== undefined) setExchangeAgeMs(updates.lag);
       if (updates.sequence !== undefined) setStreamMessages(updates.sequence);
+      if (updates.diagnostics !== undefined) setFeedDiagnostics(updates.diagnostics);
       updates.book = undefined;
       updates.ownOrders = undefined;
       updates.ticker = undefined;
@@ -373,6 +390,7 @@ export default function DeribitTerminal() {
       updates.state = undefined;
       updates.lag = undefined;
       updates.sequence = undefined;
+      updates.diagnostics = undefined;
     }
     function queueRender() {
       if (frame === null) frame = window.requestAnimationFrame(renderLatest);
@@ -394,6 +412,8 @@ export default function DeribitTerminal() {
         if (payload.instrument !== marketInstrument) return;
         if (payload.type === 'status') {
           updates.state = String(payload.state);
+          if (payload.diagnostics && typeof payload.diagnostics === 'object')
+            updates.diagnostics = payload.diagnostics as FeedDiagnostics;
           // Drop older queued prices as soon as stream is not synced.
           if (payload.state !== 'synced') {
             updates.book = undefined;
@@ -436,6 +456,7 @@ export default function DeribitTerminal() {
       };
       socket.onclose = () => {
         if (!active) return;
+        setClientWsDisconnects(n => n + 1);
         updates.state = 'disconnected';
         updates.book = undefined;
         updates.ownOrders = undefined;
@@ -939,6 +960,18 @@ export default function DeribitTerminal() {
             <div className="terminal-diagnostics-content">
               <span>Инструмент: {marketInstrument}</span>
               <span>Статус: {streamState}</span>
+              <span>Public L2: {feedDiagnostics?.publicL2State ?? streamState}</span>
+              <span>Private overlay: {ownOrders?.state ?? feedDiagnostics?.privateOrdersState ?? '—'}</span>
+              <span>Последний код сбоя: {feedDiagnostics?.reasonCode ?? '—'}</span>
+              <span>Последний сбой UTC: {feedDiagnostics?.failureAtUtc ?? '—'}</span>
+              <span>Expected change_id: {feedDiagnostics?.expectedChangeId ?? '—'}</span>
+              <span>Incoming prev_change_id: {feedDiagnostics?.prevChangeId ?? '—'}</span>
+              <span>Incoming change_id: {feedDiagnostics?.changeId ?? '—'}</span>
+              <span>Reconnect attempts: {feedDiagnostics?.reconnectAttempts ?? 0}</span>
+              <span>CLIENT_WS_DISCONNECT: {clientWsDisconnects}</span>
+              <span>Счётчики ошибок: {feedDiagnostics?.counters
+                ? Object.entries(feedDiagnostics.counters).map(([code, count]) =>
+                    code + '=' + count).join(' · ') || '—' : '—'}</span>
               <span>Change ID: {book?.changeId ?? '—'}</span>
               <span>Сообщений RAW L2: {streamMessages}</span>
               <span>Уровней на сторону: {domDepth}</span>
