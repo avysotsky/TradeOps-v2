@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {accountOrders,accountPositions,filterSpreads,spreadLegs,isValidMockBook,quoteLabel,instrumentFor,matrixSymbols,matrixQuote,invertSpread} from '../src/model.ts';import {accounts,orders,positions,spreads,makeBook,instruments} from '../src/fixtures.ts';
 test('account-scoped order and position reads',()=>{assert.deepEqual(accountOrders(orders,accounts[0]).map(x=>x.orderId),['MOCK-CC-A-001','MOCK-CC-A-002']);assert.deepEqual(accountOrders(orders,accounts[1]).map(x=>x.orderId),['MOCK-CC-B-001']);assert.equal(accountPositions(positions,accounts[1]).length,1)});
-test('spread filters and typed buy/sell legs',()=>{assert.equal(filterSpreads(spreads,'ETH',[]).length,2);assert.equal(filterSpreads(spreads,'BTC',['30 Oct']).length,2);const l=spreadLegs(spreads[0]);assert.equal(l[0].side,'BUY');assert.equal(l[1].side,'SELL');assert.notEqual(l[0].symbol,l[1].symbol)});
+test('spread filters and typed buy/sell legs',()=>{assert.equal(filterSpreads(spreads,'ETH',[]).length,3);assert.equal(filterSpreads(spreads,'BTC',['30 Oct']).length,2);const l=spreadLegs(spreads[0]);assert.equal(l[0].side,'BUY');assert.equal(l[1].side,'SELL');assert.notEqual(l[0].symbol,l[1].symbol)});
 test('book sequence non-crossed for every fixture instrument',()=>{for(const i of instruments)assert.ok(isValidMockBook(makeBook(i),i))});
 test('source-specific quote label and contract symbol',()=>{assert.notEqual(quoteLabel(spreads[0],'mark'),quoteLabel(spreads[0],'median'));assert.equal(instrumentFor(instruments,'spot','BTC').symbol,'BTC/USDT')});
 
