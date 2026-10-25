@@ -192,7 +192,9 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             }
                         }, _stop.Token);
 
-                        using var auth = await ReceiveDocumentAsync(ws, _stop.Token);
+                        using var authDeadline = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                        authDeadline.CancelAfter(TimeSpan.FromSeconds(40));
+                        using var auth = await ReceiveDocumentAsync(ws, authDeadline.Token);
                         if (auth.RootElement.TryGetProperty("error", out var authError) &&
                             authError.ValueKind != JsonValueKind.Null)
                             throw new FeedFaultException("WS_AUTH_SUBSCRIPTION");
@@ -401,6 +403,10 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                     timestampUtc = DateTimeOffset.UtcNow });
                             }
                         }
+                        // Clean state transitions are not a substitute for an
+                        // observed close reason; report a transport loss.
+                        if (!_stop.IsCancellationRequested)
+                            throw new FeedFaultException("WS_CLOSED");
                     }
                     catch (OperationCanceledException) when (_stop.IsCancellationRequested) { break; }
                     catch (Exception ex)
