@@ -110,6 +110,25 @@ try{
       assert.equal(await reactPage.locator('.cc-details .cc-actions button:disabled').count(),2);
     });
     await snapshot(vanPage,'van-spreads-'+v+'.png','VAN coincall-spreads.html',width,{state:'original static first-paint matrix, scripts removed'});
+
+    await check(v+' VAN two-leg modal shell with harmless synthetic DOM',async()=>{
+      await vanPage.evaluate(()=>{
+        const modal=document.querySelector('#ccSpreadsTradeModal');
+        const body=document.querySelector('#ccSpreadsTradeBody');
+        const title=document.querySelector('#ccSpreadsTradeTitle');
+        const subtitle=document.querySelector('#ccSpreadsTradeSubtitle');
+        assertInternal(modal && body && title && subtitle,'VAN modal absent');
+        modal.hidden=false;modal.style.display='flex';
+        title.textContent='CoinCall Futures Spread · MOCK STRUCTURAL PREVIEW';
+        subtitle.textContent='BTCUSDT-Perp / BTC-30OCT26 · synthetic legs · no executable controls';
+        body.innerHTML='<div class="okx-nitro-legs-card" style="padding:10px;background:#0b1220;border:1px solid #1e293b"><div class="okx-nitro-legs-head">Legs · MOCK</div><div class="okx-nitro-quote-row"><span class="okx-nitro-side bid">BUY BTCUSDT-Perp</span><span class="okx-nitro-side ask">SELL BTC-30OCT26</span></div><p>Quote, size and execution controls disabled — fixture-only VAN modal geometry.</p><button disabled type="button">Buy spread — disabled</button><button disabled type="button">Sell spread — disabled</button></div><div class="okx-nitro-books-grid" style="padding:10px"><section class="okx-nitro-legs-card">PERP book · mock</section><section class="okx-nitro-legs-card">FUTURE book · mock</section></div>';
+        function assertInternal(ok,message){if(!ok)throw Error(message)}
+      });
+      assert.equal(await vanPage.locator('#ccSpreadsTradeModal').isVisible(),true);
+    });
+    await snapshot(vanPage,'van-spread-legs-'+v+'.png','VAN modal original HTML/CSS shell',width,{state:'synthetic two-leg modal content, scripts disabled'});
+    await vanPage.locator('#ccSpreadsTradeModal').evaluate(el=>{el.hidden=true;el.style.display='none'});
+
     await snapshot(reactPage,'react-spreads-legs-'+v+'.png','React compiled Vite',width,{state:'selected spread legs'});
     await reactPage.getByRole('button',{name:'Close spread details'}).click();
     await snapshot(reactPage,'react-spreads-grid-'+v+'.png','React compiled Vite',width,{state:'unselected spread matrix'});
