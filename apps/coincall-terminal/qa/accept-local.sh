@@ -126,6 +126,6 @@ fi
 echo 'PASS: offline screenshot capture of original VAN HTML/CSS and compiled React' | tee "$report/van-parity-status.txt"
 
 test_count="$(grep -E '^# tests [0-9]+' "$report/build-tests.log" | tail -n1 || true)"
-printf 'PASS: exact SHA %s | %s | browser 14 checks | offline VAN screenshots captured\n' "$expected" "${test_count:-see TAP log}" | tee "$report/status.txt"
+printf 'PASS: exact SHA %s | %s | browser 18 checks | offline VAN screenshots captured\n' "$expected" "${test_count:-see TAP log}" | tee "$report/status.txt"
 printf 'Evidence: %s\n' "$report"
 echo 'Offline original VAN markup/CSS and compiled React screenshots created; independent visual assessment required; VAN JS disabled intentionally.'
