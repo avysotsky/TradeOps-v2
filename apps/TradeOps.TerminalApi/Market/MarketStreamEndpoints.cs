@@ -42,8 +42,15 @@ public static class MarketStreamEndpoints
                 ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
             }
+            var depthValue = ctx.Request.Query["depth"].ToString();
+            if (!int.TryParse(depthValue, out var depth) ||
+                !DeribitBookSubscription.ValidDepth(depth))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
             DeribitRawFeedHub.StreamLease lease;
-            try { lease = hub.Subscribe(symbol); }
+            try { lease = hub.Subscribe(symbol, depth); }
             catch (InvalidOperationException)
             {
                 ctx.Response.StatusCode = StatusCodes.Status429TooManyRequests;
