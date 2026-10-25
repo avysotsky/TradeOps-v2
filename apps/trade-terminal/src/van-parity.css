@@ -116,3 +116,29 @@
 @media(max-width:760px) {
   .van-tick-chart svg,.van-chart-unavailable { height:190px; }
 }
+
+/* F1-68: corrected against VAN deribit.html source 2026-10-25:
+   --okx-spot-content:1280px; futures shell 420+/280/300 with 8px gap.
+   RAW DOM's 105/88/102 columns need >300px, so book deliberately uses
+   312px rather than clipping real size/cumulative values at VAN's 280px.
+   This is an explicit 32px non-parity tradeoff pending screenshot review. */
+@media (min-width: 1161px) {
+  .content { max-width: 1320px; }
+  .van-workstation {
+    width: min(100%, 1280px);
+    margin: 0 auto 8px;
+    grid-template-columns: minmax(420px,1fr) 312px 300px;
+    grid-template-areas: "market book ticket" "tape book ticket";
+    gap: 8px;
+  }
+  .van-navigation, .headline, .summary, .van-bottom-dock {
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+@media(max-width:760px) {
+  .van-workstation .market-feed { min-width: 0; }
+  .van-workstation .dom-depth-toolbar { max-width: 100%; }
+  .van-workstation .dom-ladder { max-width: 100%; }
+}

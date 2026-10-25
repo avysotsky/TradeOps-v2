@@ -43,3 +43,25 @@ UI safeguard: the tick chart receives an empty tape whenever RAW WS is not `sync
 - `vanChartSeries.ts` validates finite positive prices/timestamps, sorts event time, caps chart to 120 trades, and handles flat/simultaneous prints without infinite/NaN coordinates. Node24 `vanLayout.test.mjs` includes actual pure-function unit tests (in addition to source assertions).
 - Orders and Positions use linked `tab`/`tabpanel` IDs. Home, End, ArrowLeft and ArrowRight switch between the two currently available account panels; unavailable history/funding panels remain disabled.
 - Source `deribit.html` uses a 340px canvas; React's public-tick chart is now 268px desktop / 190px mobile. Pixel-exact chart parity is NOT claimed, because equivalent OHLC API is absent. Browser comparison remains required.
+
+## Issue #68 — actual browser evidence gate (no fabricated captures)
+
+The existing CSS was compared with VAN `frontend/dist/deribit.html`: VAN's futures shell uses a `1280px` maximum, `420+ / 280 / 300px` columns, `8px` gutters and `418px` futures-card height. React F1 now limits its desktop workbench to `1280px` with `420+ / 312 / 300px` columns. The 32px larger React book is intentional: preserving its existing `105+88+102px` RAW ladder width is more important than hiding price/size columns. This is not pixel-perfect parity.
+
+**Browser automation source:** `apps/trade-terminal/tools/f1-browser-compare.mjs`. It takes two existing **local-only** app URLs, exact PR SHA and output folder, runs Playwright Chromium at `1440×900` and `390×844`, screenshots the workstation and each available Orders/Positions panel, captures DOM row sizes, overflow, RAW/delta indications, and emits `browser-metrics.json` plus `parity-browser-report.md`. It blocks external requests and does not call trading APIs; the backend must still be explicitly read-only.
+
+Prerequisites: owner local WSL2/Windows or isolated Node24 runner, **both apps locally served** (VAN at localhost, TradeOps React at localhost with local operator launcher), Chromium/Playwright installed, sanitized fixtures or public-only data; credentials must be absent from screenshots. For local VAN static serving, authenticate no real accounts. If VAN static HTML cannot load its own data, do NOT pretend the visual comparison covers live data. Use exact same market instrument and comparable fixtures; VAN's *precision* selector is not equivalent to RAW depth.
+
+Example from `apps/trade-terminal` after `npm install --no-save --no-package-lock playwright`:
+
+```bash
+node tools/f1-browser-compare.mjs \
+  --van http://127.0.0.1:8766/deribit.html \
+  --react http://127.0.0.1:5173/ \
+  --sha "$(git rev-parse HEAD)" \
+  --out "$HOME/tradeops-acceptance-results/f1-68/$(git rev-parse HEAD)"
+```
+
+Run **separately** from CI-01's exact-SHA Node24 `npm test`, `node --test tests/vanLayout.test.mjs`, `npm run build` runner. Complete evidence requires SHA verified before and after, test counts, compiler output, fixture provenance, screenshot hashes, browser errors, 1440×900 + 390×844 images **from each actual app**, and a human-reviewed variance list. Screenshot capture does not establish functional parity by itself. Do not merge until orchestrator verifies these artifacts.
+
+**As of authoring**, owner WSL2/Docker execution, browser against both actual apps and screenshots are `NOT RUN`; do not equate this script or source inspection with browser PASS. GitHub Actions forbidden. MAINNET STRICT READ-ONLY.

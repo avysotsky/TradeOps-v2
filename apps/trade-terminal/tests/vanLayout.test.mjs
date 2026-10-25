@@ -83,3 +83,11 @@ test('flat or simultaneous trades produce finite non-degenerate chart', () => {
  assert.equal(series.polyline,'12.00,80.00 240.00,80.00 468.00,80.00');
  assert.ok(!series.polyline.includes('NaN'));
 });
+
+test('VAN 1280px reference shell constrains desktop, preserving 312px RAW-safe book', () => {
+ assert.match(css, /@media \(min-width: 1161px\)/);
+ assert.match(css, /width: min\(100%, 1280px\)/);
+ assert.match(css, /grid-template-columns: minmax\(420px,1fr\) 312px 300px;/);
+ assert.match(css, /grid-template-areas: "market book ticket" "tape book ticket"/);
+ assert.match(css, /\.van-workstation \.dom-ladder \{ max-width: 100%; \}/);
+});
