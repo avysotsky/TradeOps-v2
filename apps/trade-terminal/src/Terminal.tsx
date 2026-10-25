@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { toPriceLadder, ownOrdersOutsideDepth, contractPriceDecimals, formatDomPrice, type DomDepth, type InstrumentTickSpecification } from './marketDepth';
 import {
+  PrivateReadGate, emptyReadSnapshot, settleReadSnapshot, settleAccountPair, snapshotCount,
+  unavailableReadSnapshot, type ReadSnapshot
+} from './privateReadState';
+import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
   CircleDollarSign, Clock3, KeyRound, RefreshCw,
   ShieldAlert, ShieldCheck, Terminal, X
@@ -147,6 +151,24 @@ type ExecutionResult = {
   error?: string;
 };
 
+// REST snapshots must have the expected shape before a section is marked ready.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function isAccount(value: unknown): value is Account {
+  return isRecord(value) && (value.currency === 'BTC' || value.currency === 'ETH');
+}
+function isPosition(value: unknown): value is Position {
+  return isRecord(value) && typeof value.instrument === 'string' &&
+    typeof value.kind === 'string' && typeof value.direction === 'string';
+}
+function isOrder(value: unknown): value is Order {
+  return isRecord(value) &&
+    (typeof value.orderId === 'string' || value.orderId === null) &&
+    (typeof value.instrument === 'string' || value.instrument === null) &&
+    (typeof value.state === 'string' || value.state === null);
+}
+
 const endpoint = '/api/deribit-terminal';
 
 async function api<T>(key: string, route: string, init?: RequestInit): Promise<T> {
@@ -198,9 +220,15 @@ export default function DeribitTerminal() {
   const [tape, setTape] = useState<TradeTape | null>(null);
   const [marketError, setMarketError] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [accountSnapshot, setAccountSnapshot] = useState<ReadSnapshot<Account>>(emptyReadSnapshot);
+  const [positionsSnapshot, setPositionsSnapshot] = useState<ReadSnapshot<Position>>(emptyReadSnapshot);
+  const [ordersSnapshot, setOrdersSnapshot] = useState<ReadSnapshot<Order>>(emptyReadSnapshot);
+  const accounts = accountSnapshot.items;
+  const positions = positionsSnapshot.items;
+  const orders = ordersSnapshot.items;
+  const privateReadGate = useRef(new PrivateReadGate());
+  const pendingPrivateAbort = useRef<AbortController | null>(null);
+  const [privateReadError, setPrivateReadError] = useState('');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [contracts, setContracts] = useState('10');
   const [price, setPrice] = useState('');
@@ -535,34 +563,85 @@ export default function DeribitTerminal() {
     ? null
     : exchangeClock.rawDeltaAtCheckMs - exchangeClock.clockOffsetMs;
 
-  // Private account/positions/orders are not market data: their slower
-  // periodic refresh is independent of the raw exchange feed.
+  // REST account state is independent from RAW market data. Each interval
+  // is an atomic batch: rejected/malformed sections are UNAVAILABLE, never
+  // represented as zero open orders or zero positions. No overlapping polls.
   const refresh = useCallback(async () => {
     if (!key || !status) return;
+    const epoch = privateReadGate.current.begin();
+    if (epoch === null) return;
+    const controller = new AbortController();
+    pendingPrivateAbort.current = controller;
     setRefreshing(true);
-    if (status.credentialsConfigured) {
+    setAccountSnapshot(emptyReadSnapshot<Account>());
+    setPositionsSnapshot(emptyReadSnapshot<Position>());
+    setOrdersSnapshot(emptyReadSnapshot<Order>());
+    try {
+      if (!status.credentialsConfigured) {
+        if (privateReadGate.current.accepts(epoch)) {
+          setAccountSnapshot(unavailableReadSnapshot<Account>());
+          setPositionsSnapshot(unavailableReadSnapshot<Position>());
+          setOrdersSnapshot(unavailableReadSnapshot<Order>());
+          setPrivateReadError('');
+        }
+        return;
+      }
+
       const accountResults = await Promise.allSettled([
-        api<Account>(key, '/account?currency=BTC'),
-        api<Account>(key, '/account?currency=ETH'),
-        api<Position[]>(key, '/positions'),
-        api<Order[]>(key, '/orders')
+        api<Account>(key, '/account?currency=BTC', { signal: controller.signal }),
+        api<Account>(key, '/account?currency=ETH', { signal: controller.signal }),
+        api<Position[]>(key, '/positions', { signal: controller.signal }),
+        api<Order[]>(key, '/orders', { signal: controller.signal })
       ]);
+      // Aborted or re-keyed requests cannot replace a newer session.
+      if (!privateReadGate.current.accepts(epoch)) return;
       const [btc, eth, pos, open] = accountResults;
-      if (btc.status === 'fulfilled' && eth.status === 'fulfilled')
-        setAccounts([btc.value, eth.value]);
-      if (pos.status === 'fulfilled') setPositions(pos.value);
-      if (open.status === 'fulfilled') setOrders(open.value);
-      setError(accountResults.some(r => r.status === 'rejected') ?
-        'Часть данных счёта Deribit сейчас недоступна.' : '');
+      const sampledAt = Date.now();
+      const accountNext = settleAccountPair<Account>(btc, eth, sampledAt, isAccount);
+      const positionsNext = settleReadSnapshot<Position>(pos, sampledAt, isPosition);
+      const ordersNext = settleReadSnapshot<Order>(open, sampledAt, isOrder);
+      setAccountSnapshot(accountNext);
+      setPositionsSnapshot(positionsNext);
+      setOrdersSnapshot(ordersNext);
+      setPrivateReadError(
+        [accountNext, positionsNext, ordersNext].some(x => x.state !== 'ready')
+          ? 'Часть данных счёта Deribit сейчас недоступна. Неполные снимки скрыты.'
+          : ''
+      );
+    } catch {
+      if (privateReadGate.current.accepts(epoch)) {
+        setAccountSnapshot(unavailableReadSnapshot<Account>());
+        setPositionsSnapshot(unavailableReadSnapshot<Position>());
+        setOrdersSnapshot(unavailableReadSnapshot<Order>());
+        setPrivateReadError('Не удалось обновить приватное состояние Deribit.');
+      }
+    } finally {
+      if (privateReadGate.current.accepts(epoch)) {
+        privateReadGate.current.finish(epoch);
+        pendingPrivateAbort.current = null;
+        setRefreshing(false);
+      }
     }
-    setRefreshing(false);
   }, [key, status]);
 
   useEffect(() => {
+    privateReadGate.current.invalidate();
+    pendingPrivateAbort.current?.abort();
+    pendingPrivateAbort.current = null;
+    setAccountSnapshot(emptyReadSnapshot<Account>());
+    setPositionsSnapshot(emptyReadSnapshot<Position>());
+    setOrdersSnapshot(emptyReadSnapshot<Order>());
+    setPrivateReadError('');
     if (!key || !status) return;
     void refresh();
     const interval = window.setInterval(() => { void refresh(); }, 8000);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      // Re-key / unmount: abort in-flight private reads and forbid late commits.
+      privateReadGate.current.invalidate();
+      pendingPrivateAbort.current?.abort();
+      pendingPrivateAbort.current = null;
+    };
   }, [key, status, refresh]);
 
   const previewOrder = async () => {
@@ -672,11 +751,12 @@ export default function DeribitTerminal() {
             <div className="stat"><span>Биржа</span><strong>Deribit</strong><small>{status.environment === 'mainnet' ? 'Production' : 'Testing environment'}</small></div>
             <div className="stat"><span>Торговля</span><strong className={status.tradingEnabled ? 'success-text' : 'muted'}>
               {status.tradingEnabled ? 'Enabled' : 'Disabled'}</strong><small>{status.tradingEnabled ? 'Только ручное подтверждение' : 'Только просмотр'}</small></div>
-            <div className="stat"><span>Открытые заявки</span><strong>{status.credentialsConfigured ? orders.length : '—'}</strong><small>На бирже</small></div>
-            <div className="stat"><span>Открытые позиции</span><strong>{status.credentialsConfigured ? positions.length : '—'}</strong><small>Все типы инструментов</small></div>
+            <div className="stat"><span>Открытые заявки</span><strong>{status.credentialsConfigured ? snapshotCount(ordersSnapshot) ?? '—' : '—'}</strong><small>На бирже</small></div>
+            <div className="stat"><span>Открытые позиции</span><strong>{status.credentialsConfigured ? snapshotCount(positionsSnapshot) ?? '—' : '—'}</strong><small>Все типы инструментов</small></div>
           </div>
 
           {error && <div className="notice danger"><ShieldAlert size={18}/> {error}</div>}
+          {privateReadError && <div className="notice danger"><ShieldAlert size={18}/> {privateReadError}</div>}
           {marketError && <div className="notice danger"><ShieldAlert size={18}/> {marketError}</div>}
           {message && <div className="notice positive"><CheckCircle2 size={18}/> {message}</div>}
           {!status.credentialsConfigured && <div className="notice"><KeyRound size={17}/>
@@ -968,7 +1048,9 @@ export default function DeribitTerminal() {
             <div className="panel-header">
               <div><span className="eyebrow">EXCHANGE STATE</span><h2>Открытые позиции</h2></div>
               <div className="table-controls">
-                <span className="count">{positions.length} positions</span>
+                <span className="count" aria-live="polite">{positionsSnapshot.state === 'ready'
+                  ? positions.length + ' positions · ' + new Date(positionsSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
+                  : positionsSnapshot.state === 'loading' ? 'Загрузка позиций…' : 'Позиции недоступны'}</span>
                 <div className="font-controls" role="group" aria-label="Размер шрифта таблиц">
                   <button type="button" aria-label="Уменьшить шрифт таблиц" title="Уменьшить шрифт"
                     disabled={tableFontSize <= 14}
@@ -982,7 +1064,9 @@ export default function DeribitTerminal() {
             </div>
             <div className="table-wrap">
               <table><thead><tr><th>Инструмент</th><th>Тип</th><th>Сторона</th><th className="right">Native size</th><th className="right">Mark</th><th className="right">Floating PnL</th></tr></thead>
-                <tbody>{positions.length ? positions.map((p, i) => <tr key={p.instrument + i}>
+                <tbody>{positionsSnapshot.state !== 'ready'
+                  ? <tr><td colSpan={6} className="empty-cell">Данные позиций не подтверждены биржей.</td></tr>
+                  : positions.length ? positions.map((p, i) => <tr key={p.instrument + i}>
                   <td className="mono strong">
                     <button className="position-market-link" type="button"
                       title="Открыть этот контракт в стакане"
@@ -1002,9 +1086,13 @@ export default function DeribitTerminal() {
           </section>
 
           <section className="panel data-panel">
-            <div className="panel-header"><div><span className="eyebrow">ORDER MANAGEMENT</span><h2>Активные ордера</h2></div><span className="count">{orders.length} orders</span></div>
+            <div className="panel-header"><div><span className="eyebrow">ORDER MANAGEMENT</span><h2>Активные ордера</h2></div><span className="count" aria-live="polite">{ordersSnapshot.state === 'ready'
+                ? orders.length + ' orders · ' + new Date(ordersSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
+                : ordersSnapshot.state === 'loading' ? 'Загрузка ордеров…' : 'Ордера недоступны'}</span></div>
             <div className="table-wrap"><table><thead><tr><th>Инструмент</th><th>Order ID</th><th>Сторона</th><th className="right">Объём</th><th className="right">Цена</th><th>Состояние</th><th></th></tr></thead>
-              <tbody>{orders.length ? orders.map((o, i) => <tr key={o.orderId || i}>
+              <tbody>{ordersSnapshot.state !== 'ready'
+                ? <tr><td colSpan={7} className="empty-cell">Данные ордеров не подтверждены биржей.</td></tr>
+                : orders.length ? orders.map((o, i) => <tr key={o.orderId || i}>
                 <td className="mono strong">{o.instrument}</td>
                 <td className="mono muted truncate-cell" title={o.orderId || ''}>{o.orderId || '—'}</td>
                 <td className={o.side === 'buy' ? 'success-text' : 'red-text'}>{o.side}</td>
