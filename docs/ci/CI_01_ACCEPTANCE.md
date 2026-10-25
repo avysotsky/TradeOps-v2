@@ -103,6 +103,20 @@ The Mock smoke starts only unique `ci01-<random>-pg`, `ci01-<random>-api` and `c
 
 All runner containers explicitly receive `Exchange__Provider=Mock`, `Telegram__Enabled=false`, `DeribitTerminal__ExecutionEnabled=false`, `DeribitTerminal__MainnetExecutionEnabled=false`; they do **not** import host exchange secrets, `.env` files, tokens, DPAPI or live broker credentials. The synthetic signal goes exclusively to the disposable local Mock API. No real trading operations.
 
+## Owner-local acceptance observation — 2026-10-25
+
+First full owner WSL2/Docker run: aggregate `acceptance-20261025T165017Z-e9c46a.json`. These source SHAs were resolved from live remote HEADs, not hardcoded snapshots:
+
+| Gate | SHA tested | Build/test exit codes | Recorded status |
+| --- | --- | --- | --- |
+| B1 #62 | `a799aec77ef498c88977a3ee6466989c1a0958ee` | .NET restore/build/tests and PG17 Mock smoke returned 0; TRX **602 passed, 0 failed** | **PASS** |
+| F1 #63 | `e1b7c276c2bdce08de9467f382ea339c46862f83` | npm test, explicit `vanLayout.test.mjs`, React build all exited 0 | **FAIL** in original run: `TAP totals unavailable` |
+| F2 #64 | `9261e94efc66aa935d273379ea668199321adfd4` | npm test, React build both exited 0 | **FAIL** in original run: `TAP totals unavailable` |
+
+**Parser correction:** Node.js emits test totals in TAP (`# tests 4`) or the human-readable spec reporter (`ℹ tests 4`). Previously the parser accepted TAP **only**, causing a false negative where shell commands exited successfully but counts remained zero. It now parses **both**, handles ANSI escape codes, records per-log totals and fails closed if required suite summaries remain unavailable. Local source-only parser tests include TAP, spec, ANSI, malformed/missing test summaries, and Deribit two-suite integrity; these do **not** replace an owner-local rerun. The original FAIL records must not be overwritten or retroactively declared PASS without parsing their saved logs.
+
+For an updated acceptance status, rerun the **same owner PowerShell-to-WSL bootstrap** from this PR (it fetches the latest CI-01 branch); the script checks current PR HEADs again and saves a *new*, separate evidence run. The original backend PASS stands as historical evidence for its tested SHA, subject to the PR HEAD remaining unchanged.
+
 ## Evidence
 
 Default root: `~/tradeops-acceptance-results/` (not tracked by GitHub). Example structure:
