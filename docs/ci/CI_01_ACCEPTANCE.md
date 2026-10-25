@@ -94,7 +94,27 @@ Target **`70`** is part of the existing `scripts/ci/local_acceptance.py` runner.
 
 Evidence: `~/tradeops-acceptance-results/pr-70/<exact-sha>/<run-id>/summary.json`, `b2-restore.log`, `b2-build.log`, `b2-postgres-version.log`, `b2-postgres-test.log`, `b2-contracts-test.log`, `b2-full-test.log`, `trx/postgres/*.trx`, `trx/contracts/*.trx`, `trx/full/*.trx`, private postgres service/cleanup logs and a dated aggregate JSON. `b2_suites.postgres`, `.contracts` and `.full` contain individual counts and statuses. Overall `test_counts.total` aggregates the 3 invocations (targeted cases appear again in the full test suite).
 
-**B2 runtime status: NOT RUN until owner's Windows/WSL2 command is executed and its evidence returned.** Existing B1/F1/F2 results are retained and not rerun by target 70.
+### Owner-local B2 acceptance — PASS (2026-10-25)
+
+The owner ran CI-01 runner HEAD `b32e662633920fc5853725e008d70deacf5c673a` via Windows PowerShell → WSL2 Ubuntu Docker. All **13/13 CI-01 runner self-tests passed**. PR #70's checked live source HEAD was `2a96c52b1ec0e5ef425bd87a575f457b794864ab` (still current during independent GitHub review). Runner output:
+
+| Suite / step | Observed result |
+| --- | --- |
+| .NET 10 version, restore, Release build | Every required command exited `0` |
+| Temporary PostgreSQL17 startup, readiness and version check | Every required command exited `0` |
+| `OmsJournalPostgresTests` | PASS; at least 19/19 under fail-closed gate |
+| `OmsJournalContractTests` | PASS; at least 5/5 under fail-closed gate |
+| Full backend test suite | PASS; at least 626/626 under fail-closed gate |
+| Combined 3 TRX suites | **650/650 passed, 0 failed, 0 skipped; TRX parse errors []** |
+| Overall CI-01 B2 runner exit | **0 / PASS**, validated for the above exact B2 SHA |
+
+The per-suite numbers (19, 5, 626) are **deduced from the 650 aggregate total and the three independent minimum-pass thresholds**, not from separately displayed TRX rows. The owner's console confirms that all three test processes exited 0, all three TRX suites parsed, and the fail-closed status was PASS. The raw TRX/XML and full `summary.json` remain on the owner's WSL2 filesystem; the CI-01 worker did **not** open or independently inspect those local files.
+
+Aggregate evidence: `/home/user/tradeops-acceptance-results/acceptance-20261025T184923Z-b000f7.json`
+
+Per-run evidence: `/home/user/tradeops-acceptance-results/pr-70/2a96c52b1ec0e5ef425bd87a575f457b794864ab/20261025T184923Z-b000f7/summary.json`. Log filenames and distinct TRX directories are documented above.
+
+**Status: Automated B2 local acceptance PASS at the tested exact SHA; orchestrator inspection/sign-off pending.** This does not prove process-SIGKILL testing, trading execution authorization or institutional OMS readiness. No GitHub Actions, live exchange traffic, merge or resident-service mutation.
 
 ## Docker matrix
 
