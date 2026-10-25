@@ -3,10 +3,10 @@ name: Deribit RAW L2 desync diagnostics and security
 on:
   push:
     branches:
-      - TradeOps/to-v2-50-depth-aware-market-subscriptions
+      - TradeOps/to-v2-51-deribit-clock-skew-diagnostics
   pull_request:
     branches:
-      - TradeOps/to-v2-49-raw-l2-failure-isolation
+      - TradeOps/to-v2-50-depth-aware-market-subscriptions
 
 permissions:
   contents: read
