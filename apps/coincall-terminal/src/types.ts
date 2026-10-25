@@ -1,4 +1,4 @@
-export type Asset='BTC'|'ETH';export type Product='spot'|'futures'|'options';export type Side='BUY'|'SELL';export type AccountKey=Readonly<{venue:'CoinCall';environment:'mock';accountId:string}>;
+export type Asset='BTC'|'ETH'|'SOL';export type Product='spot'|'futures'|'options';export type Side='BUY'|'SELL';export type AccountKey=Readonly<{venue:'CoinCall';environment:'mock';accountId:string}>;
 export interface Account {key:AccountKey;label:string;equityUsd:number;availableUsd:number;initialMarginPercent:number;maintenanceMarginPercent:number;marginMode:'Cross'|'Isolated';balances:readonly Balance[]}
 export interface Balance {symbol:string;equity:number;available:number;borrowed:number}
 export interface Instrument {symbol:string;asset:Asset;product:Product;quoteCurrency:string;tickSize:number;amountStep:number;price:number;mark:number;index:number;fundingPercent?:number;expiry?:string}
