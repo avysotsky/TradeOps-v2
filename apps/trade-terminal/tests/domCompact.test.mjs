@@ -49,7 +49,7 @@ test('no legend or raw transport explanation directly underneath the DOM', () =>
   const info = ui.slice(ui.indexOf('<details className="terminal-diagnostics"'));
   assert.match(info, /<summary>Диагностика рыночного потока<\/summary>/);
   assert.match(info, /Change ID:/);
-  assert.match(info, /Сообщений RAW L2:/);
+  assert.match(info, /Сообщений L2:/);
   assert.match(info, /Δ exchange → local:/);
   assert.match(info, /Ценовой шаг:/);
 });
@@ -70,7 +70,7 @@ test('read-only event-driven market stream remains isolated from order ticket', 
   assert.doesNotMatch(ladder, /onClick|onMouseDown|orders\/preview|orders\/confirm/);
 });
 
-test('RAW book depth selector only exposes bounded 10/25/50 local views', () => {
+test('L2 depth selector requests 10/25/50 and bounds each local view', () => {
   assert.match(ui, /const \[domDepth, setDomDepth\] = useState<DomDepth>\(10\)/);
   assert.match(ui, /<option value=\{10\}>10<\/option>/);
   assert.match(ui, /<option value=\{25\}>25<\/option>/);
@@ -92,7 +92,7 @@ test('Depth controls show live exchange-to-local lag on far right in same row', 
   const block = ui.slice(marker, ui.indexOf('<div className="dom-own-status"', marker));
   const depth = block.indexOf('<label htmlFor="dom-depth">Depth</label>');
   const options = block.indexOf('<option value={50}>50</option>');
-  const raw = block.indexOf('>RAW L2</span>');
+  const raw = block.indexOf('className="dom-depth-source"');
   const lag = block.indexOf('className="dom-stream-lag"');
   assert.ok(depth >= 0 && depth < options && options < raw && raw < lag);
   assert.match(block, /Δ exchange → local:/);
