@@ -33,9 +33,6 @@ public sealed class DeribitClockProbe(
 
     public async Task<ClockReading?> ReadAsync(CancellationToken ct)
     {
-        if (DateTimeOffset.UtcNow < _nextRequestUtc)
-            return _latest;
-
         await _gate.WaitAsync(ct);
         try
         {
