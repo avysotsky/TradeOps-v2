@@ -13,18 +13,18 @@ test('depth 10 is the initial selection and changes recreate local WebSocket', (
   assert.match(ui, /'&depth=' \+ domDepth/);
   assert.match(ui, /\[key, status, marketInstrument, domDepth\]/);
   assert.match(ui, /socket\.onclose = null;[\s\S]*?socket\.close\(\)/);
-  assert.match(ui, /payload\.depth !== domDepth/);
-  assert.match(ui, /L2 10 · 100MS/);
+  assert.match(ui, /String\(payload\.depth\) !== String\(domDepth\)/);
+  assert.match(ui, /'L2 ' \+ domDepth \+ ' · 100MS'/);
 });
 
-test('backend does not accept silent fallback depths', () => {
-  assert.match(endpoints, /int\.TryParse\(depthValue, out var depth\)/);
-  assert.match(endpoints, /DeribitBookSubscription\.ValidDepth\(depth\)/);
+test('backend only accepts actual Deribit 1/10/20 depth and explicit RAW mode', () => {
+  assert.match(endpoints, /DeribitBookSubscription\.TryParseMode\(depthValue, out var depth\)/);
   assert.match(endpoints, /hub\.Subscribe\(symbol, depth\)/);
-  assert.match(policy, /depth is 10 or 25 or 50/);
-  assert.match(policy, /book\.\{instrument\}\.none\.10\.100ms/);
+  assert.match(policy, /depth is RawMode or 1 or 10 or 20/);
+  assert.match(policy, /book\.\{instrument\}\.none\.\{depth\}\.100ms/);
   assert.match(policy, /book\.\{instrument\}\.raw/);
-  assert.doesNotMatch(policy, /\.none\.25\.|\.none\.50\./);
+  assert.match(policy, /value is "1" or "10" or "20"/);
+  assert.match(policy, /value == "raw"/);
 });
 
 test('depth scopes single upstream feed and validates every book against its subscribed mode', () => {
