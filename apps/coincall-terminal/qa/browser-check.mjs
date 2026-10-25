@@ -57,7 +57,7 @@ try {
       await page.keyboard.press('Tab');
       assert.equal(await page.evaluate(()=>document.querySelector('.cc-spread-modal')?.contains(document.activeElement)),true);
       await page.keyboard.press('Escape');
-      assert.equal(await page.getByRole('dialog').count(),0);
+      await page.getByRole('dialog').waitFor({state:'detached'});
       await page.getByRole('button',{name:'Table',exact:true}).click();
       assert.ok(await page.locator('table.cc-spreadtable tbody tr').count()>=5);
       await page.getByRole('button',{name:'Grid',exact:true}).click();
