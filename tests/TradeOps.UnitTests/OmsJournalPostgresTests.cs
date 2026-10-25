@@ -70,6 +70,48 @@ public sealed class OmsJournalPostgresTests
     }
 
     [Fact]
+    public async Task ConcurrentSameCommandIdWithDifferentPayload_ExactlyOneWinsAndOthersAreClassified()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var first = Request();
+            var changed = first with { Payload = first.Payload with { Quantity = 4m } };
+            var results = await Task.WhenAll(Enumerable.Range(0, 12)
+                .Select(i => new OmsPostgresJournal(ds).PersistAsync(i % 2 == 0 ? first : changed)));
+            Assert.Equal(1, results.Count(x => x == OmsJournalWriteResult.Created));
+            Assert.Equal(5, results.Count(x => x == OmsJournalWriteResult.Duplicate));
+            Assert.Equal(6, results.Count(x => x == OmsJournalWriteResult.Collision));
+            Assert.Equal(1, await Count(cs, "oms_aggregates"));
+            Assert.Equal(1, await Count(cs, "oms_intents"));
+            Assert.Equal(1, await Count(cs, "oms_commands"));
+            Assert.Equal(1, await Count(cs, "oms_outbox"));
+            Assert.Equal(6, await Count(cs, "oms_integrity_incidents"));
+        });
+    }
+
+    [Fact]
+    public async Task ConcurrentSameIntentDifferentAggregate_QuarantinesConflictWithoutGhostRows()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var first = Request();
+            var other = Request(
+                aggregateId: Guid.Parse("10000000-0000-4000-8000-000000000098"),
+                commandId: Guid.Parse("30000000-0000-4000-8000-000000000098"));
+            var results = await Task.WhenAll(
+                new OmsPostgresJournal(ds).PersistAsync(first),
+                new OmsPostgresJournal(ds).PersistAsync(other));
+            Assert.Single(results.Where(x => x == OmsJournalWriteResult.Created));
+            Assert.Single(results.Where(x => x == OmsJournalWriteResult.Collision));
+            Assert.Equal(1, await Count(cs, "oms_aggregates"));
+            Assert.Equal(1, await Count(cs, "oms_intents"));
+            Assert.Equal(1, await Count(cs, "oms_commands"));
+            Assert.Equal(1, await Count(cs, "oms_outbox"));
+            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+        });
+    }
+
+    [Fact]
     public async Task SameRemoteAndLocalIds_AreLegalAcrossDifferentAccountsAndVenues()
     {
         await WithPostgres(async (ds, cs) =>
@@ -159,6 +201,29 @@ public sealed class OmsJournalPostgresTests
                 "SELECT state FROM oms_outbox"));
             Assert.False(await restarted.RecordOutcomeAsync(request.Scope,
                 new OmsCommandId(Guid.NewGuid()), OmsJournalDispatchOutcome.Acknowledged));
+        });
+    }
+
+    [Fact]
+    public async Task CrashBeforeDispatchCommit_PreservesNotSentWithoutPartialAttempt()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var request = Request();
+            var journal = new OmsPostgresJournal(ds);
+            await journal.PersistAsync(request);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                journal.MarkDispatchStartedAsync(request.Scope, request.CommandId,
+                    _ => throw new InvalidOperationException("crash-before-dispatch-commit")));
+            Assert.Equal(0, await Count(cs, "oms_attempts"));
+            Assert.Equal("PersistedNotSent", await ScalarString(cs,
+                "SELECT dispatch_phase FROM oms_commands"));
+            Assert.Equal("NotSent", await ScalarString(cs, "SELECT state FROM oms_outbox"));
+            Assert.Equal(OmsJournalAttemptResult.Started,
+                await new OmsPostgresJournal(ds).MarkDispatchStartedAsync(
+                    request.Scope, request.CommandId));
+            Assert.Equal(1, await Count(cs, "oms_attempts"));
+            Assert.Equal("NeedsRecovery", await ScalarString(cs, "SELECT state FROM oms_outbox"));
         });
     }
 
