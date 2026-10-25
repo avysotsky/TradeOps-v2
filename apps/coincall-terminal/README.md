@@ -23,3 +23,15 @@ All market/book/order/position records are deterministic snapshot fixtures `2026
 No `fetch`, `WebSocket`, network/client SDK, localStorage, execution endpoint, imported VAN JS, order POST or authenticated credentials. Trading buttons have `disabled` HTML attributes. No claimed bot / orders-net parity.
 
 G0/orchestrator review required; no merge. See `docs/ui/COINCALL_VAN_PARITY.md`.
+
+## WSL2 / Docker acceptance on exact PR HEAD
+
+Run from a WSL2 Ubuntu checkout with Docker enabled:
+
+    bash apps/coincall-terminal/qa/accept-local.sh CURRENT_40_CHAR_PR_HEAD_SHA
+
+The script fetches the F2-01 PR branch, fails on any remote SHA mismatch, creates an isolated detached worktree, runs unit tests and strict production TS/Vite build in node:24-bookworm, and then serves compiled assets for Chromium smoke checks inside mcr.microsoft.com/playwright:v1.56.1-noble.
+
+The browser checks cover the mock spread matrix and its Weekly/Monthly filters, inert two-leg buttons and Spot/Futures ticket actions, mock order-book price input, account isolation, and absence of outbound requests and browser exceptions at 1440x900 and 768x900. Results, TAP output, SHA verification, Node version, npm dependency list, screenshots and browser-check.json are saved under $HOME/TradeOps-acceptance/F2-01/<SHA>/.
+
+Only the built React screenshot is captured automatically. It must be visually compared against independently captured VAN baseline screenshots before parity can be approved. No GitHub Actions; no exchange orders or credentials. Report NOT RUN if local WSL2/Docker or baseline screenshot capture is unavailable. Current mock fixtures classify 30 Oct as Weekly, 27 Nov as Monthly and Perp as Perpetual; Daily/Quarterly intentionally have no samples.
