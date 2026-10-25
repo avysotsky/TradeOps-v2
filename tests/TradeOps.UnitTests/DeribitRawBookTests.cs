@@ -93,6 +93,46 @@ public sealed class DeribitRawBookTests
     }
 
     [Fact]
+    public void FullL2StoresBeyondVisibleDepthAndPublishesAtMost50Levels()
+    {
+        var book = new DeribitRawBook(Instrument);
+        // 75 authentic price-level triples per side. A full-depth L2 book
+        // retains more than the bounded browser view while maintaining best
+        // bid and ask ordering and precise per-price amounts.
+        var bids = string.Join(",", Enumerable.Range(0, 75)
+            .Select(i => $"[\\\"new\\\",{2000 - i},1]"));
+        var asks = string.Join(",", Enumerable.Range(0, 75)
+            .Select(i => $"[\\\"new\\\",{2001 + i},2]"));
+        var payload = "{\\\"instrument_name\\\":\\\"ETH-PERPETUAL\\\"," +
+            "\\\"type\\\":\\\"snapshot\\\",\\\"change_id\\\":500," +
+            "\\\"timestamp\\\":1790000000000,\\\"bids\\\":[" + bids +
+            "],\\\"asks\\\":[" + asks + "]}";
+        using var frame = Frame(payload);
+        Assert.True(book.Apply(frame.RootElement, out var first));
+        Assert.Equal(50, DeribitRawBook.MaxVisibleLevels);
+        Assert.Equal(50, first.Bids.Length);
+        Assert.Equal(50, first.Asks.Length);
+        Assert.Equal(2000m, first.Bids[0].Price);
+        Assert.Equal(1951m, first.Bids[49].Price);
+        Assert.Equal(2001m, first.Asks[0].Price);
+        Assert.Equal(2050m, first.Asks[49].Price);
+
+        // Remove first 10 resting bids. The next 10 correctly emerge from
+        // the stored full-depth state without a fresh exchange subscription.
+        var deletes = string.Join(",", Enumerable.Range(0, 10)
+            .Select(i => $"[\\\"delete\\\",{2000 - i},0]"));
+        using var delta = Frame("{\\\"instrument_name\\\":\\\"ETH-PERPETUAL\\\"," +
+            "\\\"type\\\":\\\"change\\\",\\\"change_id\\\":501," +
+            "\\\"prev_change_id\\\":500,\\\"timestamp\\\":1790000000001," +
+            "\\\"bids\\\":[" + deletes + "],\\\"asks\\\":[]}");
+        Assert.True(book.Apply(delta.RootElement, out var second));
+        Assert.Equal(50, second.Bids.Length);
+        Assert.Equal(1990m, second.Bids[0].Price);
+        Assert.Equal(1941m, second.Bids[49].Price);
+        Assert.Equal(501, second.ChangeId);
+    }
+
+    [Fact]
     public void RawFeedIsEventDrivenAndLocalWebSocketOnly()
     {
         var root = LocateRoot();
