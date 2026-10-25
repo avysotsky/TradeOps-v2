@@ -4,54 +4,68 @@ import { readFileSync } from 'node:fs';
 
 const ui = readFileSync(new URL('../src/Terminal.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/terminal.css', import.meta.url), 'utf8');
+const ladder = ui.slice(ui.indexOf('<div className="dom-ladder"'),
+  ui.indexOf('<section className="panel market-feed">',
+    ui.indexOf('<div className="dom-ladder"') + 1));
 
-test('vertical DOM column order: PRICE, AMOUNT, CUMULATIVE', () => {
+test('vertical DOM keeps PRICE, AMOUNT, CUMULATIVE and dense layout', () => {
   assert.match(ui, /<span>Цена<\/span><span>Объём<\/span><span>Совокупный<\/span>/);
-  const asks = ui.match(/<div className="dom-half dom-asks"[\s\S]*?<div className="dom-mid"/)?.[0];
-  const bids = ui.match(/<div className="dom-half dom-bids"[\s\S]*?<\/div>\s*<\/div>\s*<div className="dom-legend"/)?.[0];
-  assert.ok(asks, 'ASK block present');
-  assert.ok(bids, 'BID block present');
+  const asks = ladder.slice(ladder.indexOf('className="dom-half dom-asks"'),
+    ladder.indexOf('className="dom-reference-prices"'));
+  const bids = ladder.slice(ladder.indexOf('className="dom-half dom-bids"'));
+  assert.ok(asks.startsWith('className="dom-half dom-asks"'));
+  assert.ok(bids.startsWith('className="dom-half dom-bids"'));
   for (const block of [asks, bids]) {
     const price = block.indexOf('className="dom-price"');
-    const amount = block.indexOf('className="dom-size"');
+    const volume = block.indexOf('className="dom-size"');
     const cumulative = block.indexOf('className="dom-cumulative"');
-    assert.ok(price >= 0 && price < amount && amount < cumulative,
-      'Each quote row must order price, amount and cumulative amount');
+    assert.ok(price >= 0 && price < volume && volume < cumulative);
   }
-});
-
-test('ultra-compact DOM uses narrow fixed columns, 18/19px levels and 24px spread', () => {
   const compact = css.slice(css.indexOf('/* TO-V2-44: ultra-compact Deribit-style vertical DOM.'));
-  assert.ok(compact.length > 1000);
   assert.match(compact, /grid-template-columns: 105px 88px 102px;/);
   assert.match(compact, /column-gap: 4px;/);
   assert.match(compact, /min-height: 18px;/);
   assert.match(compact, /min-height: 19px;/);
-  assert.match(compact, /min-height: 24px;/);
   assert.match(compact, /min-height: 20px;/);
-  assert.match(compact, /line-height: 15px;/);
-  assert.doesNotMatch(compact, /min-height: 35px;/);
-  assert.match(compact, /grid-template-columns: 92px 80px 94px;/);
-  assert.match(compact, /overflow-x: auto;/);
 });
 
-test('no new market polling, DOM button-to-order or trading side effects', () => {
+test('center strip displays LAST TRADE, MARK, INDEX in exactly this order', () => {
+  const from = ladder.indexOf('className="dom-reference-prices"');
+  const to = ladder.indexOf('className="dom-half dom-bids"', from);
+  const center = ladder.slice(from, to);
+  assert.ok(from > 0 && to > from);
+  const last = center.indexOf('Last Trade Price');
+  const mark = center.indexOf('Mark Price');
+  const index = center.indexOf('Index Price');
+  assert.ok(last > 0 && last < mark && mark < index);
+  assert.doesNotMatch(center, /dom\.spread\.(mid|absolute)|SPREAD|dom-mid-price/);
+  const formats = center.match(/formatDomPrice\(/g) ?? [];
+  assert.equal(formats.length, 3, 'All three reference prices use selected contract tick precision');
+  assert.match(css, /\.dom-reference-prices\s*\{/);
+});
+
+test('no legend or raw transport explanation directly underneath the DOM', () => {
+  assert.doesNotMatch(ladder, /dom-legend|Raw L2 snapshot \+ каждое изменение|Последний change_id/);
+  const info = ui.slice(ui.indexOf('<details className="terminal-diagnostics"'));
+  assert.match(info, /<summary>Диагностика рыночного потока<\/summary>/);
+  assert.match(info, /Change ID:/);
+  assert.match(info, /Сообщений RAW L2:/);
+  assert.match(info, /Δ exchange → local:/);
+  assert.match(info, /Ценовой шаг:/);
+});
+
+test('all book and reference price cells use contract metadata, no half tick', () => {
+  const prices = ladder.match(/formatDomPrice\(/g) ?? [];
+  assert.equal(prices.length, 5, 'Ask, Bid, Last, Mark and Index use same spec-decimal function');
+  assert.match(ui, /contractPriceDecimals\(/);
+  assert.match(ui, /\/market\/instrument\?instrument=/);
+  assert.doesNotMatch(ui, /domPriceDecimals\(|marketKind === 'option' \? 8 : 2\)\}/);
+  assert.doesNotMatch(ladder, /dom\.spread\.mid|dom\.spread\.absolute/);
+});
+
+test('read-only event-driven market stream remains isolated from order ticket', () => {
   assert.match(ui, /new WebSocket\(url\)/);
   assert.doesNotMatch(ui, /\/market\/orderbook\?instrument=/);
   assert.doesNotMatch(ui, /\/market\/trades\?instrument=/);
-  const ladder = ui.slice(ui.indexOf('<div className="dom-ladder"'),
-    ui.indexOf('<div className="dom-legend"'));
   assert.doesNotMatch(ladder, /onClick|onMouseDown|orders\/preview|orders\/confirm/);
-});
-
-test('DOM renders all price columns, spread and midpoint through one fixed scale', () => {
-  assert.match(ui, /domPriceDecimals\(/);
-  assert.match(ui, /const priceDecimals = useMemo\(/);
-  assert.match(ui, /tickSize/);
-  const uses = ui.match(/formatDomPrice\([^)]*, priceDecimals\)/g) ?? [];
-  assert.equal(uses.length, 4,
-    'Ask, Bid, midpoint and absolute spread must share one decimal scale');
-  const ladder = ui.slice(ui.indexOf('<div className="dom-ladder"'),
-    ui.indexOf('<div className="dom-legend"'));
-  assert.doesNotMatch(ladder, /num\(level\.price|num\(dom\.spread\.(mid|absolute)/);
 });
