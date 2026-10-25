@@ -53,6 +53,12 @@ type OrderBook = {
   timestamp: number | null;
   receivedAtUtc: string;
 };
+type ExchangeClockSample = {
+  status: 'ok';
+  clockOffsetMs: number;
+  rttMs: number;
+  sampleUnixMs: number;
+};
 type FeedDiagnostics = {
   publicL2State: string;
   privateOrdersState: string;
@@ -335,6 +341,7 @@ export default function DeribitTerminal() {
   }, [key, status, marketInstrument]);
 
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
+  const [exchangeClock, setExchangeClock] = useState<ExchangeClockSample | null>(null);
   const [streamMessages, setStreamMessages] = useState(0);
   const [feedDiagnostics, setFeedDiagnostics] = useState<FeedDiagnostics | null>(null);
   const [clientWsDisconnects, setClientWsDisconnects] = useState(0);
@@ -489,6 +496,43 @@ export default function DeribitTerminal() {
       }
     };
   }, [key, status, marketInstrument, domDepth]);
+
+  // Independent read-only public/ get_time HTTPS clock probe. No account
+  // credentials, no changes to the live RAW WebSocket receive loop.
+  useEffect(() => {
+    if (!key || !status) return;
+    let active = true;
+    let inFlight = false;
+    const sample = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const result = await api<ExchangeClockSample>(key, '/market/clock');
+        if (!active) return;
+        if (result.status === 'ok' &&
+            Number.isFinite(result.clockOffsetMs) &&
+            Number.isFinite(result.rttMs) &&
+            Number.isFinite(result.sampleUnixMs)) {
+          setExchangeClock(result);
+        } else {
+          setExchangeClock(null);
+        }
+      } catch {
+        if (active) setExchangeClock(null);
+      } finally {
+        inFlight = false;
+      }
+    };
+    void sample();
+    const poll = window.setInterval(() => { void sample(); }, 30000);
+    return () => { active = false; window.clearInterval(poll); };
+  }, [key, status]);
+
+  const clockIsFresh = exchangeClock !== null &&
+    Math.abs(Date.now() - exchangeClock.sampleUnixMs) < 90000;
+  const adjustedDeltaMs = clockIsFresh && streamState === 'synced' &&
+    exchangeAgeMs !== null
+    ? exchangeAgeMs - exchangeClock.clockOffsetMs : null;
 
   // Private account/positions/orders are not market data: their slower
   // periodic refresh is independent of the raw exchange feed.
@@ -997,13 +1041,20 @@ export default function DeribitTerminal() {
               <span>Приватные ордера: {ownOrders?.state ?? 'нет данных'}</span>
               <span>Открытых собственных ордеров: {ownOrders?.state === 'ready' ? ownOrders.openOrders : '—'}</span>
               <span>Δ exchange → local: {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}</span>
+              <span>Windows − Deribit (оценка часов): {clockIsFresh ? exchangeClock.clockOffsetMs + ' ms' : '—'}</span>
+              <span>RTT public/get_time: {clockIsFresh ? exchangeClock.rttMs + ' ms' : '—'}</span>
+              <span>Δ без смещения часов (оценка): {adjustedDeltaMs === null ? '—' : adjustedDeltaMs + ' ms'}</span>
+              <span>Время замера UTC: {clockIsFresh
+                ? new Date(exchangeClock.sampleUnixMs).toISOString() : 'недоступно'}</span>
               <span>Ценовой шаг: {contractSpec?.name === marketInstrument ? contractSpec.tickSize : '—'}</span>
               <span>Дополнительных правил шага: {contractSpec?.tickSizeSteps.length ?? '—'}</span>
               <span>Знаков цены по спецификации: {priceDecimals ?? '—'}</span>
               {contractSpecError && <span className="error">{contractSpecError}</span>}
               <p>RAW: полный снимок и контроль непрерывности изменений; 1/10/20: полные группированные снимки каждые 100 мс.
-                Δ рассчитывается по времени биржи и локальным часам Windows;
-                для точной оценки задержки необходима синхронизация часов.
+                Δ рассчитывается по времени биржи и локальным часам Windows.
+                Поправка по public/get_time использует середину RTT и предполагает
+                приблизительно симметричный сетевой путь; это не точная
+                односторонняя сетевая задержка.
                 Объёмы показаны в исходных единицах Deribit.</p>
             </div>
           </details>
