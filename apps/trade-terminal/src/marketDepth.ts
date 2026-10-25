@@ -1,7 +1,7 @@
 /**
  * Deribit-style vertical DOM (read-only presentation model).
  * The .NET backend owns either full RAW reconstruction or an exact native
- * 1/10/20-level grouped Deribit subscription. RAW remains capped to its
+ * 1/10/20-level grouped Deribit subscription. RAW is the default and is capped to its
  * top 50 levels in React to keep DOM rendering bounded.
  */
 export type MarketLevel = { price: number; amount: number };
@@ -48,7 +48,7 @@ function levels(raw: MarketLevel[], side: 'ask' | 'bid', depth: DomDepth): Depth
 
 export function toPriceLadder(
   book: { bids: MarketLevel[]; asks: MarketLevel[] } | null,
-  depth: DomDepth = 10
+  depth: DomDepth = 'raw'
 ): PriceLadder {
   if (!book) return { asks: [], bids: [], spread: null };
   const asks = levels(book.asks, 'ask', depth);
