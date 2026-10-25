@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { toPriceLadder, contractPriceDecimals, formatDomPrice, type InstrumentTickSpecification } from './marketDepth';
+import { toPriceLadder, ownOrdersOutsideDepth, contractPriceDecimals, formatDomPrice, type DomDepth, type InstrumentTickSpecification } from './marketDepth';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
   CircleDollarSign, Clock3, KeyRound, RefreshCw,
@@ -167,6 +167,7 @@ export default function DeribitTerminal() {
   const [contractSpecError, setContractSpecError] = useState('');
   const [universeCount, setUniverseCount] = useState(0);
   const [book, setBook] = useState<OrderBook | null>(null);
+  const [domDepth, setDomDepth] = useState<DomDepth>(10);
   const [ownOrders, setOwnOrders] = useState<OwnOrders | null>(null);
 
   const [tape, setTape] = useState<TradeTape | null>(null);
@@ -252,8 +253,15 @@ export default function DeribitTerminal() {
     return map;
   }, [marketInstrument, ownOrders, streamState]);
   const dom = useMemo(
-    () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null),
-    [book, marketInstrument, streamState]
+    () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null, domDepth),
+    [book, marketInstrument, streamState, domDepth]
+  );
+  const outsideOwnOrders = useMemo(
+    () => streamState === 'synced' && ownOrders?.instrument === marketInstrument &&
+      ownOrders.state === 'ready'
+      ? ownOrdersOutsideDepth(ownOrders.levels, dom)
+      : [],
+    [ownOrders, marketInstrument, streamState, dom]
   );
   // Display precision is fixed by the selected instrument specification.
   // Never derive a number of decimals from spread or observed market prices.
@@ -705,6 +713,17 @@ export default function DeribitTerminal() {
                   <span>{marketInstrument}</span>
                 </div>
               </div>
+              <div className="dom-depth-toolbar">
+                <label htmlFor="dom-depth">Глубина / сторона</label>
+                <select id="dom-depth" aria-label="Видимых уровней на сторону"
+                  value={domDepth}
+                  onChange={e => setDomDepth(Number(e.target.value) as DomDepth)}>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+                <span title="Все уровни берутся из единого RAW потока">RAW L2</span>
+              </div>
               <div className="dom-own-status" aria-live="polite">
                 <span>Мои лимитные заявки:</span>
                 <strong className={ownOrders?.state === 'ready' && streamState === 'synced'
@@ -716,6 +735,27 @@ export default function DeribitTerminal() {
                 </strong>
                 {ownOrders?.state === 'ready' && <span>● на уровне — мой объём (наведи курсор)</span>}
               </div>
+              {outsideOwnOrders.length > 0 && (
+                <details className="dom-own-outside">
+                  <summary>
+                    Мои заявки вне {domDepth} уровней: {outsideOwnOrders.length} ценовых уровней
+                  </summary>
+                  <div className="dom-own-outside-list">
+                    {outsideOwnOrders.map(level => (
+                      <div className="dom-own-outside-row" key={level.direction + ':' + level.price}>
+                        <span className={level.direction === 'buy' ? 'success-text' : 'red-text'}>
+                          {level.direction === 'buy' ? 'BUY' : 'SELL'}
+                        </span>
+                        <strong>{formatDomPrice(level.price, priceDecimals)}</strong>
+                        <span>Мой объём: {num(level.amount, 6)}</span>
+                        <span>Заявок: {level.orders}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p>Собственные заявки вне текущего диапазона.
+                    Объём рынка по этим ценам здесь не предполагается.</p>
+                </details>
+              )}
               <div className="dom-ladder" aria-label={'Вертикальный стакан ' + marketInstrument}>
                 <div className="dom-head">
                   <span>Цена</span><span>Объём</span><span>Совокупный</span>
@@ -879,6 +919,8 @@ export default function DeribitTerminal() {
               <span>Статус: {streamState}</span>
               <span>Change ID: {book?.changeId ?? '—'}</span>
               <span>Сообщений RAW L2: {streamMessages}</span>
+              <span>Уровней на сторону: {domDepth}</span>
+              <span>Моих цен вне видимого диапазона: {outsideOwnOrders.length}</span>
               <span>Приватные ордера: {ownOrders?.state ?? 'нет данных'}</span>
               <span>Открытых собственных ордеров: {ownOrders?.state === 'ready' ? ownOrders.openOrders : '—'}</span>
               <span>Δ exchange → local: {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}</span>
