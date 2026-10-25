@@ -142,6 +142,57 @@ public sealed class DeribitMarketControllerTests
     }
 
     [Fact]
+    public async Task SelectedInstrumentSpecification_UsesExactDeribitTickRules()
+    {
+        var handler = new CaptureHandler(r =>
+        {
+            Assert.Contains("/api/v2/public/get_instrument", r.RequestUri!.AbsolutePath);
+            Assert.Contains("instrument_name=ETH-25DEC26-3000-C", r.RequestUri!.Query);
+            return """
+            {"jsonrpc":"2.0","result":{"instrument_name":"ETH-25DEC26-3000-C",
+              "kind":"option","tick_size":0.0001,"tick_size_steps":[
+                {"above_price":0.01,"tick_size":0.0005},
+                {"above_price":0.05,"tick_size":0.001}
+              ]}}
+            """;
+        });
+        var ctrl = Make(handler);
+        var result = Assert.IsType<OkObjectResult>(
+            await ctrl.Instrument("ETH-25DEC26-3000-C"));
+        using var json = JsonDocument.Parse(
+            JsonSerializer.Serialize(result.Value,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        Assert.Equal("ETH-25DEC26-3000-C",
+            json.RootElement.GetProperty("name").GetString());
+        Assert.Equal("option", json.RootElement.GetProperty("kind").GetString());
+        Assert.Equal(0.0001m,
+            json.RootElement.GetProperty("tickSize").GetDecimal());
+        var steps = json.RootElement.GetProperty("tickSizeSteps");
+        Assert.Equal(2, steps.GetArrayLength());
+        Assert.Equal(0.0005m, steps[0].GetProperty("tickSize").GetDecimal());
+        Assert.Equal(0.01m, steps[0].GetProperty("abovePrice").GetDecimal());
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task MissingAndInvalidTickSpecificationFailsClosed()
+    {
+        var malformed = new CaptureHandler(_ =>
+            """
+            {"jsonrpc":"2.0","result":{"instrument_name":"ETH-PERPETUAL",
+              "kind":"future","tick_size":0}}
+            """);
+        var ctrl = Make(malformed);
+        Assert.IsType<ObjectResult>(await ctrl.Instrument("ETH-PERPETUAL"));
+        Assert.IsType<BadRequestObjectResult>(await ctrl.Instrument("NOT-A-CONTRACT"));
+        Assert.Single(malformed.Requests);
+        ctrl.ControllerContext.HttpContext.Connection.RemoteIpAddress =
+            IPAddress.Parse("192.168.0.17");
+        Assert.IsType<UnauthorizedObjectResult>(await ctrl.Instrument("ETH-PERPETUAL"));
+        Assert.Single(malformed.Requests);
+    }
+
+    [Fact]
     public void ReactUsesLiveMarketReadOnlyRoutesAndKeepsSeparateTradingTicket()
     {
         var root = LocateRoot();
