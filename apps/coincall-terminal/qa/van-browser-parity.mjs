@@ -27,7 +27,9 @@ async function vanishScripts(html){
   return html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,'')
     .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi,'')
     .replace(/<link\b[^>]*rel=["'](?:preload|modulepreload|stylesheet)["'][^>]*>/gi,'')
-    .replace(/<base\b[^>]*>/gi,'');
+    .replace(/<base\b[^>]*>/gi,'')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,'')
+    .replace(/<head>/i,'<head><meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; script-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src data: file:; font-src data:">');
 }
 const safeDir=join(out,'_van-sanitized');
 await mkdir(safeDir,{recursive:true});
