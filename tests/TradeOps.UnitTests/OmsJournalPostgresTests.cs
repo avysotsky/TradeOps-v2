@@ -339,7 +339,9 @@ public sealed class OmsJournalPostgresTests
     {
         var admin = Environment.GetEnvironmentVariable("TRADEOPS_B2_POSTGRES");
         if (string.IsNullOrWhiteSpace(admin))
-            return; // NOT an acceptance pass; runner must set TRADEOPS_B2_POSTGRES.
+            throw new InvalidOperationException(
+                "POSTGRES_ACCEPTANCE_NOT_RUN: TRADEOPS_B2_POSTGRES is missing. " +
+                "OMS PostgreSQL tests MUST FAIL without an isolated PostgreSQL 17 connection.");
 
         var dbName = "b2_journal_" + Guid.NewGuid().ToString("N");
         var builder = new NpgsqlConnectionStringBuilder(admin) { Database = "postgres", Pooling = false };
@@ -347,6 +349,14 @@ public sealed class OmsJournalPostgresTests
         { Database = dbName, Pooling = false };
         await using var adminDb = new NpgsqlConnection(builder.ConnectionString);
         await adminDb.OpenAsync();
+        await using (var version = new NpgsqlCommand(
+            "SELECT current_setting('server_version_num')::integer", adminDb))
+        {
+            var versionNumber = Convert.ToInt32(await version.ExecuteScalarAsync());
+            if (versionNumber < 170000 || versionNumber >= 180000)
+                throw new InvalidOperationException(
+                    $"PostgreSQL 17 required for OMS acceptance; found server_version_num={versionNumber}.");
+        }
         await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{dbName}\"", adminDb))
             await create.ExecuteNonQueryAsync();
         try
