@@ -61,6 +61,38 @@ class LocalAcceptanceTests(unittest.TestCase):
             node = parse_counts(p, 'deribit')
             self.assertEqual((node['total'], node['passed'], node['failed']), (7,6,1))
 
+    def test_node_24_spec_reporter_and_ansi_counts(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t)
+            (p / "npm-test.log").write_text(
+                "> terminal@1.0 test\n\x1b[32mℹ tests 13\x1b[0m\n"
+                "ℹ pass 12\nℹ fail 0\nℹ skipped 1\n", encoding="utf-8")
+            (p / "van-layout.log").write_text(
+                "✔ VAN layout works (0.42ms)\nℹ tests 3\nℹ pass 3\n"
+                "ℹ fail 0\nℹ skipped 0\n", encoding="utf-8")
+            result = parse_counts(p, "deribit")
+            self.assertTrue(result["available"])
+            self.assertEqual(result["suites"], 2)
+            self.assertEqual((result["total"], result["passed"], result["failed"], result["skipped"]), (16,15,0,1))
+            self.assertEqual(len(result["per_log"]), 2)
+
+    def test_missing_explicit_van_summary_does_not_count_as_complete(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t)
+            (p / "npm-test.log").write_text("# tests 7\n# pass 7\n# fail 0\n")
+            (p / "van-layout.log").write_text("build done without a test summary")
+            result = parse_counts(p, "deribit")
+            self.assertFalse(result["available"])
+            self.assertEqual(result["suites"], 1)
+
+    def test_spec_reporter_without_test_count_does_not_invent_success(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t)
+            (p / "npm-test.log").write_text("ℹ pass 4\nℹ fail 0\n")
+            result = parse_counts(p, "coincall")
+            self.assertFalse(result["available"])
+            self.assertEqual(result["total"], 0)
+
     def test_docker_containers_never_expose_ports_or_pass_host_env(self):
         with tempfile.TemporaryDirectory() as t:
             p = Path(t)
