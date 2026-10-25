@@ -9,9 +9,10 @@ using System.Threading.Channels;
 namespace TradeOps.TerminalApi.Market;
 
 /// <summary>
-/// One Deribit raw upstream per viewed instrument, shared by local browser
-/// subscribers. L2 book reconstruction runs on the receive loop and is NOT
-/// throttled by UI frame rates. Per-subscriber bounded latest-state queues
+/// One upstream Deribit WebSocket per viewed (instrument, depth), shared
+/// by matching local browser subscribers. Grouped-10 depth is independently
+/// snapshotted, while RAW-25/50 reconstructs every incremental delta without
+/// throttling to UI frame rates. Per-subscriber bounded latest-state queues
 /// prevent slow React clients from blocking market-data ingestion.
 /// No trading methods, worker or DB dependency.
 /// </summary>
