@@ -974,6 +974,9 @@ export default function DeribitTerminal() {
               <span>Инструмент: {marketInstrument}</span>
               <span>Статус: {streamState}</span>
               <span>Public L2: {feedDiagnostics?.publicL2State ?? streamState}</span>
+              <span>Выбранная глубина: {domDepth}</span>
+              <span>Подписка Deribit: {feedDiagnostics?.exchangeChannel ?? (domDepth === 10 ? 'DEPTH 10 · 100ms' : 'RAW FULL DEPTH')}</span>
+              <span>Режим биржевого потока: {feedDiagnostics?.exchangeMode ?? '—'}</span>
               <span>Private overlay: {ownOrders?.state ?? feedDiagnostics?.privateOrdersState ?? '—'}</span>
               <span>Последний код сбоя: {feedDiagnostics?.reasonCode ?? '—'}</span>
               <span>Последний сбой UTC: {feedDiagnostics?.failureAtUtc ?? '—'}</span>
@@ -986,7 +989,7 @@ export default function DeribitTerminal() {
                 ? Object.entries(feedDiagnostics.counters).map(([code, count]) =>
                     code + '=' + count).join(' · ') || '—' : '—'}</span>
               <span>Change ID: {book?.changeId ?? '—'}</span>
-              <span>Сообщений RAW L2: {streamMessages}</span>
+              <span>Сообщений L2: {streamMessages}</span>
               <span>Уровней на сторону: {domDepth}</span>
               <span>Моих цен вне видимого диапазона: {outsideOwnOrders.length}</span>
               <span>Приватные ордера: {ownOrders?.state ?? 'нет данных'}</span>
@@ -996,7 +999,7 @@ export default function DeribitTerminal() {
               <span>Дополнительных правил шага: {contractSpec?.tickSizeSteps.length ?? '—'}</span>
               <span>Знаков цены по спецификации: {priceDecimals ?? '—'}</span>
               {contractSpecError && <span className="error">{contractSpecError}</span>}
-              <p>RAW L2: снимок, проверка последовательности и изменения.
+              <p>RAW: снимок и контроль непрерывности изменений; Depth 10: независимые полные снимки каждые 100 мс.
                 Δ рассчитывается по времени биржи и локальным часам Windows;
                 для точной оценки задержки необходима синхронизация часов.
                 Объёмы показаны в исходных единицах Deribit.</p>
