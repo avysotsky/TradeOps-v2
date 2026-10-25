@@ -56,6 +56,9 @@ type OrderBook = {
 type FeedDiagnostics = {
   publicL2State: string;
   privateOrdersState: string;
+  requestedDepth: number;
+  exchangeChannel: string;
+  exchangeMode: string;
   reasonCode: string | null;
   failureAtUtc: string | null;
   expectedChangeId: number | null;
@@ -335,9 +338,10 @@ export default function DeribitTerminal() {
   const [streamMessages, setStreamMessages] = useState(0);
   const [feedDiagnostics, setFeedDiagnostics] = useState<FeedDiagnostics | null>(null);
   const [clientWsDisconnects, setClientWsDisconnects] = useState(0);
-  // ONE continuous WebSocket for selected instrument: NO 8-second market
-  // polling. Backend processes every raw L2 delta; only React paints are
-  // coalesced to requestAnimationFrame, without holding up market ingestion.
+  // ONE WebSocket for selected instrument AND depth: changes trigger a fresh
+  // exchange subscription. RAW depth 25/50 remains full depth upstream;
+  // grouped depth 10 arrives as complete 100ms snapshots.
+  // React paints are coalesced without holding up market ingestion.
   useEffect(() => {
     if (!key || !status) return;
     let active = true;
@@ -401,7 +405,7 @@ export default function DeribitTerminal() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = protocol + '//' + location.host +
         '/api/deribit-terminal/market/stream?instrument=' +
-        encodeURIComponent(marketInstrument);
+        encodeURIComponent(marketInstrument) + '&depth=' + domDepth;
       socket = new WebSocket(url);
       socket.onopen = () => { retryMs = 400; };
       socket.onmessage = event => {
@@ -410,6 +414,11 @@ export default function DeribitTerminal() {
         try { payload = JSON.parse(String(event.data)); }
         catch { socket?.close(); return; }
         if (payload.instrument !== marketInstrument) return;
+        if ((payload.type === 'book' || payload.type === 'status') &&
+            payload.depth !== domDepth) {
+          socket?.close();
+          return;
+        }
         if (payload.type === 'status') {
           updates.state = String(payload.state);
           if (payload.diagnostics && typeof payload.diagnostics === 'object')
@@ -479,7 +488,7 @@ export default function DeribitTerminal() {
         socket.close();
       }
     };
-  }, [key, status, marketInstrument]);
+  }, [key, status, marketInstrument, domDepth]);
 
   // Private account/positions/orders are not market data: their slower
   // periodic refresh is independent of the raw exchange feed.
@@ -742,10 +751,10 @@ export default function DeribitTerminal() {
           <section className="market-feed-grid">
             <section className="panel market-feed">
               <div className="panel-header">
-                <div><span className="eyebrow">LIVE RAW WEBSOCKET / EVENT-DRIVEN</span><h2>Стакан заявок</h2></div>
+                <div><span className="eyebrow">LIVE DERIBIT WEBSOCKET / EVENT-DRIVEN</span><h2>Стакан заявок</h2></div>
                 <div className="stream-status" aria-live="polite">
                   <strong className={streamState === 'synced' ? 'success-text' : 'red-text'}>
-                    {streamState === 'synced' ? 'LIVE RAW' : streamState.toUpperCase()}
+                    {streamState === 'synced' ? (domDepth === 10 ? 'LIVE 100MS' : 'LIVE RAW') : streamState.toUpperCase()}
                   </strong>
                   <span>{marketInstrument}</span>
                 </div>
@@ -760,7 +769,11 @@ export default function DeribitTerminal() {
                   <option value={50}>50</option>
                 </select>
                 <span className="dom-depth-source"
-                  title="Все уровни берутся из единого RAW потока">RAW L2</span>
+                  title={domDepth === 10
+                    ? 'Реальная подписка Deribit на 10 уровней, полные снимки каждые 100 мс'
+                    : 'Deribit не поддерживает подписку RAW на 25/50 уровней: используется полный RAW поток'}>
+                  {domDepth === 10 ? 'L2 10 · 100MS' : 'RAW L2'}
+                </span>
                 <span className="dom-stream-lag" title="Разность времени Deribit и локальных часов Windows; зависит от синхронизации часов">
                   Δ exchange → local: {streamState === 'synced' && exchangeAgeMs !== null
                     ? exchangeAgeMs + ' ms' : '—'}
