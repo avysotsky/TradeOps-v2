@@ -101,25 +101,35 @@ def parse_counts(folder: Path, gate: str) -> dict:
     suites = ["npm-test.log", "van-layout.log"] if gate == "deribit" else ["npm-test.log"]
     total = passed = failed = skipped = 0
     found = 0
+    per_log = []
     for name in suites:
         path = folder / name
         if not path.exists():
             continue
         content = path.read_text(errors="replace")
-        # Node.js TAP emitted as '# tests 4', '# pass 4', '# fail 0'.
-        def last(key: str):
-            matches = re.findall(r"(?m)^#\s+" + key + r"\s+(\d+)\s*$", content)
+        # Node 24 emits either TAP ("# tests 4") or the spec reporter
+        # ("ℹ tests 4"). Strip ANSI escapes and carriage returns first.
+        content = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", content).replace("\r", "")
+
+        def last(key: str) -> int | None:
+            pattern = r"(?m)^[ \t]*(?:#|ℹ[\uFE0E\uFE0F]?)[ \t]+" + key + r"[ \t]+(\d+)[ \t]*$"
+            matches = re.findall(pattern, content)
             return int(matches[-1]) if matches else None
+
         n, p, f, s = (last(k) for k in ("tests", "pass", "fail", "skipped"))
         if n is None or p is None or f is None:
+            continue
+        if n < 0 or p < 0 or f < 0 or p + f + (s or 0) > n:
             continue
         total += n
         passed += p
         failed += f
         skipped += s or 0
         found += 1
+        per_log.append({"log": name, "total": n, "passed": p, "failed": f, "skipped": s or 0})
     return {"total": total, "passed": passed, "failed": failed, "skipped": skipped,
-            "suites": found, "source": "Node TAP", "available": found > 0}
+            "suites": found, "source": "Node TAP/spec", "available": found == len(suites),
+            "per_log": per_log}
 
 
 class Runner:
