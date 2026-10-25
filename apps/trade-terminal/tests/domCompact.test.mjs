@@ -4,9 +4,20 @@ import { readFileSync } from 'node:fs';
 
 const ui = readFileSync(new URL('../src/Terminal.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/terminal.css', import.meta.url), 'utf8');
-const ladder = ui.slice(ui.indexOf('<div className="dom-ladder"'),
-  ui.indexOf('<section className="panel market-feed">',
-    ui.indexOf('<div className="dom-ladder"') + 1));
+// Bound the ladder by its own closing div, independent of sibling panel order.
+const ladderStart = ui.indexOf('<div className="dom-ladder"');
+assert.ok(ladderStart >= 0, 'RAW ladder must exist');
+let depth = 0;
+let ladderEnd = -1;
+for (const tag of ui.slice(ladderStart).matchAll(/<div\b|<\/div>/g)) {
+  depth += tag[0] === '</div>' ? -1 : 1;
+  if (depth === 0) {
+    ladderEnd = ladderStart + tag.index + tag[0].length;
+    break;
+  }
+}
+assert.ok(ladderEnd > ladderStart, 'RAW ladder must have a matching closing div');
+const ladder = ui.slice(ladderStart, ladderEnd);
 
 test('vertical DOM keeps PRICE, AMOUNT, CUMULATIVE and dense layout', () => {
   assert.match(ui, /<span>Цена<\/span><span>Объём<\/span><span>Совокупный<\/span>/);
