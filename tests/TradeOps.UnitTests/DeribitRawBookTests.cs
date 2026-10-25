@@ -11,6 +11,26 @@ public sealed class DeribitRawBookTests
     private static JsonDocument Frame(string data) => JsonDocument.Parse(data);
 
     [Fact]
+    public void ClockProbeMidpointIsSignedAndNeverConfusedWithPureNetworkLatency()
+    {
+        var ahead = DeribitClockProbe.Estimate(
+            1_790_000_000_000, 100, 1_790_000_000_030);
+        Assert.Equal(20, ahead.ClockOffsetMs);
+        Assert.Equal(100, ahead.RttMs);
+        Assert.Equal(1_790_000_000_050, ahead.SampleUnixMs);
+        // Raw exchange-to-local age 465 ms, estimated Windows clock +215 ms:
+        // remaining transport/queue/processing estimate 250 ms.
+        Assert.Equal(250, 465 - DeribitClockProbe.Estimate(
+            1_790_000_000_000, 100, 1_789_999_999_835).ClockOffsetMs);
+
+        var behind = DeribitClockProbe.Estimate(
+            1_790_000_000_000, 80, 1_790_000_000_100);
+        Assert.Equal(-60, behind.ClockOffsetMs);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            DeribitClockProbe.Estimate(0, -1, 0));
+    }
+
+    [Fact]
     public void SelectedDepthMapsToOnlyActualDeribitSubscriptions()
     {
         foreach (var depth in new[] { 1, 10, 20 })
