@@ -60,6 +60,35 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
         private string? _current;
         private long _messages;
         private bool _disposed;
+        private string _publicL2State = "disconnected";
+        private string _privateState = "loading";
+        private string? _lastFailureCode;
+        private DeribitRawBook.BookFailure? _lastBookFailure;
+        private readonly Dictionary<string, long> _failureCounts = new(StringComparer.Ordinal);
+        private long _reconnectAttempts;
+        private DateTimeOffset? _lastFailureUtc;
+
+        // Only sanitized failure categories and public book change IDs can
+        // cross the localhost diagnostics boundary. Never serialize exceptions.
+        private sealed class FeedFaultException(string code) : Exception
+        {
+            public string Code { get; } = code;
+        }
+
+        private void Count(string code)
+        {
+            _failureCounts.TryGetValue(code, out var value);
+            _failureCounts[code] = value + 1;
+        }
+
+        private void Failure(string code)
+        {
+            _lastFailureCode = code;
+            _lastFailureUtc = DateTimeOffset.UtcNow;
+            if (code.StartsWith("L2_", StringComparison.Ordinal))
+                _lastBookFailure = _book.LastFailure;
+            Count(code);
+        }
 
         public InstrumentFeed(string instrument, IConfiguration cfg,
             Action<string, InstrumentFeed> release)
@@ -105,9 +134,23 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                 channel.Writer.TryWrite(serialized);
         }
 
-        private void State(string state) =>
+        private void State(string state)
+        {
+            _publicL2State = state;
             Publish(new { type = "status", instrument = _name,
-                state, receivedAtUtc = DateTimeOffset.UtcNow });
+                state, receivedAtUtc = DateTimeOffset.UtcNow,
+                diagnostics = new {
+                    publicL2State = _publicL2State,
+                    privateOrdersState = _privateState,
+                    reasonCode = _lastFailureCode,
+                    failureAtUtc = _lastFailureUtc,
+                    expectedChangeId = _lastBookFailure?.ExpectedChangeId,
+                    prevChangeId = _lastBookFailure?.PrevChangeId,
+                    changeId = _lastBookFailure?.ChangeId,
+                    reconnectAttempts = _reconnectAttempts,
+                    counters = _failureCounts.ToDictionary(x => x.Key, x => x.Value)
+                } });
+        }
 
         private async Task RunAsync()
         {
@@ -122,6 +165,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                     {
                         _book.Invalidate();
                         _ownOrders.Reset("loading");
+                        _privateState = "loading";
                         State("connecting");
                         var host = (_config["DeribitTerminal:Environment"] ?? "testnet") switch
                         {
@@ -151,12 +195,12 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                         using var auth = await ReceiveDocumentAsync(ws, _stop.Token);
                         if (auth.RootElement.TryGetProperty("error", out var authError) &&
                             authError.ValueKind != JsonValueKind.Null)
-                            throw new InvalidOperationException("Deribit feed authentication failed.");
+                            throw new FeedFaultException("WS_AUTH_SUBSCRIPTION");
                         if (!auth.RootElement.TryGetProperty("id", out var responseId) ||
                             responseId.GetInt32() != 1 ||
                             !auth.RootElement.TryGetProperty("result", out var authResult) ||
                             !authResult.TryGetProperty("access_token", out _))
-                            throw new InvalidOperationException("Deribit feed auth not acknowledged.");
+                            throw new FeedFaultException("WS_AUTH_SUBSCRIPTION");
 
                         await SendAsync(ws, new
                         {
@@ -212,6 +256,8 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                         subscriptionError.ValueKind != JsonValueKind.Null)
                                     {
                                         _ownOrders.Reset("unavailable");
+                                        _privateState = "unavailable";
+                                        Count("PRIVATE_SUBSCRIPTION_UNAVAILABLE");
                                         Publish(new { type = "own_orders", instrument = _name,
                                             orders = _ownOrders.View() });
                                     }
@@ -232,6 +278,8 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                     else
                                     {
                                         _ownOrders.Reset("unavailable");
+                                        _privateState = "unavailable";
+                                        Count("PRIVATE_SUBSCRIPTION_UNAVAILABLE");
                                         Publish(new { type = "own_orders", instrument = _name,
                                             orders = _ownOrders.View() });
                                     }
@@ -239,11 +287,26 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                 }
                                 if (callId == 6)
                                 {
-                                    if (root.TryGetProperty("error", out var snapshotError) &&
-                                        snapshotError.ValueKind != JsonValueKind.Null ||
-                                        !root.TryGetProperty("result", out var snapshotOrders) ||
-                                        !_ownOrders.Hydrate(snapshotOrders))
+                                    try
+                                    {
+                                        if ((root.TryGetProperty("error", out var snapshotError) &&
+                                             snapshotError.ValueKind != JsonValueKind.Null) ||
+                                            !root.TryGetProperty("result", out var snapshotOrders) ||
+                                            !_ownOrders.Hydrate(snapshotOrders))
+                                        {
+                                            _ownOrders.Reset("unavailable");
+                                            _privateState = "unavailable";
+                                            Count("PRIVATE_SNAPSHOT_UNAVAILABLE");
+                                        }
+                                        else _privateState = "ready";
+                                    }
+                                    catch (Exception)
+                                    {
+                                        // Bad PRIVATE snapshot must not reset PUBLIC L2.
                                         _ownOrders.Reset("unavailable");
+                                        _privateState = "unavailable";
+                                        Count("PRIVATE_SNAPSHOT_UNAVAILABLE");
+                                    }
                                     Publish(new { type = "own_orders", instrument = _name,
                                         orders = _ownOrders.View() });
                                     continue;
@@ -251,7 +314,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             }
                             if (root.TryGetProperty("error", out var err) &&
                                 err.ValueKind != JsonValueKind.Null)
-                                throw new InvalidOperationException("Deribit public subscription error.");
+                                throw new FeedFaultException("WS_AUTH_SUBSCRIPTION");
                             if (!root.TryGetProperty("method", out var method) ||
                                 method.ValueKind != JsonValueKind.String)
                                 continue;
@@ -274,10 +337,11 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             {
                                 if (!_book.Apply(data, out var view))
                                 {
-                                    State(view.State);
-                                    throw new InvalidOperationException("Deribit raw order book sequence invalid; resubscribe.");
+                                    throw new FeedFaultException(
+                                        _book.LastFailure?.Code ?? "L2_MALFORMED");
                                 }
                                 _messages++;
+                                if (_publicL2State != "synced") State("synced");
                                 Publish(new { type = "book", instrument = _name,
                                     state = "synced", book = view, ownOrders = _ownOrders.View(),
                                     messages = _messages,
@@ -291,8 +355,21 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                 // to React. Aggregate remaining resting volume
                                 // by instrument + side + exact price, and only
                                 // after initial snapshot reconciliation.
-                                if (!_ownOrders.Notification(data))
+                                try
+                                {
+                                    if (!_ownOrders.Notification(data))
+                                    {
+                                        _ownOrders.Reset("unavailable");
+                                        _privateState = "unavailable";
+                                        Count("PRIVATE_NOTIFICATION_INVALID");
+                                    }
+                                }
+                                catch (Exception)
+                                {
                                     _ownOrders.Reset("unavailable");
+                                    _privateState = "unavailable";
+                                    Count("PRIVATE_NOTIFICATION_INVALID");
+                                }
                                 Publish(new { type = "own_orders", instrument = _name,
                                     orders = _ownOrders.View() });
                             }
@@ -326,16 +403,28 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                         }
                     }
                     catch (OperationCanceledException) when (_stop.IsCancellationRequested) { break; }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
-                        // Intentionally suppress exception details: auth exceptions
-                        // might contain exchange tokens or private key data.
+                        // Sanitize error types; never log ToString(), Message,
+                        // private payloads, account IDs or credentials.
+                        var code = ex switch
+                        {
+                            FeedFaultException fault => fault.Code,
+                            OperationCanceledException => "WS_TIMEOUT",
+                            WebSocketException => "WS_CLOSED",
+                            JsonException => "WS_MALFORMED_FRAME",
+                            _ => "WS_UNEXPECTED"
+                        };
+                        Failure(code);
                         _book.Invalidate();
                         _ownOrders.Reset("resyncing");
+                        _privateState = "resyncing";
                         State("resyncing");
                     }
                     if (!_stop.IsCancellationRequested)
                     {
+                        _reconnectAttempts++;
+                        Count("RECONNECT_ATTEMPT");
                         await Task.Delay(backoff + Random.Shared.Next(0, 200), _stop.Token);
                         backoff = Math.Min(backoff * 2, 10000);
                     }
@@ -346,6 +435,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             {
                 _book.Invalidate();
                 _ownOrders.Reset("disconnected");
+                _privateState = "disconnected";
                 State("disconnected");
                 foreach (var subscriber in _subscribers.Values)
                     subscriber.Writer.TryComplete();
@@ -371,11 +461,11 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                 {
                     var chunk = await socket.ReceiveAsync(buffer.AsMemory(), ct);
                     if (chunk.MessageType == WebSocketMessageType.Close)
-                        throw new InvalidOperationException("Exchange feed closed.");
+                        throw new FeedFaultException("WS_CLOSED");
                     if (chunk.MessageType != WebSocketMessageType.Text)
-                        throw new InvalidOperationException("Unexpected exchange frame type.");
+                        throw new FeedFaultException("WS_MALFORMED_FRAME");
                     if (stream.Length + chunk.Count > 4 * 1024 * 1024)
-                        throw new InvalidOperationException("Oversized market-data frame.");
+                        throw new FeedFaultException("WS_MALFORMED_FRAME");
                     stream.Write(buffer, 0, chunk.Count);
                     if (chunk.EndOfMessage) break;
                 }
