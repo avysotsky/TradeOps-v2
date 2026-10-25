@@ -339,8 +339,8 @@ export default function DeribitTerminal() {
   const [feedDiagnostics, setFeedDiagnostics] = useState<FeedDiagnostics | null>(null);
   const [clientWsDisconnects, setClientWsDisconnects] = useState(0);
   // ONE WebSocket for selected instrument AND depth: changes trigger a fresh
-  // exchange subscription. RAW depth 25/50 remains full depth upstream;
-  // grouped depth 10 arrives as complete 100ms snapshots.
+  // exchange subscription. Explicit RAW remains full depth upstream;
+  // grouped depth 1/10/20 arrives as complete 100ms snapshots.
   // React paints are coalesced without holding up market ingestion.
   useEffect(() => {
     if (!key || !status) return;
@@ -415,7 +415,7 @@ export default function DeribitTerminal() {
         catch { socket?.close(); return; }
         if (payload.instrument !== marketInstrument) return;
         if ((payload.type === 'book' || payload.type === 'status') &&
-            payload.depth !== domDepth) {
+            String(payload.depth) !== String(domDepth)) {
           socket?.close();
           return;
         }
@@ -754,7 +754,7 @@ export default function DeribitTerminal() {
                 <div><span className="eyebrow">LIVE DERIBIT WEBSOCKET / EVENT-DRIVEN</span><h2>Стакан заявок</h2></div>
                 <div className="stream-status" aria-live="polite">
                   <strong className={streamState === 'synced' ? 'success-text' : 'red-text'}>
-                    {streamState === 'synced' ? (domDepth === 10 ? 'LIVE 100MS' : 'LIVE RAW') : streamState.toUpperCase()}
+                    {streamState === 'synced' ? (domDepth === 'raw' ? 'LIVE RAW' : 'LIVE 100MS') : streamState.toUpperCase()}
                   </strong>
                   <span>{marketInstrument}</span>
                 </div>
@@ -763,16 +763,18 @@ export default function DeribitTerminal() {
                 <label htmlFor="dom-depth">Depth</label>
                 <select id="dom-depth" aria-label="Видимых уровней на сторону"
                   value={domDepth}
-                  onChange={e => setDomDepth(Number(e.target.value) as DomDepth)}>
+                  onChange={e => setDomDepth(e.target.value === 'raw'
+                    ? 'raw' : Number(e.target.value) as DomDepth)}>
+                  <option value={1}>1</option>
                   <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
+                  <option value={20}>20</option>
+                  <option value="raw">RAW</option>
                 </select>
                 <span className="dom-depth-source"
-                  title={domDepth === 10
-                    ? 'Реальная подписка Deribit на 10 уровней, полные снимки каждые 100 мс'
-                    : 'Deribit не поддерживает подписку RAW на 25/50 уровней: используется полный RAW поток'}>
-                  {domDepth === 10 ? 'L2 10 · 100MS' : 'RAW L2'}
+                  title={domDepth === 'raw'
+                    ? 'Полный поток RAW; в интерфейсе отображаются первые 50 уровней на сторону'
+                    : 'Подписка Deribit ровно на ' + domDepth + ' уровней, снимки каждые 100 мс'}>
+                  {domDepth === 'raw' ? 'RAW L2' : 'L2 ' + domDepth + ' · 100MS'}
                 </span>
                 <span className="dom-stream-lag" title="Разность времени Deribit и локальных часов Windows; зависит от синхронизации часов">
                   Δ exchange → local: {streamState === 'synced' && exchangeAgeMs !== null
@@ -793,7 +795,7 @@ export default function DeribitTerminal() {
               {outsideOwnOrders.length > 0 && (
                 <details className="dom-own-outside">
                   <summary>
-                    Мои заявки вне {domDepth} уровней: {outsideOwnOrders.length} ценовых уровней
+                    Мои заявки вне {domDepth === 'raw' ? 'видимых 50' : domDepth} уровней: {outsideOwnOrders.length} ценовых уровней
                   </summary>
                   <div className="dom-own-outside-list">
                     {outsideOwnOrders.map(level => (
@@ -975,7 +977,7 @@ export default function DeribitTerminal() {
               <span>Статус: {streamState}</span>
               <span>Public L2: {feedDiagnostics?.publicL2State ?? streamState}</span>
               <span>Выбранная глубина: {domDepth}</span>
-              <span>Подписка Deribit: {feedDiagnostics?.exchangeChannel ?? (domDepth === 10 ? 'DEPTH 10 · 100ms' : 'RAW FULL DEPTH')}</span>
+              <span>Подписка Deribit: {feedDiagnostics?.exchangeChannel ?? '—'}</span>
               <span>Режим биржевого потока: {feedDiagnostics?.exchangeMode ?? '—'}</span>
               <span>Private overlay: {ownOrders?.state ?? feedDiagnostics?.privateOrdersState ?? '—'}</span>
               <span>Последний код сбоя: {feedDiagnostics?.reasonCode ?? '—'}</span>
@@ -990,7 +992,7 @@ export default function DeribitTerminal() {
                     code + '=' + count).join(' · ') || '—' : '—'}</span>
               <span>Change ID: {book?.changeId ?? '—'}</span>
               <span>Сообщений L2: {streamMessages}</span>
-              <span>Уровней на сторону: {domDepth}</span>
+              <span>Уровней на сторону: {domDepth === 'raw' ? 'RAW (показаны до 50)' : domDepth}</span>
               <span>Моих цен вне видимого диапазона: {outsideOwnOrders.length}</span>
               <span>Приватные ордера: {ownOrders?.state ?? 'нет данных'}</span>
               <span>Открытых собственных ордеров: {ownOrders?.state === 'ready' ? ownOrders.openOrders : '—'}</span>
@@ -999,7 +1001,7 @@ export default function DeribitTerminal() {
               <span>Дополнительных правил шага: {contractSpec?.tickSizeSteps.length ?? '—'}</span>
               <span>Знаков цены по спецификации: {priceDecimals ?? '—'}</span>
               {contractSpecError && <span className="error">{contractSpecError}</span>}
-              <p>RAW: снимок и контроль непрерывности изменений; Depth 10: независимые полные снимки каждые 100 мс.
+              <p>RAW: полный снимок и контроль непрерывности изменений; 1/10/20: полные группированные снимки каждые 100 мс.
                 Δ рассчитывается по времени биржи и локальным часам Windows;
                 для точной оценки задержки необходима синхронизация часов.
                 Объёмы показаны в исходных единицах Deribit.</p>
