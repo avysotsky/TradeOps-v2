@@ -90,3 +90,9 @@
 .cc-modal-history .cc-bottom .cc-table-scroll{max-height:88px}
 @media(max-width:940px){.cc-spread-modal-backdrop{padding:8px}.cc-spread-modal{height:calc(100vh - 16px)}.cc-spread-modal-content{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(350px,1fr) 200px;overflow:auto}.cc-spread-modal-books{min-height:350px}.cc-spread-modal-legs-grid{grid-template-columns:1fr 1fr}.cc-modal-history{grid-column:1}}
 @media(max-width:620px){.cc-spread-modal-books{grid-template-columns:1fr;min-height:680px}.cc-modal-book{max-height:340px}}
+
+/* Futures contract strip from VAN: synthetic symbol changes reset ticket/book. */
+.cc-futures-contract-strip{display:flex;align-items:center;gap:5px;overflow-x:auto;margin:0 0 7px;padding:3px 5px;background:#080f1c;border:1px solid #203449;border-radius:6px;scrollbar-width:thin}
+.cc-futures-contract-strip button{white-space:nowrap;border:1px solid #34475b;background:#102034;color:#9cb0c8;border-radius:5px;padding:4px 9px;font-size:11px;min-height:24px}
+.cc-futures-contract-strip button.active{border-color:#4a9be5;background:#173752;color:#e7f3ff}
+.cc-futures-contract-strip span{margin-left:auto;color:#667e9a;white-space:nowrap;padding:0 7px;font-size:10px}
