@@ -24,6 +24,7 @@ public sealed class DeribitOwnOrderBook(string instrument)
     private const int MaxBuffered = 2000;
     private bool _ready;
     private long _snapshotUtcMs;
+    private OwnView? _cachedView;
 
     public string State { get; private set; } = "loading";
 
@@ -33,6 +34,7 @@ public sealed class DeribitOwnOrderBook(string instrument)
         _orders.Clear();
         _pending.Clear();
         _snapshotUtcMs = 0;
+        _cachedView = null;
         State = state;
     }
 
@@ -70,6 +72,7 @@ public sealed class DeribitOwnOrderBook(string instrument)
         _pending.Clear();
         _ready = true;
         _snapshotUtcMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _cachedView = null;
         State = "ready";
         return true;
     }
@@ -87,6 +90,10 @@ public sealed class DeribitOwnOrderBook(string instrument)
         if (_orders.Count >= MaxOrders && !_orders.ContainsKey(id))
             return Invalidate();
         _orders[id] = revision;
+        // Only private own-order changes invalidate aggregate cache.
+        // RAW public L2 updates can reuse it in O(1), avoiding a full
+        // scan of account orders for every exchange book delta.
+        _cachedView = null;
         return true;
     }
 
@@ -137,10 +144,12 @@ public sealed class DeribitOwnOrderBook(string instrument)
 
     public OwnView View()
     {
-        if (!_ready) return new OwnView(instrument, State, [], 0, 0);
+        if (_cachedView is not null) return _cachedView;
+        if (!_ready) return _cachedView =
+            new OwnView(instrument, State, [], 0, 0);
         var active = _orders.Values.Where(x => x.Order is not null)
             .Select(x => x.Order!).ToArray();
-        return new OwnView(instrument, State,
+        return _cachedView = new OwnView(instrument, State,
             active.GroupBy(x => (x.Direction, x.Price))
                 .Select(group => new OwnLevel(group.Key.Direction, group.Key.Price,
                     group.Sum(order => order.Remaining), group.Count()))
