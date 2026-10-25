@@ -47,7 +47,10 @@ public sealed class DeribitRawBook
     public bool Apply(JsonElement update, out BookView view)
     {
         var start = Stopwatch.GetTimestamp();
-        view = View("invalid");
+        // Avoid copying up to 50 levels twice per valid RAW delta.
+        // Error paths below explicitly invalidate and clear the book.
+        view = new BookView(_instrument, "invalid", null, null,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 0, [], []);
 
         if (update.ValueKind != JsonValueKind.Object ||
             !update.TryGetProperty("instrument_name", out var instrument) ||
