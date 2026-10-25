@@ -641,6 +641,7 @@ class Runner:
                   "started_utc": started, "completed_utc": None, "status": "NOT_RUN",
                   "steps": [], "tool_versions": {"docker_engine": self.docker_engine_version}, "images": {}, "test_counts": None,
                   "postgres_mock_smoke": "NOT_RUN" if gate == "backend" else "NOT_APPLICABLE",
+                  "b2_postgres": "NOT_RUN" if gate == "b2" else "NOT_APPLICABLE",
                   "cleanup_complete": True,
                   "notes": [], "safety": {"exchange_provider": "Mock", "mainnet_execution_enabled": False,
                                            "published_ports": False, "global_docker_cleanup": False}}
@@ -689,8 +690,12 @@ class Runner:
                     if checked.returncode or checked.stdout.strip() != source_sha:
                         raise StaleShaError("Local detached checkout has unexpected SHA")
                     result["checked_out_sha"] = checked.stdout.strip()
-                    if gate == "backend": self.backend(result, worktree, tmp, out)
-                    else: self.frontend(gate, result, worktree, tmp, out)
+                    if gate == "backend":
+                        self.backend(result, worktree, tmp, out)
+                    elif gate == "b2":
+                        self.b2_backend(result, worktree, tmp, out)
+                    else:
+                        self.frontend(gate, result, worktree, tmp, out)
                 finally:
                     # Only our detached worktree may be removed. Keep evidence outside temp.
                     self.exec(["git", "-C", str(self.repo), "worktree", "remove", "--force", str(worktree)],
@@ -702,10 +707,14 @@ class Runner:
                 result["status"] = "FAIL"
             elif gate == "backend" and result["postgres_mock_smoke"] != "PASS":
                 result["status"] = "FAIL"
-            elif gate == "backend" and not result["test_counts"]["available"]:
+            elif gate == "b2" and (result["b2_postgres"] != "PASS"
+                                  or not b2_qualified(result.get("b2_suites", {}))):
+                result["status"] = "FAIL"
+                result["notes"].append("B2 PostgreSQL17 target/contract/full suite not qualified")
+            elif gate in ("backend", "b2") and not result["test_counts"]["available"]:
                 result["status"] = "FAIL"
                 result["notes"].append("TRX missing; no independently confirmed xUnit test count")
-            elif gate != "backend" and not result["test_counts"]["available"]:
+            elif gate not in ("backend", "b2") and not result["test_counts"]["available"]:
                 result["status"] = "FAIL"
                 result["notes"].append("TAP totals unavailable")
             elif result["test_counts"]["total"] <= 0 or result["test_counts"]["passed"] <= 0 or result["test_counts"]["failed"] != 0:
@@ -714,7 +723,8 @@ class Runner:
             elif gate == "deribit" and result["test_counts"]["suites"] != 2:
                 result["status"] = "FAIL"
                 result["notes"].append("Both regular and explicit VAN Node TAP suites must be counted")
-            elif any(step["name"] == "React build" and step["status"] == "PASS" for step in result["steps"]) or gate == "backend":
+            elif (any(step["name"] == "React build" and step["status"] == "PASS"
+                      for step in result["steps"]) or gate in ("backend", "b2")):
                 result["status"] = "PASS"
             else:
                 result["status"] = "FAIL"
@@ -742,7 +752,8 @@ class Runner:
             result["git_transport"] = self.git_transport.get(number, "not-connected")
             result["completed_utc"] = utc()
             result["images"] = {key: self.image_info[key] for key in
-                                  (["dotnet", "postgres", "curl"] if gate == "backend" else ["node"])
+                                  (["dotnet", "postgres", "curl"] if gate == "backend"
+                                   else ["dotnet", "postgres"] if gate == "b2" else ["node"])
                                   if key in self.image_info}
             out = Path(result.get("results_path", self.result_root / f"pr-{number}" / source_sha))
             out.mkdir(parents=True, exist_ok=True)
@@ -755,7 +766,7 @@ class Runner:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local TradeOps exact PR-HEAD WSL2/Docker acceptance")
-    parser.add_argument("target", nargs="?", default="all", choices=["all", "frontends", "62", "63", "64"])
+    parser.add_argument("target", nargs="?", default="all", choices=["all", "frontends", "62", "63", "64", "70"])
     parser.add_argument("repo", nargs="?", default=str(Path(__file__).resolve().parents[2]))
     parser.add_argument("--results-dir", default=str(Path.home() / "tradeops-acceptance-results"))
     args = parser.parse_args()
@@ -779,7 +790,7 @@ def main() -> int:
         print("BLOCKED_ENV: WSL Docker daemon is not reachable", file=sys.stderr)
     else:
         engine.docker_engine_version = docker_info.stdout.strip()
-    targets = list(SPECS) if args.target == "all" else ([63, 64] if args.target == "frontends" else [int(args.target)])
+    targets = [62, 63, 64] if args.target == "all" else ([63, 64] if args.target == "frontends" else [int(args.target)])
     results = [engine.run_one(pr) for pr in targets]
     aggregate = {"schema_version": 1, "run_id": engine.run_id, "created_utc": utc(),
                  "results": [{"pr": r["pr"], "sha": r["source_sha"], "status": r["status"],
