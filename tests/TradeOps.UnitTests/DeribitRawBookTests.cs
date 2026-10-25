@@ -11,6 +11,78 @@ public sealed class DeribitRawBookTests
     private static JsonDocument Frame(string data) => JsonDocument.Parse(data);
 
     [Fact]
+    public void SelectedDepthMapsToActualDeribitSubscriptions()
+    {
+        Assert.Equal("book.ETH-PERPETUAL.none.10.100ms",
+            DeribitBookSubscription.Channel(Instrument, 10));
+        Assert.Equal("book.ETH-PERPETUAL.raw",
+            DeribitBookSubscription.Channel(Instrument, 25));
+        Assert.Equal("book.ETH-PERPETUAL.raw",
+            DeribitBookSubscription.Channel(Instrument, 50));
+        Assert.True(DeribitBookSubscription.IsAggregated(10));
+        Assert.False(DeribitBookSubscription.IsAggregated(25));
+        Assert.False(DeribitBookSubscription.IsAggregated(50));
+        Assert.False(DeribitBookSubscription.ValidDepth(20));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            DeribitBookSubscription.Channel(Instrument, 20));
+    }
+
+    [Fact]
+    public void GroupedDepth10SnapshotsReplaceRatherThanMergeOldPriceLevels()
+    {
+        var book = new DeribitRawBook(Instrument);
+        using var first = Frame("""
+        {"instrument_name":"ETH-PERPETUAL","type":"snapshot","change_id":100,
+         "timestamp":1790000000000,
+         "bids":[[2000,5],[1999,3]],"asks":[[2001,7],[2002,2]]}
+        """);
+        Assert.True(book.ApplyGroupedSnapshot(first.RootElement, 10, out var initial));
+        Assert.Equal("synced", initial.State);
+        Assert.Equal(2, initial.Bids.Length);
+        Assert.Equal(2, initial.Asks.Length);
+
+        // Grouped messages are standalone depth snapshots. No prev_change_id.
+        using var second = Frame("""
+        {"instrument_name":"ETH-PERPETUAL","type":"change","change_id":150,
+         "timestamp":1790000000100,
+         "bids":[[1998,8]],"asks":[[2003,4]]}
+        """);
+        Assert.True(book.ApplyGroupedSnapshot(second.RootElement, 10, out var next));
+        Assert.Single(next.Bids);
+        Assert.Single(next.Asks);
+        Assert.Equal(1998m, next.Bids[0].Price);
+        Assert.Equal(2003m, next.Asks[0].Price);
+        Assert.Equal(150, next.ChangeId);
+    }
+
+    [Fact]
+    public void GroupedDepth10RejectsMalformedOrCrossedDataFailClosed()
+    {
+        var book = new DeribitRawBook(Instrument);
+        using var duplicate = Frame("""
+        {"instrument_name":"ETH-PERPETUAL","timestamp":1790000000100,
+         "bids":[[2000,1],[2000,2]],"asks":[[2001,1]]}
+        """);
+        Assert.False(book.ApplyGroupedSnapshot(duplicate.RootElement, 10, out var invalid));
+        Assert.Equal("L2_GROUPED_MALFORMED", book.LastFailure?.Code);
+        Assert.Empty(invalid.Bids);
+
+        using var crossed = Frame("""
+        {"instrument_name":"ETH-PERPETUAL","timestamp":1790000000200,
+         "bids":[[2001,1]],"asks":[[2000,1]]}
+        """);
+        Assert.False(book.ApplyGroupedSnapshot(crossed.RootElement, 10, out _));
+        Assert.Equal("L2_CROSSED", book.LastFailure?.Code);
+
+        using var good = Frame("""
+        {"instrument_name":"ETH-PERPETUAL","timestamp":1790000000300,
+         "bids":[["new",1999,1]],"asks":[["new",2000,1]]}
+        """);
+        Assert.True(book.ApplyGroupedSnapshot(good.RootElement, 10, out var recovered));
+        Assert.Single(recovered.Bids);
+    }
+
+    [Fact]
     public void SnapshotAndChainedChanges_ReconstructFullL2Correctly()
     {
         var book = new DeribitRawBook(Instrument);
