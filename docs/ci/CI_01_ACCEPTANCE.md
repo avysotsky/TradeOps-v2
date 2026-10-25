@@ -55,6 +55,20 @@ For another checkout path, pass `-Repository 'D:\your\path\TradeOps-v2'` to the 
 
 The repository also includes `scripts/ci/.gitattributes` forcing LF for `.sh` and `.py` files, including with Windows Git `core.autocrlf=true`. For the immediate operator recovery, direct Python is the more robust path.
 
+## WSL private GitHub access
+
+The remote SHA check is done by WSL Git first. If WSL Git cannot authenticate to the private repository (or the user has no WSL credential helper), the verifier now invokes the **existing Windows `git.exe` from WSL** using `wslpath -w`. This reuses Windows Git's existing credentials through the standard Git process; it **does not copy credentials** to files or alter global Git configuration. It fetches the selected immutable SHA using the same authenticated tool and then validates its detached Linux worktree.
+
+The `git_transport` (`wsl-git` or `windows-git`) is recorded per PR in `summary.json`. If neither method works, the local console and `notes` contain both process exit codes and sanitized Git errors instead of hiding the reason behind a generic `BLOCKED_ENV`.
+
+For direct diagnosis before rerunning all 3 PRs, the owner may execute this standalone, non-mutating WSL command from PowerShell:
+
+```powershell
+wsl.exe --exec env GIT_TERMINAL_PROMPT=0 git -C /mnt/d/Projects/TradeOps-v2 ls-remote --exit-code origin refs/pull/62/head refs/heads/TradeOps/b1-01-oms-domain-identity-contracts
+```
+
+If WSL Git reports an authentication failure, do not put passwords or access tokens in the console or repository URL. The CI-01 Windows Git bridge is the preferred automatic fallback.
+
 ## Source verification and isolation
 
 For each run, the driver calls `git ls-remote origin` against **both** the actual `refs/pull/<number>/head` and the designated source `refs/heads/TradeOps/...`. The two SHAs must be equal, and the repo `origin` must be the canonical `github.com/avysotsky/TradeOps-v2`. It fetches **that exact current SHA**, creates a disposable detached `git worktree` and asserts `git rev-parse HEAD`. At the end it repeats both remote-ref checks. Any intervening head movement produces **STALE_SHA**. No `git reset`, checkout of an active branch, stashing, branch mutation or reuse of another worker's temporary files.
