@@ -11,20 +11,45 @@ public sealed class DeribitRawBookTests
     private static JsonDocument Frame(string data) => JsonDocument.Parse(data);
 
     [Fact]
-    public void SelectedDepthMapsToActualDeribitSubscriptions()
+    public void SelectedDepthMapsToOnlyActualDeribitSubscriptions()
     {
-        Assert.Equal("book.ETH-PERPETUAL.none.10.100ms",
-            DeribitBookSubscription.Channel(Instrument, 10));
+        foreach (var depth in new[] { 1, 10, 20 })
+        {
+            Assert.True(DeribitBookSubscription.ValidDepth(depth));
+            Assert.True(DeribitBookSubscription.TryParseMode(depth.ToString(), out var parsed));
+            Assert.Equal(depth, parsed);
+            Assert.Equal($"book.ETH-PERPETUAL.none.{depth}.100ms",
+                DeribitBookSubscription.Channel(Instrument, depth));
+            Assert.True(DeribitBookSubscription.IsAggregated(depth));
+        }
+
+        Assert.True(DeribitBookSubscription.TryParseMode("raw", out var raw));
+        Assert.Equal(DeribitBookSubscription.RawMode, raw);
         Assert.Equal("book.ETH-PERPETUAL.raw",
-            DeribitBookSubscription.Channel(Instrument, 25));
-        Assert.Equal("book.ETH-PERPETUAL.raw",
-            DeribitBookSubscription.Channel(Instrument, 50));
-        Assert.True(DeribitBookSubscription.IsAggregated(10));
-        Assert.False(DeribitBookSubscription.IsAggregated(25));
-        Assert.False(DeribitBookSubscription.IsAggregated(50));
-        Assert.False(DeribitBookSubscription.ValidDepth(20));
+            DeribitBookSubscription.Channel(Instrument, raw));
+        Assert.False(DeribitBookSubscription.IsAggregated(raw));
+        Assert.Equal("raw", DeribitBookSubscription.PublicMode(raw));
+
+        foreach (var invalid in new[] { "0", "25", "50", "-1", "RAW", "10x", "" })
+            Assert.False(DeribitBookSubscription.TryParseMode(invalid, out _));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            DeribitBookSubscription.Channel(Instrument, 20));
+            DeribitBookSubscription.Channel(Instrument, 25));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(20)]
+    public void GroupedSnapshotAcceptanceUsesNativeExchangeDepth(int depth)
+    {
+        var book = new DeribitRawBook(Instrument);
+        using var snapshot = Frame("""
+        {"instrument_name":"ETH-PERPETUAL","timestamp":1790000000000,
+         "bids":[[2000,5]],"asks":[[2001,7]]}
+        """);
+        Assert.True(book.ApplyGroupedSnapshot(snapshot.RootElement, depth, out var view));
+        Assert.Single(view.Bids);
+        Assert.Single(view.Asks);
     }
 
     [Fact]
@@ -285,7 +310,9 @@ public sealed class DeribitRawBookTests
             "TradeOps.TerminalApi", "Market", "MarketStreamEndpoints.cs"));
         var vite = File.ReadAllText(Path.Combine(root, "apps", "trade-terminal",
             "vite.config.ts"));
-        Assert.Contains("\"book.\" + _name + \".raw\"", feed);
+        Assert.Contains("_bookChannel", feed);
+        Assert.Contains("DeribitBookSubscription.Channel", feed);
+        Assert.Contains("DeribitBookSubscription.IsAggregated", feed);
         Assert.Contains("\"trades.\" + _name + \".raw\"", feed);
         Assert.Contains("\"ticker.\" + _name + \".raw\"", feed);
         Assert.Contains("prev_change_id", File.ReadAllText(Path.Combine(root,
