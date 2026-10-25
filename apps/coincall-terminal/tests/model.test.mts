@@ -24,3 +24,5 @@ test('2D spread grid includes instruments across rows and columns with diagonal 
   assert.ok((rev?.bidUsd ?? 0)<=(rev?.askUsd ?? -1));
   assert.deepEqual(invertSpread(invertSpread(q)).longSymbol,q.longSymbol);
 });
+
+test('VAN spot instrument list includes synthetic SOL without inventing SOL futures',()=>{assert.equal(instrumentFor(instruments,'spot','SOL').symbol,'SOL/USDT');assert.equal(instruments.filter(i=>i.asset==='SOL'&&i.product==='futures').length,0)});
