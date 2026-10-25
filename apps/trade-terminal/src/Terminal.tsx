@@ -59,6 +59,9 @@ type ExchangeClockSample = {
   rttMs: number;
   sampleUnixMs: number;
 };
+type ManualClockCheck = ExchangeClockSample & {
+  rawDeltaAtCheckMs: number | null;
+};
 type FeedDiagnostics = {
   publicL2State: string;
   privateOrdersState: string;
@@ -341,7 +344,9 @@ export default function DeribitTerminal() {
   }, [key, status, marketInstrument]);
 
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
-  const [exchangeClock, setExchangeClock] = useState<ExchangeClockSample | null>(null);
+  const [exchangeClock, setExchangeClock] = useState<ManualClockCheck | null>(null);
+  const [clockProbePending, setClockProbePending] = useState(false);
+  const [clockProbeError, setClockProbeError] = useState('');
   const [streamMessages, setStreamMessages] = useState(0);
   const [feedDiagnostics, setFeedDiagnostics] = useState<FeedDiagnostics | null>(null);
   const [clientWsDisconnects, setClientWsDisconnects] = useState(0);
@@ -497,42 +502,38 @@ export default function DeribitTerminal() {
     };
   }, [key, status, marketInstrument, domDepth]);
 
-  // Independent read-only public/ get_time HTTPS clock probe. No account
-  // credentials, no changes to the live RAW WebSocket receive loop.
-  useEffect(() => {
-    if (!key || !status) return;
-    let active = true;
-    let inFlight = false;
-    const sample = async () => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        const result = await api<ExchangeClockSample>(key, '/market/clock');
-        if (!active) return;
-        if (result.status === 'ok' &&
-            Number.isFinite(result.clockOffsetMs) &&
-            Number.isFinite(result.rttMs) &&
-            Number.isFinite(result.sampleUnixMs)) {
-          setExchangeClock(result);
-        } else {
-          setExchangeClock(null);
-        }
-      } catch {
-        if (active) setExchangeClock(null);
-      } finally {
-        inFlight = false;
+  // One-shot read-only public clock check. A Deribit HTTPS request happens
+  // ONLY after the operator presses the button inside collapsed diagnostics.
+  // The raw book stream and its exchange-to-local value remain untouched.
+  const probeDeribitClock = async () => {
+    if (!key || !status || clockProbePending) return;
+    const rawAtClick = streamState === 'synced' ? exchangeAgeMs : null;
+    setClockProbePending(true);
+    setClockProbeError('');
+    setExchangeClock(null);
+    try {
+      const result = await api<ExchangeClockSample>(key, '/market/clock');
+      if (result.status === 'ok' &&
+          Number.isFinite(result.clockOffsetMs) &&
+          Number.isFinite(result.rttMs) &&
+          Number.isFinite(result.sampleUnixMs)) {
+        setExchangeClock({ ...result, rawDeltaAtCheckMs: rawAtClick });
+      } else {
+        setClockProbeError('Некорректный ответ проверки часов Deribit.');
       }
-    };
-    void sample();
-    const poll = window.setInterval(() => { void sample(); }, 30000);
-    return () => { active = false; window.clearInterval(poll); };
-  }, [key, status]);
+    } catch {
+      setClockProbeError('Не удалось получить время Deribit. Повторите проверку вручную.');
+    } finally {
+      setClockProbePending(false);
+    }
+  };
 
-  const clockIsFresh = exchangeClock !== null &&
-    Math.abs(Date.now() - exchangeClock.sampleUnixMs) < 90000;
-  const adjustedDeltaMs = clockIsFresh && streamState === 'synced' &&
-    exchangeAgeMs !== null
-    ? exchangeAgeMs - exchangeClock.clockOffsetMs : null;
+  // A fixed one-shot sample must never be mislabeled as a live latency
+  // measurement. The clock estimate is paired with the RAW delta observed
+  // when this operator explicitly started the diagnostic request.
+  const adjustedDeltaMs = exchangeClock?.rawDeltaAtCheckMs == null
+    ? null
+    : exchangeClock.rawDeltaAtCheckMs - exchangeClock.clockOffsetMs;
 
   // Private account/positions/orders are not market data: their slower
   // periodic refresh is independent of the raw exchange feed.
@@ -1040,21 +1041,33 @@ export default function DeribitTerminal() {
               <span>Моих цен вне видимого диапазона: {outsideOwnOrders.length}</span>
               <span>Приватные ордера: {ownOrders?.state ?? 'нет данных'}</span>
               <span>Открытых собственных ордеров: {ownOrders?.state === 'ready' ? ownOrders.openOrders : '—'}</span>
-              <span>Δ exchange → local: {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}</span>
-              <span>Windows − Deribit (оценка часов): {clockIsFresh ? exchangeClock.clockOffsetMs + ' ms' : '—'}</span>
-              <span>RTT public/get_time: {clockIsFresh ? exchangeClock.rttMs + ' ms' : '—'}</span>
-              <span>Δ без смещения часов (оценка): {adjustedDeltaMs === null ? '—' : adjustedDeltaMs + ' ms'}</span>
-              <span>Время замера UTC: {clockIsFresh
-                ? new Date(exchangeClock.sampleUnixMs).toISOString() : 'недоступно'}</span>
+              <span>Δ exchange → local (текущая): {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}</span>
+              <button type="button" className="refresh"
+                onClick={() => { void probeDeribitClock(); }}
+                disabled={clockProbePending || !status}>
+                {clockProbePending ? 'Проверка часов…' : 'Проверить часы Deribit'}
+              </button>
+              {clockProbeError && <span className="error">{clockProbeError}</span>}
+              <span>Windows − Deribit (последний ручной замер): {exchangeClock === null
+                ? '—' : exchangeClock.clockOffsetMs + ' ms'}</span>
+              <span>RTT public/get_time: {exchangeClock === null ? '—' : exchangeClock.rttMs + ' ms'}</span>
+              <span>Δ при запуске проверки: {exchangeClock?.rawDeltaAtCheckMs == null
+                ? '—' : exchangeClock.rawDeltaAtCheckMs + ' ms'}</span>
+              <span>Δ без смещения часов (оценка на момент проверки):
+                {' '}{adjustedDeltaMs === null ? '—' : adjustedDeltaMs + ' ms'}</span>
+              <span>Время ручного замера UTC: {exchangeClock === null
+                ? '—' : new Date(exchangeClock.sampleUnixMs).toISOString()}</span>
               <span>Ценовой шаг: {contractSpec?.name === marketInstrument ? contractSpec.tickSize : '—'}</span>
               <span>Дополнительных правил шага: {contractSpec?.tickSizeSteps.length ?? '—'}</span>
               <span>Знаков цены по спецификации: {priceDecimals ?? '—'}</span>
               {contractSpecError && <span className="error">{contractSpecError}</span>}
               <p>RAW: полный снимок и контроль непрерывности изменений; 1/10/20: полные группированные снимки каждые 100 мс.
                 Δ рассчитывается по времени биржи и локальным часам Windows.
-                Поправка по public/get_time использует середину RTT и предполагает
-                приблизительно симметричный сетевой путь; это не точная
-                односторонняя сетевая задержка.
+                public/get_time вызывается только по нажатию кнопки.
+                Значения ручной проверки остаются снимком момента запроса,
+                не обновляются автоматически. Поправка по середине RTT
+                предполагает приблизительно симметричный сетевой путь;
+                это не точная односторонняя задержка.
                 Объёмы показаны в исходных единицах Deribit.</p>
             </div>
           </details>
