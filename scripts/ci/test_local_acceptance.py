@@ -30,7 +30,7 @@ class LocalAcceptanceTests(unittest.TestCase):
             runner = Runner(Path(t), Path(t))
             runner.windows_git = lambda cmd: ["git.exe", "-C", "D:\\Projects\\TradeOps-v2", *cmd]
             refs = {"refs/pull/62/head", "refs/heads/" + SPECS[62][0]}
-            content = "".join("a" * 40 + "\\t" + ref + "\\n" for ref in sorted(refs))
+            content = "".join("a" * 40 + "\t" + ref + "\n" for ref in sorted(refs))
             wsl = CompletedProcess(["git"], 128, "", "fatal: could not read Username")
             win = CompletedProcess(["git.exe"], 0, content, "")
             with patch.object(runner, "exec", side_effect=[wsl, win]) as exec_mock:
