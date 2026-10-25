@@ -1,0 +1,34 @@
+name: Deribit RAW L2 desync diagnostics and security
+
+on:
+  push:
+    branches:
+      - TradeOps/to-v2-49-raw-l2-failure-isolation
+  pull_request:
+    branches:
+      - TradeOps/to-v2-48-dom-lag-compact-portfolio-tables
+
+permissions:
+  contents: read
+
+jobs:
+  raw-l2-fail-closed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build standalone terminal API
+        run: dotnet build apps/TradeOps.TerminalApi/TradeOps.TerminalApi.csproj --configuration Release
+      - name: Offline RAW L2 and private order regressions
+        run: dotnet test tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj --configuration Release --filter 'FullyQualifiedName~DeribitRawBookTests|FullyQualifiedName~DeribitOwnOrderBookTests'
+      - name: React diagnostics regression tests and build
+        working-directory: apps/trade-terminal
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run build
