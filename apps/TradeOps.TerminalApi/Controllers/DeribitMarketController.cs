@@ -146,6 +146,55 @@ public sealed class DeribitMarketController(
         }
     }
 
+    public sealed record TickRule(decimal AbovePrice, decimal TickSize);
+    public sealed record InstrumentSpecification(
+        string Name, string Kind, decimal TickSize, TickRule[] TickSizeSteps);
+
+    // Fetch the SELECTED contract's authoritative price increment; do not
+    // infer precision from visible bids, synthetic midpoint or search results.
+    // This endpoint also works for contracts outside the first 100 list items.
+    [HttpGet("instrument")]
+    public async Task<IActionResult> Instrument(
+        [FromQuery] string instrument, CancellationToken ct = default)
+    {
+        if (!Authorized()) return Denied();
+        if (!ValidInstrument(instrument))
+            return BadRequest(new { error = "Invalid instrument." });
+        try
+        {
+            var r = await ReadPublicAsync("public/get_instrument",
+                [new("instrument_name", instrument)], ct);
+            if (r.ValueKind != JsonValueKind.Object ||
+                Str(r, "instrument_name") != instrument ||
+                Str(r, "kind") is not ("future" or "option") ||
+                Num(r, "tick_size") is not decimal tick || tick <= 0m)
+                throw new InvalidOperationException("Invalid instrument specification.");
+            var rules = new List<TickRule>();
+            if (r.TryGetProperty("tick_size_steps", out var steps) &&
+                steps.ValueKind != JsonValueKind.Null)
+            {
+                if (steps.ValueKind != JsonValueKind.Array || steps.GetArrayLength() > 32)
+                    throw new InvalidOperationException("Invalid tick size steps.");
+                foreach (var step in steps.EnumerateArray())
+                {
+                    if (step.ValueKind != JsonValueKind.Object ||
+                        Num(step, "above_price") is not decimal above || above < 0m ||
+                        Num(step, "tick_size") is not decimal size || size <= 0m)
+                        throw new InvalidOperationException("Invalid price tick step.");
+                    rules.Add(new TickRule(above, size));
+                }
+            }
+            return Ok(new InstrumentSpecification(instrument,
+                Str(r, "kind")!, tick, rules.ToArray()));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            return StatusCode(502,
+                new { error = "Deribit instrument specification unavailable." });
+        }
+    }
+
     [HttpGet("orderbook")]
     public async Task<IActionResult> Book(
         [FromQuery] string instrument,
@@ -277,8 +326,9 @@ public sealed class DeribitMarketController(
         IReadOnlyList<KeyValuePair<string, string>> parameters, CancellationToken ct)
     {
         // Closed method set, closed host, fixed path, URL-encoded query fields.
-        if (method is not ("public/get_instruments" or "public/get_order_book" or
-                "public/get_last_trades_by_instrument" or "public/ticker"))
+        if (method is not ("public/get_instruments" or "public/get_instrument" or
+                "public/get_order_book" or "public/get_last_trades_by_instrument" or
+                "public/ticker"))
             throw new InvalidOperationException("Forbidden market-data method.");
 
         var host = Host;
