@@ -823,14 +823,19 @@ export default function DeribitTerminal() {
               </section>
 
               <section className="panel">
-                <div className="panel-header"><div><span className="eyebrow">PORTFOLIO</span><h2>Состояние счёта</h2></div><CircleDollarSign size={19}/></div>
+                <div className="panel-header"><div><span className="eyebrow">PORTFOLIO</span><h2>Состояние счёта</h2></div>
+                  <span className="count" aria-live="polite">{accountSnapshot.state === 'ready'
+                    ? 'Снимок ' + new Date(accountSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
+                    : accountSnapshot.state === 'loading' ? 'Загрузка счёта…' : 'Счёт недоступен'}</span></div>
                 <div className="account-grid">
-                  {accounts.length ? accounts.map(a => <div className="account-card" key={a.currency}>
+                  {accountSnapshot.state !== 'ready'
+                    ? <div className="empty">Данные счёта не подтверждены биржей.</div>
+                    : accounts.map(a => <div className="account-card" key={a.currency}>
                     <span className="currency">{a.currency}</span>
                     <span className="caption">EQUITY</span><strong>{num(a.equity, 6)}</strong>
                     <div><span>Balance</span><b>{num(a.balance, 6)}</b></div>
                     <div><span>Available funds</span><b>{num(a.availableFunds, 6)}</b></div>
-                  </div>) : <div className="empty">Счета появятся после настройки серверных API-ключей.</div>}
+                  </div>))}
                 </div>
               </section>
             </div>
