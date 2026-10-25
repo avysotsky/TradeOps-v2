@@ -1,0 +1,203 @@
+name: exact-sha-acceptance
+
+# Only available for manual dispatch once this workflow exists on default branch.
+# The checked-out project is the immutable HEAD of the nominated PR, including stacked ancestors.
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'Select contract owner (62=B1 OMS, 63=F1 Deribit, 64=F2 CoinCall)'
+        required: true
+        type: choice
+        options:
+          - '62'
+          - '63'
+          - '64'
+      head_sha:
+        description: 'Exact 40-character current HEAD SHA of the selected PR'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: exact-sha-${{ inputs.pull_request }}-${{ inputs.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate immutable PR HEAD (fail closed)
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.verify.outputs.sha }}
+      gate: ${{ steps.verify.outputs.gate }}
+    steps:
+      - name: Compare input to live GitHub pull request HEAD
+        id: verify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request }}
+          TARGET_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid SHA input (requires exact 40 lowercase hex chars).' >&2; exit 1; }
+          case "$PR_NUMBER" in
+            62) gate=backend ;;
+            63) gate=deribit ;;
+            64) gate=coincall ;;
+            *) echo 'Unapproved pull request number.' >&2; exit 1 ;;
+          esac
+          actual=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+          source_repo=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.repo.full_name')
+          state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.state')
+          [[ "$state" == open && "$source_repo" == "$GITHUB_REPOSITORY" && "$actual" == "$TARGET_SHA" ]] || {
+            echo "FAIL: PR HEAD/source/state mismatched. Actual HEAD: $actual, state: $state." >&2
+            exit 1
+          }
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
+          echo "PR #$PR_NUMBER: exact SHA $TARGET_SHA; gate $gate" >> "$GITHUB_STEP_SUMMARY"
+
+  backend:
+    name: B1 OMS/.NET10 + Mock PostgreSQL acceptance
+    needs: validate
+    if: needs.validate.outputs.gate == 'backend'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build.yml
+    with:
+      target_sha: ${{ needs.validate.outputs.sha }}
+
+  deribit:
+    name: F1 Deribit React exact HEAD (read-only)
+    needs: validate
+    if: needs.validate.outputs.gate == 'deribit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DeribitTerminal__ExecutionEnabled: 'false'
+      DeribitTerminal__MainnetExecutionEnabled: 'false'
+    steps:
+      - name: Checkout exact F1 SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - name: Assert F1 source and mandatory app path
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || exit 1
+          test -f apps/trade-terminal/package.json || { echo 'FAIL: Deribit app missing on required PR HEAD.' >&2; exit 1; }
+          test -f apps/trade-terminal/tests/vanLayout.test.mjs || { echo 'FAIL: VAN parity test missing.' >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/deribit-evidence"
+          printf 'gate=deribit\nsource_sha=%s\nPR=63\nmainnet_execution=false\n' "$EXPECTED_SHA" > "$RUNNER_TEMP/deribit-evidence/source.txt"
+          echo "Deribit PR #63 source SHA: $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Toolchain evidence
+        shell: bash
+        run: |
+          node --version | tee -a "$RUNNER_TEMP/deribit-evidence/toolchain.txt"
+          npm --version | tee -a "$RUNNER_TEMP/deribit-evidence/toolchain.txt"
+      - name: Install dependencies (record missing lockfile)
+        shell: bash
+        working-directory: apps/trade-terminal
+        run: |
+          set -euo pipefail
+          if test -f package-lock.json; then
+            echo 'lockfile=present; installer=npm ci' | tee -a "$RUNNER_TEMP/deribit-evidence/source.txt"
+            npm ci --no-audit --no-fund 2>&1 | tee "$RUNNER_TEMP/deribit-evidence/install.log"
+          else
+            echo 'WARNING: lockfile absent; npm install --no-package-lock is non-reproducible. Review required.' | tee -a "$GITHUB_STEP_SUMMARY"
+            echo 'lockfile=absent; reproducibility=limited' | tee -a "$RUNNER_TEMP/deribit-evidence/source.txt"
+            npm install --no-package-lock --no-audit --no-fund 2>&1 | tee "$RUNNER_TEMP/deribit-evidence/install.log"
+          fi
+      - name: Deribit existing test suite
+        working-directory: apps/trade-terminal
+        shell: bash
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/deribit-evidence/npm-test.log"
+      - name: Deribit VAN layout test (explicit; omitted by package script)
+        working-directory: apps/trade-terminal
+        shell: bash
+        run: node --test tests/vanLayout.test.mjs 2>&1 | tee "$RUNNER_TEMP/deribit-evidence/van-layout-test.log"
+      - name: Deribit TypeScript + Vite build
+        working-directory: apps/trade-terminal
+        shell: bash
+        run: npm run build 2>&1 | tee "$RUNNER_TEMP/deribit-evidence/build.log"
+      - name: Frontend evidence artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deribit-react-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/deribit-evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
+  coincall:
+    name: F2 CoinCall React exact HEAD (mock-only)
+    needs: validate
+    if: needs.validate.outputs.gate == 'coincall'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DeribitTerminal__ExecutionEnabled: 'false'
+      DeribitTerminal__MainnetExecutionEnabled: 'false'
+    steps:
+      - name: Checkout exact F2 SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - name: Assert F2 source and mandatory app path
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || exit 1
+          test -f apps/coincall-terminal/package.json || { echo 'FAIL: CoinCall app missing on required PR HEAD.' >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/coincall-evidence"
+          printf 'gate=coincall\nsource_sha=%s\nPR=64\nmainnet_execution=false\n' "$EXPECTED_SHA" > "$RUNNER_TEMP/coincall-evidence/source.txt"
+          echo "CoinCall PR #64 source SHA: $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Toolchain evidence
+        shell: bash
+        run: |
+          node --version | tee -a "$RUNNER_TEMP/coincall-evidence/toolchain.txt"
+          npm --version | tee -a "$RUNNER_TEMP/coincall-evidence/toolchain.txt"
+      - name: Install dependencies (record missing lockfile)
+        working-directory: apps/coincall-terminal
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f package-lock.json; then
+            echo 'lockfile=present; installer=npm ci' | tee -a "$RUNNER_TEMP/coincall-evidence/source.txt"
+            npm ci --no-audit --no-fund 2>&1 | tee "$RUNNER_TEMP/coincall-evidence/install.log"
+          else
+            echo 'WARNING: lockfile absent; npm install --no-package-lock is non-reproducible. Review required.' | tee -a "$GITHUB_STEP_SUMMARY"
+            echo 'lockfile=absent; reproducibility=limited' | tee -a "$RUNNER_TEMP/coincall-evidence/source.txt"
+            npm install --no-package-lock --no-audit --no-fund 2>&1 | tee "$RUNNER_TEMP/coincall-evidence/install.log"
+          fi
+      - name: CoinCall test + TypeScript/Vite build
+        working-directory: apps/coincall-terminal
+        shell: bash
+        run: npm run check 2>&1 | tee "$RUNNER_TEMP/coincall-evidence/check.log"
+      - name: Frontend evidence artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coincall-react-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coincall-evidence/
+          if-no-files-found: warn
+          retention-days: 14
