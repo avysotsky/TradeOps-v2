@@ -144,6 +144,74 @@ public sealed class DeribitRawBook
         return true;
     }
 
+    /// <summary>
+    /// Depth-limited grouped Deribit channel: every notification is a complete
+    /// bounded book image, not a RAW incremental change. Accept both the
+    /// exchange's [price, amount] levels and [action, price, amount] snapshot
+    /// representation. Never graft a partial grouped image onto prior depth.
+    /// </summary>
+    public bool ApplyGroupedSnapshot(JsonElement update, int depth, out BookView view)
+    {
+        LastFailure = null;
+        view = View("invalid");
+        if (depth != 10 ||
+            update.ValueKind != JsonValueKind.Object ||
+            !update.TryGetProperty("instrument_name", out var instrument) ||
+            instrument.ValueKind != JsonValueKind.String ||
+            instrument.GetString() != _instrument ||
+            !update.TryGetProperty("timestamp", out var time) ||
+            time.ValueKind != JsonValueKind.Number ||
+            !time.TryGetInt64(out var timestamp) || timestamp <= 0 ||
+            !update.TryGetProperty("bids", out var bids) ||
+            !update.TryGetProperty("asks", out var asks) ||
+            bids.ValueKind != JsonValueKind.Array ||
+            asks.ValueKind != JsonValueKind.Array ||
+            bids.GetArrayLength() > depth ||
+            asks.GetArrayLength() > depth ||
+            !TryReadGroupedSide(bids, out var nextBids) ||
+            !TryReadGroupedSide(asks, out var nextAsks))
+        {
+            return Fail(out view, "invalid", "L2_GROUPED_MALFORMED",
+                changeId: Id(update, "change_id"));
+        }
+
+        if (nextBids.Count > 0 && nextAsks.Count > 0 &&
+            nextBids.Max(x => x.Key) >= nextAsks.Min(x => x.Key))
+            return Fail(out view, "crossed", "L2_CROSSED",
+                changeId: Id(update, "change_id"));
+
+        Invalidate();
+        foreach (var level in nextBids) _bids.Add(level.Key, level.Value);
+        foreach (var level in nextAsks) _asks.Add(level.Key, level.Value);
+        _exchangeTs = timestamp;
+        _lastChange = Id(update, "change_id");
+        view = View("synced");
+        return true;
+    }
+
+    private static bool TryReadGroupedSide(JsonElement rows,
+        out Dictionary<decimal, decimal> levels)
+    {
+        levels = new Dictionary<decimal, decimal>();
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Array ||
+                row.GetArrayLength() is not (2 or 3))
+                return false;
+            var parts = row.EnumerateArray().ToArray();
+            var offset = parts.Length == 3 ? 1 : 0;
+            if (offset == 1 &&
+                (parts[0].ValueKind != JsonValueKind.String ||
+                 parts[0].GetString() != "new"))
+                return false;
+            if (!Read(parts[offset], out var price) ||
+                !Read(parts[offset + 1], out var amount) ||
+                price <= 0m || amount <= 0m || !levels.TryAdd(price, amount))
+                return false;
+        }
+        return true;
+    }
+
     private static bool ApplySide(JsonElement levels,
         SortedDictionary<decimal, decimal> side, bool snapshot)
     {
