@@ -50,7 +50,7 @@ test('no legend or raw transport explanation directly underneath the DOM', () =>
   assert.match(info, /<summary>Диагностика рыночного потока<\/summary>/);
   assert.match(info, /Change ID:/);
   assert.match(info, /Сообщений L2:/);
-  assert.match(info, /Δ exchange → local:/);
+  assert.match(info, /Δ exchange → local \(текущая\):/);
   assert.match(info, /Ценовой шаг:/);
 });
 
