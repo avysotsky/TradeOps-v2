@@ -16,12 +16,69 @@ Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private
 |---|---|---|---|---|---|
 | G0-01 | [#57](https://github.com/avysotsky/TradeOps-v2/issues/57), [PR #61](https://github.com/avysotsky/TradeOps-v2/pull/61) | `TradeOps/g0-01-baseline-readiness-audit` @ `10d00a98` | main @ `c7a0d2` | `docs/orchestration/workstreams/G0_01_*` | AUDIT DELIVERABLE ACCEPTED; platform NO-GO; Draft, no merge |
 | B1-01 | [#58](https://github.com/avysotsky/TradeOps-v2/issues/58), [PR #62](https://github.com/avysotsky/TradeOps-v2/pull/62) | `TradeOps/b1-01-oms-domain-identity-contracts` @ `a799aec7` | main @ `c7a0d2` | additive domain/application contracts + named tests + OMS design docs | CONDITIONAL CODE ACCEPT; local 602/602 reported; partial-fill cancel-reject regression required; Draft/no merge |
-| F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63), [VIS #68](https://github.com/avysotsky/TradeOps-v2/issues/68) | `TradeOps/f1-01-deribit-react-van-parity` @ `e1b7c27` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | local 42/42 reported; real-browser VAN screenshots NOT RUN; Draft/no merge |
-| F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64), [VIS #69](https://github.com/avysotsky/TradeOps-v2/issues/69) | `TradeOps/f2-01-coincall-react-workstation` @ `9261e94e` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | local 7/7 reported; real-browser VAN screenshots NOT RUN; Draft/no merge |
+| F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63), [VIS #68](https://github.com/avysotsky/TradeOps-v2/issues/68) | `TradeOps/f1-01-deribit-react-van-parity` @ `f3ecc615` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | new HEAD: browser runner prepared, Node24 exact-SHA + VAN screenshots NOT RUN; Draft/no merge |
+| F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64), [VIS #69](https://github.com/avysotsky/TradeOps-v2/issues/69) | `TradeOps/f2-01-coincall-react-workstation` @ `eb985661` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | new HEAD: 9 tests/18 Chromium assertions declared, Node24 and real screenshots NOT RUN; Draft/no merge |
 
 | CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65), [PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `1ba18fa0` | main @ `c7a0d2` | `scripts/ci/**`, `docs/ci/**` only; zero workflow changes | CODE REVIEW ACCEPT; owner local 651/651 reported, manifests not independently retrieved; Draft/no merge |
 
-| B2-01 | [#67](https://github.com/avysotsky/TradeOps-v2/issues/67) | `TradeOps/b2-01-durable-command-journal` @ `a799aec7` (reserved) | B1 PR #62 HEAD | New OMS persistence/journal types, additive EF migration + dedicated tests/docs | ASSIGNED, NOT STARTED; stacked Draft PR must target B1 branch; no actual dispatch |
+| B2-01 | [#67](https://github.com/avysotsky/TradeOps-v2/issues/67), [PR #70](https://github.com/avysotsky/TradeOps-v2/pull/70) | `TradeOps/b2-01-durable-command-journal` @ `41ddac98` | B1 PR #62 HEAD | New OMS journal, Outbox, Inbox, migration, isolated PG17 tests | BLOCKED: PostgreSQL migration invalid AS $ delimiter; missing-PG tests false-pass; .NET/PG NOT RUN; Draft/no merge |
+
+## Orchestrator status recheck — 2026-10-25
+
+- **B2-01 #70** HEAD `41ddac98c2601025e5c47475fdd57185746dd42b`, base B1 worker branch: six scoped new files. **BLOCKED (CHANGES REQUIRED):** SQL migration `20261025193000_AddOmsDurableJournal.cs` uses invalid PostgreSQL `AS $...# Institutional platform workstream registry — 2026-10-25
+
+**MANDATORY OPERATING POLICY (owner confirmed 2026-10-25): GitHub Actions is FORBIDDEN for TradeOps.** GitHub serves only as Git source, Issues, reviews and Draft PR transport. All acceptance must run locally on the owner's WSL2 Ubuntu / Docker environment at a verified immutable HEAD SHA. The absence of hosted GitHub Checks/Actions must NEVER be treated as a reason to activate Actions or as a permanent acceptance blocker. Actual local tests may still be NOT_RUN until executed and evidenced.
+
+**Owner / orchestrator chat:** orchestrator only; no feature/production code here. The GitHub issues are the authoritative executable worker assignments. **No worker is running solely because an issue or branch exists.** Each worker must be started by the user in a separate new ChatGPT chat.
+
+Master roadmap: [TO-v2-56 Draft PR #56](https://github.com/avysotsky/TradeOps-v2/pull/56) and `INSTITUTIONAL_PLATFORM_MASTER_ROADMAP_2026-10-25.md`.
+Repository: private `avysotsky/TradeOps-v2`.
+Verified main source SHA at assignment: `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`.
+Verified Deribit frontend source SHA (PR #55 HEAD) at assignment: `e4a067c9422845e9dd4579a36a728737f036185f`.
+Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private-read freshness (base #54), #56 master roadmap (base main). They are Draft, **not** merged. F1 stacks on #55 and MUST NOT be merged independently before its ancestor is accepted.
+
+## Reserved worker workstreams
+
+| ID | Issue | Reserved branch | Base | Exclusive file ownership | State |
+|---|---|---|---|---|---|
+| G0-01 | [#57](https://github.com/avysotsky/TradeOps-v2/issues/57), [PR #61](https://github.com/avysotsky/TradeOps-v2/pull/61) | `TradeOps/g0-01-baseline-readiness-audit` @ `10d00a98` | main @ `c7a0d2` | `docs/orchestration/workstreams/G0_01_*` | AUDIT DELIVERABLE ACCEPTED; platform NO-GO; Draft, no merge |
+| B1-01 | [#58](https://github.com/avysotsky/TradeOps-v2/issues/58), [PR #62](https://github.com/avysotsky/TradeOps-v2/pull/62) | `TradeOps/b1-01-oms-domain-identity-contracts` @ `a799aec7` | main @ `c7a0d2` | additive domain/application contracts + named tests + OMS design docs | CONDITIONAL CODE ACCEPT; local 602/602 reported; partial-fill cancel-reject regression required; Draft/no merge |
+| F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63), [VIS #68](https://github.com/avysotsky/TradeOps-v2/issues/68) | `TradeOps/f1-01-deribit-react-van-parity` @ `f3ecc615` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | new HEAD: browser runner prepared, Node24 exact-SHA + VAN screenshots NOT RUN; Draft/no merge |
+| F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64), [VIS #69](https://github.com/avysotsky/TradeOps-v2/issues/69) | `TradeOps/f2-01-coincall-react-workstation` @ `eb985661` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | new HEAD: 9 tests/18 Chromium assertions declared, Node24 and real screenshots NOT RUN; Draft/no merge |
+
+| CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65), [PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `1ba18fa0` | main @ `c7a0d2` | `scripts/ci/**`, `docs/ci/**` only; zero workflow changes | CODE REVIEW ACCEPT; owner local 651/651 reported, manifests not independently retrieved; Draft/no merge |
+
+| B2-01 | [#67](https://github.com/avysotsky/TradeOps-v2/issues/67), [PR #70](https://github.com/avysotsky/TradeOps-v2/pull/70) | `TradeOps/b2-01-durable-command-journal` @ `41ddac98` | B1 PR #62 HEAD | New OMS journal, Outbox, Inbox, migration, isolated PG17 tests | BLOCKED: PostgreSQL migration invalid AS $ delimiter; missing-PG tests false-pass; .NET/PG NOT RUN; Draft/no merge |
+
+ / `DO $...# Institutional platform workstream registry — 2026-10-25
+
+**MANDATORY OPERATING POLICY (owner confirmed 2026-10-25): GitHub Actions is FORBIDDEN for TradeOps.** GitHub serves only as Git source, Issues, reviews and Draft PR transport. All acceptance must run locally on the owner's WSL2 Ubuntu / Docker environment at a verified immutable HEAD SHA. The absence of hosted GitHub Checks/Actions must NEVER be treated as a reason to activate Actions or as a permanent acceptance blocker. Actual local tests may still be NOT_RUN until executed and evidenced.
+
+**Owner / orchestrator chat:** orchestrator only; no feature/production code here. The GitHub issues are the authoritative executable worker assignments. **No worker is running solely because an issue or branch exists.** Each worker must be started by the user in a separate new ChatGPT chat.
+
+Master roadmap: [TO-v2-56 Draft PR #56](https://github.com/avysotsky/TradeOps-v2/pull/56) and `INSTITUTIONAL_PLATFORM_MASTER_ROADMAP_2026-10-25.md`.
+Repository: private `avysotsky/TradeOps-v2`.
+Verified main source SHA at assignment: `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`.
+Verified Deribit frontend source SHA (PR #55 HEAD) at assignment: `e4a067c9422845e9dd4579a36a728737f036185f`.
+Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private-read freshness (base #54), #56 master roadmap (base main). They are Draft, **not** merged. F1 stacks on #55 and MUST NOT be merged independently before its ancestor is accepted.
+
+## Reserved worker workstreams
+
+| ID | Issue | Reserved branch | Base | Exclusive file ownership | State |
+|---|---|---|---|---|---|
+| G0-01 | [#57](https://github.com/avysotsky/TradeOps-v2/issues/57), [PR #61](https://github.com/avysotsky/TradeOps-v2/pull/61) | `TradeOps/g0-01-baseline-readiness-audit` @ `10d00a98` | main @ `c7a0d2` | `docs/orchestration/workstreams/G0_01_*` | AUDIT DELIVERABLE ACCEPTED; platform NO-GO; Draft, no merge |
+| B1-01 | [#58](https://github.com/avysotsky/TradeOps-v2/issues/58), [PR #62](https://github.com/avysotsky/TradeOps-v2/pull/62) | `TradeOps/b1-01-oms-domain-identity-contracts` @ `a799aec7` | main @ `c7a0d2` | additive domain/application contracts + named tests + OMS design docs | CONDITIONAL CODE ACCEPT; local 602/602 reported; partial-fill cancel-reject regression required; Draft/no merge |
+| F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63), [VIS #68](https://github.com/avysotsky/TradeOps-v2/issues/68) | `TradeOps/f1-01-deribit-react-van-parity` @ `f3ecc615` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | new HEAD: browser runner prepared, Node24 exact-SHA + VAN screenshots NOT RUN; Draft/no merge |
+| F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64), [VIS #69](https://github.com/avysotsky/TradeOps-v2/issues/69) | `TradeOps/f2-01-coincall-react-workstation` @ `eb985661` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | new HEAD: 9 tests/18 Chromium assertions declared, Node24 and real screenshots NOT RUN; Draft/no merge |
+
+| CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65), [PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `1ba18fa0` | main @ `c7a0d2` | `scripts/ci/**`, `docs/ci/**` only; zero workflow changes | CODE REVIEW ACCEPT; owner local 651/651 reported, manifests not independently retrieved; Draft/no merge |
+
+| B2-01 | [#67](https://github.com/avysotsky/TradeOps-v2/issues/67), [PR #70](https://github.com/avysotsky/TradeOps-v2/pull/70) | `TradeOps/b2-01-durable-command-journal` @ `41ddac98` | B1 PR #62 HEAD | New OMS journal, Outbox, Inbox, migration, isolated PG17 tests | BLOCKED: PostgreSQL migration invalid AS $ delimiter; missing-PG tests false-pass; .NET/PG NOT RUN; Draft/no merge |
+
+ instead of valid dollar-quote pairs; real PG17 migrations cannot execute as written. `OmsJournalPostgresTests.WithPostgres` silently returns when environment connection absent, yielding false green xUnit; make PostgreSQL acceptance explicit/fail-closed. None of B2 .NET10/PG17 test matrix has been executed. Code review comment posted on PR #70; no merge.
+- **F1 #63** HEAD `f3ecc615dd5a24ff239833a1ec82a6deabbebccf`, existing stacked base #55: browser Playwright capture tool added plus UI/chart/tab code. Old 42/42 Node tests refer to earlier `e1b7c27`; **current** exact HEAD Node24 build & real 1440x900 / 390x844 VAN comparisons **NOT RUN**. Functional VAN parity incomplete (historical OHLC/funding/options/spreads).
+- **F2 #64** HEAD `eb9856610150585ee42f69de54b7c3d6be8b9682`: 2D spreads matrix, mock account/instrument and offline original VAN reference comparison scripts prepared. Old 7/7 refer to previous `9261e94e`; **current** exact HEAD Node24 build/9 unit checks/18 Chromium smoke/1440x900+768x900 screenshot comparison **NOT RUN**. Original VAN JS disabled in safe reference, so these screenshots can only show HTML/CSS layout, not trading parity.
+- Main `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14` unchanged; all PRs remain Draft, GitHub Actions forbidden, MAINNET READ-ONLY, **zero merges authorized**.
 
 ## CI-01 handoff review, 2026-10-25
 
