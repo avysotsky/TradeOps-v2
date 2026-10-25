@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Owner WSL2 only: exact F2 browser capture, reuse CI-01 transport/safety.
 
-No unit-test rerun. CI-01 removes dist, so rebuild only for browser capture.
+Reuse exact-SHA CI evidence, or run unit tests once when the target SHA changes.
+CI-01 removes dist, so build the browser artifact in this isolated run.
 Never qualifies live connectivity, execution or human visual parity.
 """
 from __future__ import annotations
@@ -14,9 +15,9 @@ import sys
 import tempfile
 import zipfile
 
-from local_acceptance import Runner, StaleShaError, utc, git_origin_is_github
+from local_acceptance import Runner, StaleShaError, utc, git_origin_is_github, parse_counts
 
-F2 = "d262c94b384b2df0a4ca5ed9d8054c431c3f0462"
+F2 = "0ba8724dbbe73ffd10200ae108be380c1a24a078"
 F1 = "cd7f06c31206b20d135d595c21791a7f9ff26c85"
 VAN = "702a6f51006be4e9c35c65d21ec7f85c40c5a2d4"
 
@@ -78,10 +79,12 @@ def main():
                     and any(s.get("name") == "React build" and s.get("status") == "PASS"
                             for s in data.get("steps", []))):
                 qualified.append(path)
-        if not qualified:
-            raise RuntimeError("Exact F2 CI PASS evidence missing; no browser qualification")
-        shutil.copyfile(qualified[-1], out / "prior-ci-summary.json")
-        summary["prior_ci_evidence"] = str(qualified[-1])
+        if qualified:
+            shutil.copyfile(qualified[-1], out / "prior-ci-summary.json")
+            summary["prior_ci_evidence"] = str(qualified[-1])
+        else:
+            summary["unit_tests"] = "NOT_RUN"
+        test_command = "" if qualified else "npm test > /results/npm-test.log 2>&1; "
         runner.images["playwright"] = "mcr.microsoft.com/playwright:v1.56.1-noble"
         runner.require_images(["node", "playwright"], out)
         fetch("origin", F2, "f2-fetch.log")
@@ -104,8 +107,16 @@ def main():
                 app = "apps/coincall-terminal"
                 container("node", source, tmp, ["bash", "-euc",
                     f"cd {app}; node --version; npm install --no-package-lock --no-audit --no-fund; "
-                    "npm ls --depth=0; npm run build; cp -a dist /results/dist"],
+                    "npm ls --depth=0; " + test_command + "npm run build; cp -a dist /results/dist"],
                     "build.log", "bridge")
+                if not qualified:
+                    counts = parse_counts(out, "coincall")
+                    summary["test_counts"] = counts
+                    if not (counts.get("available") and counts.get("passed", 0) >= 9
+                            and counts.get("failed") == 0 and counts.get("skipped") == 0
+                            and counts.get("total") == counts.get("passed")):
+                        raise RuntimeError("Node tests missing, skipped or failed")
+                    summary["unit_tests"] = "PASS"
                 for name in ("browser-check.mjs", "serve-static.mjs", "van-browser-parity.mjs"):
                     shutil.copyfile(source / app / "qa" / name, tmp / "browser" / name)
                 container("playwright", source, tmp, ["bash", "-euc",
@@ -177,13 +188,21 @@ test "$smoke" -eq 0 && test "$parity" -eq 0
         with zipfile.ZipFile(archive, "x", zipfile.ZIP_DEFLATED) as z:
             for label, folder in (("F2", out), ("F1", f1)):
                 for pattern in ("summary.json", "status.txt", "prior-ci-summary.json",
-                                "browser.log", "van-parity.log", "build.log", "chromium.log",
+                                "browser.log", "van-parity.log", "build.log", "npm-test.log", "chromium.log",
                                 "ui/*.png", "ui/*.json", "van-ui/*.png", "van-ui/*.json",
                                 "screenshots/*.png", "screenshots/*.json", "screenshots/*.md"):
                     for path in sorted(folder.glob(pattern)):
                         if path.is_file() and not path.is_symlink():
                             z.write(path, label + "/" + str(path.relative_to(folder)))
-        print(json.dumps(summary, indent=2))
+        print(json.dumps({key: summary.get(key) for key in
+                          ("status", "source_sha", "unit_tests", "test_counts",
+                           "capture", "png_count", "visual_parity", "notes")}, indent=2))
+        if summary["status"] != "PASS":
+            for name in ("npm-test.log", "browser.log", "van-parity.log", "chromium.log"):
+                path = out / name
+                if path.exists():
+                    print(name + ":")
+                    print("\\n".join(path.read_text(errors="replace").splitlines()[-25:]))
         print("EVIDENCE_ARCHIVE=" + str(archive), flush=True)
     return 0 if summary["status"] == "PASS" else 1
 
