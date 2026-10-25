@@ -238,6 +238,8 @@ public static class OmsLifecycleContract
         return from switch
         {
             OmsOrderPhase.Created => to is OmsOrderPhase.DispatchPending or OmsOrderPhase.Submitted
+                or OmsOrderPhase.Accepted or OmsOrderPhase.PartiallyFilled
+                or OmsOrderPhase.Filled or OmsOrderPhase.Cancelled or OmsOrderPhase.Rejected
                 or OmsOrderPhase.Unknown,
             OmsOrderPhase.DispatchPending => to is OmsOrderPhase.Submitted or OmsOrderPhase.Accepted
                 or OmsOrderPhase.PartiallyFilled or OmsOrderPhase.Filled or OmsOrderPhase.Rejected
