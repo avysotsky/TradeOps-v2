@@ -110,6 +110,8 @@ try{
       assert.ok(await reactPage.locator('.cc-grid-rowhead').count()>=3);
       await reactPage.locator('.cc-grid-quote').first().click();
       assert.equal(await reactPage.locator('.cc-details .cc-actions button:disabled').count(),2);
+      assert.equal(await reactPage.locator('.cc-modal-book').count(),2);
+      assert.equal(await reactPage.locator('.cc-modal-actions button:disabled').count(),2);
     });
     await snapshot(vanPage,'van-spreads-'+v+'.png','VAN coincall-spreads.html',width,{state:'original static first-paint matrix, scripts removed'});
 
@@ -131,9 +133,9 @@ try{
     await snapshot(vanPage,'van-spread-legs-'+v+'.png','VAN modal original HTML/CSS shell',width,{state:'synthetic two-leg modal content, scripts disabled'});
     await vanPage.locator('#ccSpreadsTradeModal').evaluate(el=>{el.hidden=true;el.style.display='none'});
 
-    await reactPage.locator('.cc-details').scrollIntoViewIfNeeded();
+    await reactPage.locator('.cc-spread-modal').scrollIntoViewIfNeeded();
     await snapshot(reactPage,'react-spreads-legs-'+v+'.png','React compiled Vite',width,{state:'selected spread legs'});
-    await reactPage.getByRole('button',{name:'Close spread details'}).click();
+    await reactPage.getByRole('button',{name:'Close spread dialog'}).click();
     await reactPage.locator('.cc-grid-scroll').scrollIntoViewIfNeeded();
     await snapshot(reactPage,'react-spreads-grid-'+v+'.png','React compiled Vite',width,{state:'unselected spread matrix'});
     const geo={viewport:v,van:{},react:{}};
