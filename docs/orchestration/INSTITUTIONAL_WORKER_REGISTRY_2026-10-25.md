@@ -21,7 +21,7 @@ Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private
 
 | CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65), [PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `1ba18fa0` | main @ `c7a0d2` | `scripts/ci/**`, `docs/ci/**` only; zero workflow changes | CODE REVIEW ACCEPT; owner local 651/651 reported, manifests not independently retrieved; Draft/no merge |
 
-| B2-01 | [#67](https://github.com/avysotsky/TradeOps-v2/issues/67), [PR #70](https://github.com/avysotsky/TradeOps-v2/pull/70) | `TradeOps/b2-01-durable-command-journal` @ `41ddac98` | B1 PR #62 HEAD | New OMS journal, Outbox, Inbox, migration, isolated PG17 tests | BLOCKED: PostgreSQL migration invalid AS $ delimiter; missing-PG tests false-pass; .NET/PG NOT RUN; Draft/no merge |
+| B2-01 | [#67](https://github.com/avysotsky/TradeOps-v2/issues/67), [PR #70](https://github.com/avysotsky/TradeOps-v2/pull/70) | `TradeOps/b2-01-durable-command-journal` @ `2a96c52b` | B1 PR #62 HEAD | New OMS journal, Outbox, Inbox, migration, PG17 tests | SOURCE BLOCKERS FIXED; 19 PG + 5 unit tests written, runtime NOT RUN; awaiting CI-01 local mode #71; Draft/no merge |
 
 ## Orchestrator status recheck — 2026-10-25
 
@@ -79,6 +79,11 @@ Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private
 - **F1 #63** HEAD `f3ecc615dd5a24ff239833a1ec82a6deabbebccf`, existing stacked base #55: browser Playwright capture tool added plus UI/chart/tab code. Old 42/42 Node tests refer to earlier `e1b7c27`; **current** exact HEAD Node24 build & real 1440x900 / 390x844 VAN comparisons **NOT RUN**. Functional VAN parity incomplete (historical OHLC/funding/options/spreads).
 - **F2 #64** HEAD `eb9856610150585ee42f69de54b7c3d6be8b9682`: 2D spreads matrix, mock account/instrument and offline original VAN reference comparison scripts prepared. Old 7/7 refer to previous `9261e94e`; **current** exact HEAD Node24 build/9 unit checks/18 Chromium smoke/1440x900+768x900 screenshot comparison **NOT RUN**. Original VAN JS disabled in safe reference, so these screenshots can only show HTML/CSS layout, not trading parity.
 - Main `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14` unchanged; all PRs remain Draft, GitHub Actions forbidden, MAINNET READ-ONLY, **zero merges authorized**.
+
+## B2 latest review and local test dependency — 2026-10-25
+
+- B2-01 [PR #70](https://github.com/avysotsky/TradeOps-v2/pull/70) updated to `2a96c52b1ec0e5ef425bd87a575f457b794864ab`. Orchestrator verified previously blocking PostgreSQL migration dollar-quotes and no-PG false PASS are fixed in source. 19 real-PG17 `[Fact]` and 5 pure contract cases are present; actual build, migration and runtime tests **NOT RUN**, so PR remains Draft **CONDITIONAL SOURCE ACCEPT / RUNTIME GATE PENDING**.
+- CI-01 follow-up [Issue #71](https://github.com/avysotsky/TradeOps-v2/issues/71), on existing PR #66 branch, owns extending the centralized local WSL2 Ubuntu/Docker runner with B2 exact-SHA mode 70, disposable PG17, .NET10 and evidence report. No changes to GitHub Actions, to the active Windows branch, to ResidentChat services or to B2 source code. Owner triggers one PowerShell block; worker consumes console/log evidence. No merger of B2 before running and reviewing test results.
 
 ## CI-01 handoff review, 2026-10-25
 
