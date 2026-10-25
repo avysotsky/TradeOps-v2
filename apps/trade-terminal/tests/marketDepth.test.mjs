@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toPriceLadder, contractPriceDecimals, formatDomPrice } from '../src/marketDepth.ts';
+import { toPriceLadder, ownOrdersOutsideDepth, contractPriceDecimals, formatDomPrice } from '../src/marketDepth.ts';
 
 test('asks descend toward spread, bids descend away from spread', () => {
   const input = {
@@ -128,4 +128,67 @@ test('missing or malformed contract spec cannot invent price decimals', () => {
     name: 'ETH-PERPETUAL', kind: 'future', tickSize: 0.5,
     tickSizeSteps: [{ abovePrice: 1, tickSize: -1 }]
   }), null);
+});
+
+test('10, 25 and 50 visible levels all come from the same verified market snapshot', () => {
+  const bids = Array.from({ length: 50 }, (_, i) => ({ price: 2500 - i, amount: 1 }));
+  const asks = Array.from({ length: 50 }, (_, i) => ({ price: 2501 + i, amount: 1 }));
+  for (const count of [10, 25, 50]) {
+    const dom = toPriceLadder({ bids, asks }, count);
+    assert.equal(dom.bids.length, count);
+    assert.equal(dom.asks.length, count);
+    assert.equal(dom.bids[0].price, 2500);
+    assert.equal(dom.asks[count - 1].price, 2501);
+    assert.equal(dom.asks[0].price, 2500 + count);
+    assert.equal(dom.bids[count - 1].price, 2501 - count);
+    assert.equal(dom.spread.absolute, 1);
+  }
+  assert.equal(toPriceLadder({ bids, asks }).bids.length, 10,
+    'Default ten levels remain unchanged for compact operator view.');
+  assert.equal(toPriceLadder(null, 50).spread, null,
+    'Invalid RAW feed cannot become valid merely by increasing depth.');
+});
+
+test('own orders beyond ten levels never acquire invented public liquidity', () => {
+  const bids = Array.from({ length: 50 }, (_, i) => ({ price: 2500 - i, amount: 1 }));
+  const asks = Array.from({ length: 50 }, (_, i) => ({ price: 2501 + i, amount: 2 }));
+  const own = [
+    { direction: 'buy', price: 2500, amount: 3, orders: 1 },
+    { direction: 'buy', price: 2480, amount: 4, orders: 2 },
+    { direction: 'sell', price: 2526, amount: 7, orders: 1 },
+    { direction: 'sell', price: 2600, amount: 9, orders: 1 }
+  ];
+  const dom10 = toPriceLadder({ bids, asks }, 10);
+  const outside10 = ownOrdersOutsideDepth(own, dom10);
+  assert.equal(outside10.length, 3);
+  assert.ok(outside10.some(x => x.price === 2480 && x.direction === 'buy'));
+  assert.ok(outside10.some(x => x.price === 2526 && x.direction === 'sell'));
+  assert.ok(outside10.some(x => x.price === 2600));
+  assert.ok(!outside10.some(x => x.price === 2500));
+
+  const dom25 = toPriceLadder({ bids, asks }, 25);
+  const outside25 = ownOrdersOutsideDepth(own, dom25);
+  assert.deepEqual(outside25.map(x => x.price).sort((a, b) => a - b), [2526, 2600]);
+
+  const dom50 = toPriceLadder({ bids, asks }, 50);
+  assert.deepEqual(ownOrdersOutsideDepth(own, dom50).map(x => x.price), [2600],
+    'Even beyond top 50 levels, own order remains visible only in the separate own list.');
+  assert.equal(dom50.bids.length, 50);
+  assert.equal(dom50.asks.length, 50);
+});
+
+test('own price visibility must be both side- and price-exact', () => {
+  const book = toPriceLadder({
+    bids: [{ price: 101, amount: 4 }],
+    asks: [{ price: 102, amount: 5 }]
+  });
+  const own = [
+    { direction: 'sell', price: 101, amount: 1, orders: 1 },
+    { direction: 'buy', price: 102, amount: 1, orders: 1 },
+    { direction: 'sell', price: 102, amount: 1, orders: 1 }
+  ];
+  const outside = ownOrdersOutsideDepth(own, book);
+  assert.equal(outside.length, 2);
+  assert.ok(outside.some(x => x.direction === 'sell' && x.price === 101));
+  assert.ok(outside.some(x => x.direction === 'buy' && x.price === 102));
 });
