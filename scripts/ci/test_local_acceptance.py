@@ -1,6 +1,8 @@
 """CI-01 orchestration unit checks only; these do NOT certify B1/F1/F2 builds."""
 import tempfile
 from pathlib import Path
+from subprocess import CompletedProcess
+from unittest.mock import patch
 import unittest
 from local_acceptance import (Runner, SPECS, git_origin_is_github, parse_ls_remote,
                               parse_counts, StaleShaError)
@@ -22,6 +24,30 @@ class LocalAcceptanceTests(unittest.TestCase):
             parse_ls_remote(out.replace(head, 'b'*40, 1), refs)
         with self.assertRaises(RuntimeError):
             parse_ls_remote(head + '\trefs/pull/62/head\n', refs)
+
+    def test_windows_git_bridge_only_after_wsl_head_lookup_fails(self):
+        with tempfile.TemporaryDirectory() as t:
+            runner = Runner(Path(t), Path(t))
+            runner.windows_git = lambda cmd: ["git.exe", "-C", "D:\\Projects\\TradeOps-v2", *cmd]
+            refs = {"refs/pull/62/head", "refs/heads/" + SPECS[62][0]}
+            content = "".join("a" * 40 + "\\t" + ref + "\\n" for ref in sorted(refs))
+            wsl = CompletedProcess(["git"], 128, "", "fatal: could not read Username")
+            win = CompletedProcess(["git.exe"], 0, content, "")
+            with patch.object(runner, "exec", side_effect=[wsl, win]) as exec_mock:
+                self.assertEqual(runner.remote_sha(62), "a" * 40)
+                self.assertEqual(runner.git_transport[62], "windows-git")
+                self.assertEqual(exec_mock.call_count, 2)
+
+    def test_windows_git_failure_reports_both_errors_without_false_pass(self):
+        with tempfile.TemporaryDirectory() as t:
+            runner = Runner(Path(t), Path(t))
+            runner.windows_git = lambda cmd: ["git.exe", *cmd]
+            with patch.object(runner, "exec", side_effect=[
+                CompletedProcess(["git"], 128, "", "wsl auth unavailable"),
+                CompletedProcess(["git.exe"], 128, "", "windows auth unavailable")
+            ]):
+                with self.assertRaisesRegex(Exception, "Windows git.exe exit 128"):
+                    runner.remote_sha(62)
 
     def test_trx_and_node_tap_counts(self):
         with tempfile.TemporaryDirectory() as t:
