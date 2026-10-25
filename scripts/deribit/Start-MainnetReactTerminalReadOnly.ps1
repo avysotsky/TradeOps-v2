@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $Repo -PathType Container)) {
     throw 'TRADEOPS_REPOSITORY_NOT_FOUND'
 }
 
-$branch = 'TradeOps/to-v2-45-dom-last-mark-index-spec-tick'
+$branch = 'TradeOps/to-v2-46-live-own-orders-dom'
 $vaultDir = Join-Path $env:LOCALAPPDATA 'TradeOps\Credentials'
 $vault = Join-Path $vaultDir 'Deribit.Mainnet.ReadOnly.dpapi.json'
 $dotnetFound = Get-Command dotnet.exe -ErrorAction SilentlyContinue
