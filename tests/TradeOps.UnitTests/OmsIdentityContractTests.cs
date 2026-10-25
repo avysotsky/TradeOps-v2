@@ -38,7 +38,8 @@ public sealed class OmsIdentityContractTests
     {
         var a = new ScopedExecutionId(Scope(), new ExecutionNamespace("FIX:sender->target:session-1"),
             new ExecutionKey("123"));
-        var b = a with { Namespace = new ExecutionNamespace("FIX:sender->target:session-2") };
+        var b = new ScopedExecutionId(Scope(),
+            new ExecutionNamespace("FIX:sender->target:session-2"), a.ExecutionId);
         var c = new ScopedExecutionId(Scope(account: "alt"), a.Namespace, a.ExecutionId);
         var d = new ScopedExecutionId(Scope(venue: "CoinCall"), a.Namespace, a.ExecutionId);
         Assert.Equal(4, new[] { a, b, c, d }.Distinct().Count());
