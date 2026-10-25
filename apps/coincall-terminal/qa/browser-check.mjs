@@ -49,7 +49,12 @@ try {
     await check(width + ' two-leg buttons inert',async()=>{
       await page.locator('.cc-grid-quote').first().click();
       assert.equal(await page.locator('.cc-details .cc-actions button').count(),2);
+      assert.equal(await page.getByRole('dialog',{name:/CoinCall Futures Spread/}).count(),1);
+      assert.equal(await page.locator('.cc-modal-book').count(),2);
+      assert.equal(await page.locator('.cc-modal-actions button:disabled').count(),2);
+      assert.equal(await page.locator('.cc-modal-book .cc-bookrow').count(),44);
       for (const item of await page.locator('.cc-details .cc-actions button').all()) assert.equal(await item.isDisabled(),true);
+      await page.getByRole('button',{name:'Close spread dialog'}).click();
       await page.getByRole('button',{name:'Table',exact:true}).click();
       assert.ok(await page.locator('table.cc-spreadtable tbody tr').count()>=5);
       await page.getByRole('button',{name:'Grid',exact:true}).click();
