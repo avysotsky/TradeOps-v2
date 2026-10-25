@@ -372,3 +372,140 @@ class Runner:
             if not self.step(summary, "explicit VAN layout test", van, out, "van-layout.log", 600): return
         self.step(summary, "React build", npm(["run", "build"]), out, "react-build.log", 1200)
 
+    def run_one(self, number: int) -> dict:
+        branch, gate = SPECS[number]
+        print(f"\nPR #{number} ({gate}): fetching exact current GitHub HEAD", flush=True)
+        started = utc()
+        result = {"schema_version": 1, "pr": number, "branch": branch, "gate": gate,
+                  "source_sha": None, "remote_sha_before": None, "remote_sha_after": None,
+                  "started_utc": started, "completed_utc": None, "status": "NOT_RUN",
+                  "steps": [], "tool_versions": {}, "images": {}, "test_counts": None,
+                  "postgres_mock_smoke": "NOT_RUN" if gate == "backend" else "NOT_APPLICABLE",
+                  "notes": [], "safety": {"exchange_provider": "Mock", "mainnet_execution_enabled": False,
+                                           "published_ports": False, "global_docker_cleanup": False}}
+        source_sha = "unresolved-" + self.run_id
+        try:
+            try:
+                source_sha = self.remote_sha(number)
+                result["source_sha"] = result["remote_sha_before"] = source_sha
+            except StaleShaError:
+                result["status"] = "STALE_SHA"
+                raise
+            out = self.result_root / f"pr-{number}" / source_sha
+            out.mkdir(parents=True, exist_ok=True)
+            if (out / "summary.json").exists():
+                out = out / self.run_id
+                out.mkdir(parents=True, exist_ok=True)
+            result["results_path"] = str(out)
+            # Worktrees/caches on WSL's Linux filesystem; no Windows NTFS build writes.
+            (self.result_root / ".scratch").mkdir(exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix=f"ci01-pr{number}-", dir=self.result_root / ".scratch") as td:
+                tmp = Path(td)
+                worktree = tmp / "source"
+                (tmp / "home").mkdir()
+                (tmp / "npm").mkdir()
+                (tmp / "nuget").mkdir()
+                if self.exec(["git", "-C", str(self.repo), "fetch", "--no-tags", "--no-write-fetch-head", "origin", source_sha],
+                             out / "git-fetch.log", 180).returncode:
+                    raise EnvironmentErrorCI("Fetch of exact GitHub HEAD failed")
+                if self.exec(["git", "-C", str(self.repo), "worktree", "add", "--detach", str(worktree), source_sha],
+                             out / "git-worktree.log", 180).returncode:
+                    raise EnvironmentErrorCI("Cannot create isolated detached worktree")
+                try:
+                    checked = self.exec(["git", "-C", str(worktree), "rev-parse", "HEAD"], quiet=True)
+                    if checked.returncode or checked.stdout.strip() != source_sha:
+                        raise StaleShaError("Local detached checkout has unexpected SHA")
+                    result["checked_out_sha"] = checked.stdout.strip()
+                    if gate == "backend": self.backend(result, worktree, tmp, out)
+                    else: self.frontend(gate, result, worktree, tmp, out)
+                finally:
+                    # Only our detached worktree may be removed. Keep evidence outside temp.
+                    self.exec(["git", "-C", str(self.repo), "worktree", "remove", "--force", str(worktree)],
+                              out / "git-worktree-cleanup.log", 120)
+            result["test_counts"] = parse_counts(out, gate)
+            if not result["steps"] or any(step["status"] == "FAIL" for step in result["steps"]):
+                result["status"] = "FAIL"
+            elif gate == "backend" and result["postgres_mock_smoke"] != "PASS":
+                result["status"] = "FAIL"
+            elif gate == "backend" and not result["test_counts"]["available"]:
+                result["status"] = "FAIL"
+                result["notes"].append("TRX missing; no independently confirmed xUnit test count")
+            elif gate != "backend" and not result["test_counts"]["available"]:
+                result["status"] = "FAIL"
+                result["notes"].append("TAP totals unavailable")
+            elif any(step["name"] == "React build" and step["status"] == "PASS" for step in result["steps"]) or gate == "backend":
+                result["status"] = "PASS"
+            else:
+                result["status"] = "FAIL"
+        except EnvironmentErrorCI as exc:
+            result["status"] = "BLOCKED_ENV"
+            result["notes"].append(str(exc))
+        except StaleShaError as exc:
+            result["status"] = "STALE_SHA"
+            result["notes"].append(str(exc))
+        except (ValueError, OSError, RuntimeError, json.JSONDecodeError, KeyError) as exc:
+            result["status"] = "FAIL"
+            result["notes"].append(f"{type(exc).__name__}: {exc}")
+        finally:
+            if result["test_counts"] is None and result.get("results_path"):
+                result["test_counts"] = parse_counts(Path(result["results_path"]), gate)
+            try:
+                current = self.remote_sha(number)
+                result["remote_sha_after"] = current
+                if result["source_sha"] and current != result["source_sha"]:
+                    result["status"] = "STALE_SHA"
+                    result["notes"].append("PR HEAD moved during acceptance; results cannot qualify current HEAD")
+            except (StaleShaError, EnvironmentErrorCI) as exc:
+                if result["status"] == "PASS": result["status"] = "BLOCKED_ENV"
+                result["notes"].append(f"Cannot revalidate live PR HEAD: {exc}")
+            result["completed_utc"] = utc()
+            result["images"] = {key: self.image_info[key] for key in
+                                  (["dotnet", "postgres", "curl"] if gate == "backend" else ["node"])
+                                  if key in self.image_info}
+            out = Path(result.get("results_path", self.result_root / f"pr-{number}" / source_sha))
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "summary.json").write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+            print(f"PR #{number}: {result['status']} at {result['source_sha']} | {out / 'summary.json'}", flush=True)
+        return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Local TradeOps exact PR-HEAD WSL2/Docker acceptance")
+    parser.add_argument("target", nargs="?", default="all", choices=["all", "62", "63", "64"])
+    parser.add_argument("repo", nargs="?", default=str(Path(__file__).resolve().parents[2]))
+    parser.add_argument("--results-dir", default=str(Path.home() / "tradeops-acceptance-results"))
+    args = parser.parse_args()
+    repo = Path(args.repo).expanduser().resolve()
+    dest = Path(args.results_dir).expanduser().resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    os.chmod(dest, 0o700)
+    for binary in ("git", "docker"):
+        if not shutil.which(binary):
+            print(f"BLOCKED_ENV: {binary} is not on Ubuntu PATH", file=sys.stderr)
+            if binary == "git":
+                return 2
+    origin = subprocess.run(["git", "-C", str(repo), "remote", "get-url", "origin"],
+                            capture_output=True, text=True, check=False)
+    if origin.returncode or not git_origin_is_github(origin.stdout.strip()):
+        print("BLOCKED_ENV: origin must be canonical github.com/avysotsky/TradeOps-v2 (no tokens in URL)", file=sys.stderr)
+        return 2
+    engine = Runner(repo, dest)
+    if engine.docker(["info", "--format", "{{.ServerVersion}}"], quiet=True).returncode:
+        print("BLOCKED_ENV: WSL Docker daemon is not reachable", file=sys.stderr)
+    targets = list(SPECS) if args.target == "all" else [int(args.target)]
+    results = [engine.run_one(pr) for pr in targets]
+    aggregate = {"schema_version": 1, "run_id": engine.run_id, "created_utc": utc(),
+                 "results": [{"pr": r["pr"], "sha": r["source_sha"], "status": r["status"],
+                              "summary": str(Path(r.get("results_path", dest / f"pr-{r['pr']}" / (r["source_sha"] or "unresolved"))) / "summary.json")}
+                             for r in results]}
+    report = dest / f"acceptance-{engine.run_id}.json"
+    report.write_text(json.dumps(aggregate, indent=2, ensure_ascii=False) + "\n")
+    print("\nFINAL SUMMARY", flush=True)
+    for r in results:
+        print(f"  PR #{r['pr']}: {r['status']} | {r['source_sha']} | tests={r['test_counts']}", flush=True)
+    print("Aggregate report:", report, flush=True)
+    return 0 if all(r["status"] == "PASS" for r in results) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
