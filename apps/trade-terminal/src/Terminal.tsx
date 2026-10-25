@@ -835,7 +835,7 @@ export default function DeribitTerminal() {
                     <span className="caption">EQUITY</span><strong>{num(a.equity, 6)}</strong>
                     <div><span>Balance</span><b>{num(a.balance, 6)}</b></div>
                     <div><span>Available funds</span><b>{num(a.availableFunds, 6)}</b></div>
-                  </div>))}
+                  </div>)}
                 </div>
               </section>
             </div>
