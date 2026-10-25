@@ -12,10 +12,14 @@ Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private
 
 | ID | Issue | Reserved branch | Base | Exclusive file ownership | State |
 |---|---|---|---|---|---|
-| G0-01 | [#57](https://github.com/avysotsky/TradeOps-v2/issues/57) | `TradeOps/g0-01-baseline-readiness-audit` | main @ `c7a0d2` | `docs/orchestration/workstreams/G0_01_*` | ASSIGNED; NOT STARTED |
-| B1-01 | [#58](https://github.com/avysotsky/TradeOps-v2/issues/58) | `TradeOps/b1-01-oms-domain-identity-contracts` | main @ `c7a0d2` | additive domain/application contracts + named tests + OMS design docs | ASSIGNED; NOT STARTED |
-| F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59) | `TradeOps/f1-01-deribit-react-van-parity` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | ASSIGNED; NOT STARTED |
-| F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60) | `TradeOps/f2-01-coincall-react-workstation` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | ASSIGNED; NOT STARTED |
+| G0-01 | [#57](https://github.com/avysotsky/TradeOps-v2/issues/57), [PR #61](https://github.com/avysotsky/TradeOps-v2/pull/61) | `TradeOps/g0-01-baseline-readiness-audit` @ `10d00a98` | main @ `c7a0d2` | `docs/orchestration/workstreams/G0_01_*` | AUDIT DELIVERABLE ACCEPTED; platform NO-GO; Draft, no merge |
+| B1-01 | [#58](https://github.com/avysotsky/TradeOps-v2/issues/58), [PR #62](https://github.com/avysotsky/TradeOps-v2/pull/62) | `TradeOps/b1-01-oms-domain-identity-contracts` @ `814f7ea5` | main @ `c7a0d2` | additive domain/application contracts + named tests + OMS design docs | REVIEWED; build and test evidence REQUIRED; Draft, no merge |
+| F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63) | `TradeOps/f1-01-deribit-react-van-parity` @ `246bd259` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | REVIEWED; React build and screenshots REQUIRED; Draft, no merge |
+| F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64) | `TradeOps/f2-01-coincall-react-workstation` @ `4322c8aa` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | REVIEWED; 4/4 local Node tests self-reported, Vite build and screenshot evidence REQUIRED; Draft, no merge |
+
+## 2026-10-25 orchestration check
+
+All four assigned workers submitted separate Draft PRs, each with correct base and no out-of-scope paths. `main` remains `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`. The GitHub status/check and PR-triggered workflow APIs returned **no exact-HEAD CI** for #61–#64. Orchestrator posted reviews on all four Draft PRs: G0 report accepted as a *documentation audit only*, keeping its institutional execution NO-GO; B1 contract code awaits actual .NET 10 compilation and tests; F1 awaits Node build/tests and exact browser comparison; F2 awaits Vite TypeScript build and actual browser comparison (self-reported pure test 4/4 is not CI). **0 merges authorized.** Next prerequisite: repair .NET 8 vs net10 CI toolchain and run pinned exact-HEAD acceptance.
 
 ## Dependency and noncollision protocol
 - G0 is the *first acceptance gate* for B1 merge, frontend integration and subsequent B2/B3/FIX. B1 may prepare purely additive contracts while G0 runs; no risk-affecting behavior until G0 accepted.
