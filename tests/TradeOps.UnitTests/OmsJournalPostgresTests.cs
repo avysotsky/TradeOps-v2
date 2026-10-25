@@ -284,7 +284,7 @@ public sealed class OmsJournalPostgresTests
                 "SELECT to_regclass('public.oms_commands')", connection);
             Assert.Null(await check.ExecuteScalarAsync());
             await using var legacy = new NpgsqlCommand(
-                "SELECT to_regclass('public.\\\"Orders\\\"')", connection);
+                @"SELECT to_regclass('public.""Orders""')", connection);
             Assert.NotNull(await legacy.ExecuteScalarAsync());
         });
     }
