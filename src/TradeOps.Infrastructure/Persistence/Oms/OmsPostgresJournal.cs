@@ -1,4 +1,7 @@
 using System.Data;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 using TradeOps.Application.Oms;
@@ -51,15 +54,12 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
-        await using (var seed = Command("""
-INSERT INTO oms_aggregates(tenant_id,venue_id,environment,account_id,subaccount_id,aggregate_id)
-VALUES (@tenant,@venue,@environment,@account,@subaccount,@aggregate)
-ON CONFLICT DO NOTHING
-""", db, tx, request.Scope))
-        {
-            seed.Parameters.AddWithValue("aggregate", request.LocalOrderId.Value);
-            await seed.ExecuteNonQueryAsync(cancellationToken);
-        }
+        // Transaction-scoped, account-scoped arbitration. Locks have NO execution authority.
+        // Command lock ensures same-ID races are compared, never failed by a unique error.
+        // Intent lock serializes same intent racing across different aggregate identities.
+        // Hash collisions only serialize unrelated work; database constraints remain authoritative.
+        await LockIdAsync(db, tx, request.Scope, "Command", request.CommandId.Value, cancellationToken);
+        await LockIdAsync(db, tx, request.Scope, "Intent", request.IntentId.Value, cancellationToken);
 
         var known = await ReadDigestAsync(db, tx, request.Scope, request.CommandId.Value,
             cancellationToken);
@@ -89,6 +89,16 @@ SELECT aggregate_id FROM oms_intents WHERE {ScopeWhere} AND intent_id=@intent
                 await tx.CommitAsync(cancellationToken);
                 return OmsJournalWriteResult.Collision;
             }
+        }
+
+        await using (var seed = Command("""
+INSERT INTO oms_aggregates(tenant_id,venue_id,environment,account_id,subaccount_id,aggregate_id)
+VALUES (@tenant,@venue,@environment,@account,@subaccount,@aggregate)
+ON CONFLICT DO NOTHING
+""", db, tx, request.Scope))
+        {
+            seed.Parameters.AddWithValue("aggregate", request.LocalOrderId.Value);
+            await seed.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await using (var intent = Command("""
@@ -362,6 +372,23 @@ RETURNING generation
         cmd.Parameters.AddWithValue("owner", ownerId);
         cmd.Parameters.AddWithValue("seconds", duration.TotalSeconds);
         return (long?)await cmd.ExecuteScalarAsync(cancellationToken);
+    }
+
+    private static async Task LockIdAsync(NpgsqlConnection db, NpgsqlTransaction tx,
+        AccountKey scope, string role, Guid id, CancellationToken ct)
+    {
+        var lockScope = JsonSerializer.Serialize(new[]
+        {
+            "OMS-B2-v1", role, scope.Tenant.Value, scope.Venue.Value,
+            ((int)scope.Environment).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            scope.Account.Value, scope.Subaccount?.Value ?? "", id.ToString("N")
+        });
+        var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(lockScope));
+        var lockId = BinaryPrimitives.ReadInt64BigEndian(hash.AsSpan(0, sizeof(long)));
+        await using var command = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(@lock_key)", db, tx);
+        command.Parameters.AddWithValue("lock_key", lockId);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task<byte[]?> ReadDigestAsync(NpgsqlConnection db, NpgsqlTransaction tx,
