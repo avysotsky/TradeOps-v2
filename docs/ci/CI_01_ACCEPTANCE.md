@@ -115,7 +115,7 @@ First full owner WSL2/Docker run: aggregate `acceptance-20261025T165017Z-e9c46a.
 
 **Parser correction:** Node.js emits test totals in TAP (`# tests 4`) or the human-readable spec reporter (`ℹ tests 4`). Previously the parser accepted TAP **only**, causing a false negative where shell commands exited successfully but counts remained zero. It now parses **both**, handles ANSI escape codes, records per-log totals and fails closed if required suite summaries remain unavailable. Local source-only parser tests include TAP, spec, ANSI, malformed/missing test summaries, and Deribit two-suite integrity; these do **not** replace an owner-local rerun. The original FAIL records must not be overwritten or retroactively declared PASS without parsing their saved logs.
 
-For an updated acceptance status, rerun the **same owner PowerShell-to-WSL bootstrap** from this PR (it fetches the latest CI-01 branch); the script checks current PR HEADs again and saves a *new*, separate evidence run. The original backend PASS stands as historical evidence for its tested SHA, subject to the PR HEAD remaining unchanged.
+For an updated frontend acceptance status, rerun the **same owner PowerShell-to-WSL bootstrap** from this PR, but change `python3 $wslScript all $wslRepo` to `python3 $wslScript frontends $wslRepo`. This runs **only F1 #63 and F2 #64**, queries their current GitHub HEADs, and writes a new evidence file without repeating all 602 backend tests. The original B1 PASS stands as historical evidence for its tested SHA, subject to the PR HEAD remaining unchanged. For the entire matrix, keep the original `all` argument.
 
 ## Evidence
 
