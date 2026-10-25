@@ -54,7 +54,10 @@ try {
       assert.equal(await page.locator('.cc-modal-actions button:disabled').count(),2);
       assert.equal(await page.locator('.cc-modal-book .cc-bookrow').count(),44);
       for (const item of await page.locator('.cc-details .cc-actions button').all()) assert.equal(await item.isDisabled(),true);
-      await page.getByRole('button',{name:'Close spread dialog'}).click();
+      await page.keyboard.press('Tab');
+      assert.equal(await page.evaluate(()=>document.querySelector('.cc-spread-modal')?.contains(document.activeElement)),true);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.getByRole('dialog').count(),0);
       await page.getByRole('button',{name:'Table',exact:true}).click();
       assert.ok(await page.locator('table.cc-spreadtable tbody tr').count()>=5);
       await page.getByRole('button',{name:'Grid',exact:true}).click();
