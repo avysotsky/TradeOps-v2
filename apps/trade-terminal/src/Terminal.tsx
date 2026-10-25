@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { toPriceLadder, ownOrdersOutsideDepth, contractPriceDecimals, formatDomPrice, type DomDepth, type InstrumentTickSpecification } from './marketDepth';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
@@ -168,6 +168,8 @@ export default function DeribitTerminal() {
   const [universeCount, setUniverseCount] = useState(0);
   const [book, setBook] = useState<OrderBook | null>(null);
   const [domDepth, setDomDepth] = useState<DomDepth>(10);
+  const ladderScrollRef = useRef<HTMLDivElement | null>(null);
+  const ladderCenterRef = useRef<HTMLDivElement | null>(null);
   const [ownOrders, setOwnOrders] = useState<OwnOrders | null>(null);
 
   const [tape, setTape] = useState<TradeTape | null>(null);
@@ -263,6 +265,20 @@ export default function DeribitTerminal() {
       : [],
     [ownOrders, marketInstrument, streamState, dom]
   );
+  // Center best bid/ask around Last/Mark/Index on depth switches or first
+  // valid snapshot. Do not re-center on each live RAW book update: that would
+  // fight operator scrolling in 25/50-level mode.
+  const ladderReady = streamState === 'synced' &&
+    dom.asks.length > 0 && dom.bids.length > 0;
+  useEffect(() => {
+    if (!ladderReady) return;
+    const scroll = ladderScrollRef.current;
+    const center = ladderCenterRef.current;
+    if (!scroll || !center) return;
+    scroll.scrollTop = Math.max(0,
+      center.offsetTop - (scroll.clientHeight - center.clientHeight) / 2);
+  }, [domDepth, marketInstrument, ladderReady]);
+
   // Display precision is fixed by the selected instrument specification.
   // Never derive a number of decimals from spread or observed market prices.
   const priceDecimals = useMemo(
@@ -756,7 +772,8 @@ export default function DeribitTerminal() {
                     Объём рынка по этим ценам здесь не предполагается.</p>
                 </details>
               )}
-              <div className="dom-ladder" aria-label={'Вертикальный стакан ' + marketInstrument}>
+              <div className="dom-ladder" ref={ladderScrollRef}
+                aria-label={'Вертикальный стакан ' + marketInstrument}>
                 <div className="dom-head">
                   <span>Цена</span><span>Объём</span><span>Совокупный</span>
                 </div>
@@ -785,7 +802,7 @@ export default function DeribitTerminal() {
                   ))}
                   {dom.asks.length === 0 && <p className="dom-empty">Ожидаем синхронизацию Ask</p>}
                 </div>
-                <div className="dom-reference-prices"
+                <div ref={ladderCenterRef} className="dom-reference-prices"
                   aria-label="Последняя сделка, маркировочная и индексная цены Deribit">
                   <div className="dom-reference-value">
                     <span>Last Trade Price</span>
