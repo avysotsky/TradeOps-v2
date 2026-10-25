@@ -111,7 +111,7 @@ def trx_totals(directory: Path) -> dict:
 
 def b2_qualified(suites: dict) -> bool:
     """No xUnit filter may quietly skip PostgreSQL cases or contract cases."""
-    expected = {"postgres": 19, "contracts": 5, "full": 24}
+    expected = {"postgres": 19, "contracts": 5, "full": 626}
     for name, minimum in expected.items():
         counts = suites.get(name)
         if not counts or not counts.get("available"):
@@ -466,7 +466,7 @@ class Runner:
                     shutil.copyfile(artifact, target)
                 counts = trx_totals(evidence_dir)
                 summary["b2_suites"][suite] = counts
-                minimum = 19 if suite == "postgres" else 5 if suite == "contracts" else 24
+                minimum = 19 if suite == "postgres" else 5 if suite == "contracts" else 626
                 if (not passed or not counts["available"] or counts["passed"] < minimum
                         or counts["failed"] != 0 or counts["skipped"] != 0
                         or counts["passed"] != counts["total"]):
