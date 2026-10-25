@@ -201,3 +201,40 @@ jobs:
           path: ${{ runner.temp }}/coincall-evidence/
           if-no-files-found: warn
           retention-days: 14
+
+  finalize:
+    name: Final gate + revalidate live PR HEAD
+    needs: [validate, backend, deribit, coincall]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Refuse stale, skipped, failed or incomplete selected gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request }}
+          EXPECTED_SHA: ${{ inputs.head_sha }}
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          DERIBIT_RESULT: ${{ needs.deribit.result }}
+          COINCALL_RESULT: ${{ needs.coincall.result }}
+        run: |
+          set -euo pipefail
+          [[ "$VALIDATION_RESULT" == success ]] || { echo 'Preflight validation did not pass.' >&2; exit 1; }
+          case "$PR_NUMBER" in
+            62) result="$BACKEND_RESULT" ;;
+            63) result="$DERIBIT_RESULT" ;;
+            64) result="$COINCALL_RESULT" ;;
+            *) exit 1 ;;
+          esac
+          [[ "$result" == success ]] || { echo "Selected gate is $result (not PASS)." >&2; exit 1; }
+          live_sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+          [[ "$live_sha" == "$EXPECTED_SHA" ]] || {
+            echo "PR HEAD changed during the run: $live_sha. The prior result is STALE." >&2
+            exit 1
+          }
+          echo "PASS: selected gate completed and PR #$PR_NUMBER still points to $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo 'This gate proves build/test only, not browser screenshot parity or trading readiness.' >> "$GITHUB_STEP_SUMMARY"
