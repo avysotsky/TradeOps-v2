@@ -131,6 +131,7 @@ class Runner:
                        for k, v in IMAGES.items()}
         # Never import host exchange keys, auth tokens, .env files or Docker env files.
         self.image_info: dict[str, dict] = {}
+        self.docker_engine_version: str | None = None
 
     def exec(self, args: list[str], log: Path | None = None, timeout: int = 600,
              cwd: Path | None = None, quiet: bool = False) -> subprocess.CompletedProcess:
@@ -226,6 +227,12 @@ class Runner:
 
     def backend(self, summary: dict, source: Path, temp: Path, out: Path):
         self.require_images(["dotnet", "postgres", "curl"], out)
+        pg_ver = ["docker", "run", "--rm", "--network", "none", self.images["postgres"], "postgres", "--version"]
+        if not self.step(summary, "PostgreSQL version", pg_ver, out, "postgres-version.log", 120):
+            return
+        summary["tool_versions"]["postgres"] = (out / "postgres-version.log").read_text().strip()
+        if not summary["tool_versions"]["postgres"].startswith("postgres (PostgreSQL) 17."):
+            raise EnvironmentErrorCI("Expected PostgreSQL 17 container, got different version")
         sdk_file = source / "global.json"
         expected = json.loads(sdk_file.read_text())["sdk"]["version"]
         summary["sdk_expected"] = expected
@@ -405,7 +412,7 @@ class Runner:
         result = {"schema_version": 1, "pr": number, "branch": branch, "gate": gate,
                   "source_sha": None, "remote_sha_before": None, "remote_sha_after": None,
                   "started_utc": started, "completed_utc": None, "status": "NOT_RUN",
-                  "steps": [], "tool_versions": {}, "images": {}, "test_counts": None,
+                  "steps": [], "tool_versions": {"docker_engine": self.docker_engine_version}, "images": {}, "test_counts": None,
                   "postgres_mock_smoke": "NOT_RUN" if gate == "backend" else "NOT_APPLICABLE",
                   "cleanup_complete": True,
                   "notes": [], "safety": {"exchange_provider": "Mock", "mainnet_execution_enabled": False,
@@ -525,8 +532,11 @@ def main() -> int:
         print("BLOCKED_ENV: origin must be canonical github.com/avysotsky/TradeOps-v2 (no tokens in URL)", file=sys.stderr)
         return 2
     engine = Runner(repo, dest)
-    if engine.docker(["info", "--format", "{{.ServerVersion}}"], quiet=True).returncode:
+    docker_info = engine.docker(["info", "--format", "{{.ServerVersion}}"], quiet=True)
+    if docker_info.returncode:
         print("BLOCKED_ENV: WSL Docker daemon is not reachable", file=sys.stderr)
+    else:
+        engine.docker_engine_version = docker_info.stdout.strip()
     targets = list(SPECS) if args.target == "all" else [int(args.target)]
     results = [engine.run_one(pr) for pr in targets]
     aggregate = {"schema_version": 1, "run_id": engine.run_id, "created_utc": utc(),
