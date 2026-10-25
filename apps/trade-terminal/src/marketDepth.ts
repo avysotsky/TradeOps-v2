@@ -68,49 +68,49 @@ export function toPriceLadder(
 }
 
 /**
- * One immutable decimal scale for EVERY price printed in the same snapshot:
- * all ask/bid levels, midpoint and absolute spread. Deribit instrument tick
- * size (when present) sets the lower bound. Observed market prices may demand
- * extra digits, especially midpoint at a half-tick.
+ * Precision is defined ONLY by the selected Deribit contract specification
+ * (public/get_instrument tick_size and optional tick_size_steps).
  *
- * The original exchange values remain Numbers in the data model. Formatting
- * affects the UI only; no rounding is used in trading or L2 reconstruction.
+ * Never infer decimals from mid-price, mark/index, spread or visible levels.
+ * If exact metadata is absent, fail closed with an unavailable price display
+ * instead of silently inventing another tick increment.
  */
-function observedDecimals(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  // toFixed removes binary floating-point tails introduced by midpoint math;
-  // 8 places is the terminal's present supported DOM precision.
-  const fixed = Math.abs(value).toFixed(8);
-  const fractional = fixed.split('.')[1] ?? '';
-  return fractional.replace(/0+$/, '').length;
+export type InstrumentTickSpecification = {
+  name: string;
+  kind: 'future' | 'option';
+  tickSize: number;
+  tickSizeSteps: { abovePrice: number; tickSize: number }[];
+};
+
+function tickDecimals(tick: number): number | null {
+  if (!Number.isFinite(tick) || tick <= 0) return null;
+  const [coefficient, exponentText] = tick.toString().toLowerCase().split('e');
+  const exponent = exponentText ? Number(exponentText) : 0;
+  const fraction = coefficient.split('.')[1]?.length ?? 0;
+  const decimalPlaces = Math.max(0, fraction - exponent);
+  return Number.isInteger(decimalPlaces) && decimalPlaces <= 12
+    ? decimalPlaces : null;
 }
 
-export function domPriceDecimals(
-  ladder: PriceLadder,
-  tickSize: number | null | undefined,
-  kind: 'future' | 'option'
-): number {
-  const numbers = [
-    // Reserve precision for a half-tick midpoint even when the CURRENT
-    // bid/ask midpoint happens to sit on a whole tick. This prevents
-    // visual decimal-width jumps as market spread changes over time.
-    ...(tickSize && tickSize > 0 && Number.isFinite(tickSize)
-      ? [tickSize, tickSize / 2] : []),
-    ...ladder.asks.map(level => level.price),
-    ...ladder.bids.map(level => level.price),
-    ...(ladder.spread ? [ladder.spread.mid, ladder.spread.absolute] : [])
+export function contractPriceDecimals(
+  specification: InstrumentTickSpecification | null
+): number | null {
+  if (!specification || !Array.isArray(specification.tickSizeSteps)) return null;
+  const sizes = [
+    specification.tickSize,
+    ...specification.tickSizeSteps.map(step => step.tickSize)
   ];
-  // An absent instrument descriptor must not cause per-row variation.
-  // Futures carry at least one fractional digit; options at least four.
-  const base = kind === 'option' ? 4 : 1;
-  return Math.min(8, Math.max(base, ...numbers.map(observedDecimals)));
+  const decimals = sizes.map(tickDecimals);
+  if (decimals.some(digits => digits === null)) return null;
+  return Math.max(...(decimals as number[]));
 }
 
-export function formatDomPrice(value: number, decimals: number): string {
-  if (!Number.isFinite(value)) return '—';
-  const places = Math.max(0, Math.min(8, Math.floor(decimals)));
+export function formatDomPrice(value: number | null | undefined, decimals: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value) ||
+      decimals === null || !Number.isInteger(decimals) || decimals < 0 || decimals > 12)
+    return '—';
   return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: places,
-    maximumFractionDigits: places
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
   }).format(value);
 }
