@@ -349,8 +349,9 @@ public sealed class OmsJournalPostgresTests
                 "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname='oms_commands' AND relkind='r')", connection);
             Assert.False((bool)(await check.ExecuteScalarAsync() ?? true));
             await using var legacy = new NpgsqlCommand(
-                @"SELECT to_regclass('public.""Orders""')", connection);
-            Assert.NotNull(await legacy.ExecuteScalarAsync());
+                "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname='Orders' AND relkind='r')",
+                connection);
+            Assert.True((bool)(await legacy.ExecuteScalarAsync() ?? false));
         });
     }
 
