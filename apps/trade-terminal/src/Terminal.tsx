@@ -572,10 +572,10 @@ export default function DeribitTerminal() {
     if (epoch === null) return;
     const controller = new AbortController();
     pendingPrivateAbort.current = controller;
+    const deadline = window.setTimeout(() => controller.abort(), 15000);
+    // Keep the last verified snapshot visible with its UTC as-of time while
+    // a new read is in progress; failed reads immediately revoke that snapshot.
     setRefreshing(true);
-    setAccountSnapshot(emptyReadSnapshot<Account>());
-    setPositionsSnapshot(emptyReadSnapshot<Position>());
-    setOrdersSnapshot(emptyReadSnapshot<Order>());
     try {
       if (!status.credentialsConfigured) {
         if (privateReadGate.current.accepts(epoch)) {
@@ -616,6 +616,7 @@ export default function DeribitTerminal() {
         setPrivateReadError('Не удалось обновить приватное состояние Deribit.');
       }
     } finally {
+      window.clearTimeout(deadline);
       if (privateReadGate.current.accepts(epoch)) {
         privateReadGate.current.finish(epoch);
         pendingPrivateAbort.current = null;
@@ -1098,7 +1099,7 @@ export default function DeribitTerminal() {
                 <td className={o.side === 'buy' ? 'success-text' : 'red-text'}>{o.side}</td>
                 <td className="right mono">{num(o.amount, 6)}</td><td className="right mono">{num(o.price)}</td>
                 <td><span className="state-pill">{o.state || '—'}</span></td>
-                <td className="right"><button className="cancel" disabled={!status.tradingEnabled || loading || !o.orderId}
+                <td className="right"><button className="cancel" disabled={!status.tradingEnabled || loading || refreshing || ordersSnapshot.state !== 'ready' || !o.orderId}
                   onClick={() => void cancelOrder(o.orderId)}>Cancel</button></td>
               </tr>) : <tr><td colSpan={7} className="empty-cell">Открытых ордеров нет или данные недоступны.</td></tr>}</tbody></table></div>
           </section>
