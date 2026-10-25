@@ -24,6 +24,28 @@ public sealed class DeribitRawBook
     private long? _lastChange;
     private long? _exchangeTs;
 
+    // The book itself fails closed. These IDs are exchange sequence numbers,
+    // not account order IDs; safe to expose as bounded diagnostics.
+    public sealed record BookFailure(
+        string Code, long? ExpectedChangeId, long? PrevChangeId, long? ChangeId);
+    public BookFailure? LastFailure { get; private set; }
+
+    private bool Fail(out BookView view, string state, string code,
+        long? prevId = null, long? changeId = null)
+    {
+        var expected = _lastChange;
+        Invalidate();
+        LastFailure = new BookFailure(code, expected, prevId, changeId);
+        view = View(state);
+        return false;
+    }
+
+    private static long? Id(JsonElement data, string property) =>
+        data.ValueKind == JsonValueKind.Object &&
+        data.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt64(out var id) ? id : null;
+
     public DeribitRawBook(string instrument) => _instrument = instrument;
 
     public const int MaxVisibleLevels = 50;
@@ -47,6 +69,7 @@ public sealed class DeribitRawBook
     public bool Apply(JsonElement update, out BookView view)
     {
         var start = Stopwatch.GetTimestamp();
+        LastFailure = null;
         // Avoid copying up to 50 levels twice per valid RAW delta.
         // Error paths below explicitly invalidate and clear the book.
         view = new BookView(_instrument, "invalid", null, null,
@@ -54,21 +77,24 @@ public sealed class DeribitRawBook
 
         if (update.ValueKind != JsonValueKind.Object ||
             !update.TryGetProperty("instrument_name", out var instrument) ||
+            instrument.ValueKind != JsonValueKind.String ||
             instrument.GetString() != _instrument ||
             !update.TryGetProperty("type", out var typeField) ||
+            typeField.ValueKind != JsonValueKind.String ||
             !update.TryGetProperty("change_id", out var changeField) ||
+            changeField.ValueKind != JsonValueKind.Number ||
             !changeField.TryGetInt64(out var id) ||
             id <= 0 ||
             !update.TryGetProperty("timestamp", out var tsField) ||
+            tsField.ValueKind != JsonValueKind.Number ||
             !tsField.TryGetInt64(out var timestamp) || timestamp <= 0 ||
             !update.TryGetProperty("bids", out var bids) ||
             !update.TryGetProperty("asks", out var asks) ||
             bids.ValueKind != JsonValueKind.Array ||
             asks.ValueKind != JsonValueKind.Array)
         {
-            Invalidate();
-            view = View("invalid");
-            return false;
+            return Fail(out view, "invalid", "L2_MALFORMED",
+                Id(update, "prev_change_id"), Id(update, "change_id"));
         }
 
         var kind = typeField.GetString();
@@ -80,38 +106,35 @@ public sealed class DeribitRawBook
         {
             if (_lastChange is null ||
                 !update.TryGetProperty("prev_change_id", out var previous) ||
+                previous.ValueKind != JsonValueKind.Number ||
                 !previous.TryGetInt64(out var previousId) ||
                 previousId != _lastChange ||
                 id <= _lastChange)
             {
-                Invalidate();
-                view = View("sequence_gap");
-                return false;
+                return Fail(out view, "sequence_gap", "L2_PREV_CHANGE_MISMATCH",
+                    Id(update, "prev_change_id"), id);
             }
         }
         else
         {
-            Invalidate();
-            view = View("invalid");
-            return false;
+            return Fail(out view, "invalid", "L2_MALFORMED",
+                Id(update, "prev_change_id"), id);
         }
 
         if (!ApplySide(bids, _bids, kind == "snapshot") ||
             !ApplySide(asks, _asks, kind == "snapshot") ||
             _bids.Count > 100000 || _asks.Count > 100000)
         {
-            Invalidate();
-            view = View("invalid");
-            return false;
+            return Fail(out view, "invalid", "L2_MALFORMED",
+                Id(update, "prev_change_id"), id);
         }
 
         // Zero-crossing or locked books cannot be used as valid inputs.
         if (_bids.Count > 0 && _asks.Count > 0 &&
             _bids.First().Key >= _asks.First().Key)
         {
-            Invalidate();
-            view = View("crossed");
-            return false;
+            return Fail(out view, "crossed", "L2_CROSSED",
+                Id(update, "prev_change_id"), id);
         }
 
         _lastChange = id;
