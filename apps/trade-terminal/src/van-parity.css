@@ -119,15 +119,15 @@
 
 /* F1-68: corrected against VAN deribit.html source 2026-10-25:
    --okx-spot-content:1280px; futures shell 420+/280/300 with 8px gap.
-   RAW DOM's 105/88/102 columns need >300px, so book deliberately uses
-   312px rather than clipping real size/cumulative values at VAN's 280px.
-   This is an explicit 32px non-parity tradeoff pending screenshot review. */
+   RAW columns need 313px plus panel padding, borders and vertical scrollbar.
+   The 355px book includes that complete width budget; VAN uses 280px.
+   This deliberate width difference preserves native size/cumulative precision. */
 @media (min-width: 1161px) {
   .content { max-width: 1320px; }
   .van-workstation {
     width: min(100%, 1280px);
     margin: 0 auto 8px;
-    grid-template-columns: minmax(420px,1fr) 312px 300px;
+    grid-template-columns: minmax(420px,1fr) 355px 300px;
     grid-template-areas: "market book ticket" "tape book ticket";
     gap: 8px;
   }
@@ -141,4 +141,23 @@
   .van-workstation .market-feed { min-width: 0; }
   .van-workstation .dom-depth-toolbar { max-width: 100%; }
   .van-workstation .dom-ladder { max-width: 100%; }
+}
+
+/* Owner PNG review: keep market tape bounded and all RAW columns readable. */
+.van-workstation .tape-list { max-height:108px; overflow:auto; overscroll-behavior:contain; }
+.van-workstation .dom-ladder { width:100%; }
+.van-workstation .dom-head,
+.van-workstation .dom-row,
+.van-workstation .dom-reference-prices { min-width:313px; }
+@media(min-width:1161px) {
+  .headline { margin-top:0; margin-bottom:4px; }
+  .headline .eyebrow { display:none; }
+  .headline h1 { font-size:14px; margin:0; }
+  .headline p { font-size:10px; }
+  .summary { gap:5px; margin-bottom:6px; }
+  .summary .stat { min-height:0; padding:4px 7px; display:flex; flex-wrap:wrap; align-items:center; gap:3px 7px; }
+  .summary .stat > span,.summary .stat > strong,.summary .stat > small { margin:0; }
+  .summary .stat > strong { font-size:13px; }
+  .van-workstation .van-tick-chart svg,.van-workstation .van-chart-unavailable { height:150px; }
+  .van-workstation .dom-ladder { max-height:360px; }
 }
