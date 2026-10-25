@@ -26,12 +26,14 @@ public sealed class DeribitRawBook
 
     public DeribitRawBook(string instrument) => _instrument = instrument;
 
+    public const int MaxVisibleLevels = 50;
+
     public BookView View(string state, long parseUs = 0)
     {
         return new BookView(_instrument, state, _lastChange, _exchangeTs,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), parseUs,
-            _bids.Take(10).Select(x => new Level(x.Key, x.Value)).ToArray(),
-            _asks.Take(10).Select(x => new Level(x.Key, x.Value)).ToArray());
+            _bids.Take(MaxVisibleLevels).Select(x => new Level(x.Key, x.Value)).ToArray(),
+            _asks.Take(MaxVisibleLevels).Select(x => new Level(x.Key, x.Value)).ToArray());
     }
 
     public void Invalidate()
