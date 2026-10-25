@@ -8,8 +8,8 @@ const hub = readFileSync(new URL('../../TradeOps.TerminalApi/Market/DeribitRawFe
 const policy = readFileSync(new URL('../../TradeOps.TerminalApi/Market/DeribitBookSubscription.cs', import.meta.url), 'utf8');
 const book = readFileSync(new URL('../../TradeOps.TerminalApi/Market/DeribitRawBook.cs', import.meta.url), 'utf8');
 
-test('depth 10 is the initial selection and changes recreate local WebSocket', () => {
-  assert.match(ui, /useState<DomDepth>\(10\)/);
+test('RAW is the initial selection and changes recreate local WebSocket', () => {
+  assert.match(ui, /useState<DomDepth>\('raw'\)/);
   assert.match(ui, /'&depth=' \+ domDepth/);
   assert.match(ui, /\[key, status, marketInstrument, domDepth\]/);
   assert.match(ui, /socket\.onclose = null;[\s\S]*?socket\.close\(\)/);
