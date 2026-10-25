@@ -130,11 +130,11 @@ test('missing or malformed contract spec cannot invent price decimals', () => {
   }), null);
 });
 
-test('10, 25 and 50 visible levels all come from the same verified market snapshot', () => {
+test('native 1/10/20 depths and separate RAW display cap preserve the selected view', () => {
   const bids = Array.from({ length: 50 }, (_, i) => ({ price: 2500 - i, amount: 1 }));
   const asks = Array.from({ length: 50 }, (_, i) => ({ price: 2501 + i, amount: 1 }));
-  for (const count of [10, 25, 50]) {
-    const dom = toPriceLadder({ bids, asks }, count);
+  for (const [mode, count] of [[1, 1], [10, 10], [20, 20], ['raw', 50]]) {
+    const dom = toPriceLadder({ bids, asks }, mode);
     assert.equal(dom.bids.length, count);
     assert.equal(dom.asks.length, count);
     assert.equal(dom.bids[0].price, 2500);
@@ -145,8 +145,8 @@ test('10, 25 and 50 visible levels all come from the same verified market snapsh
   }
   assert.equal(toPriceLadder({ bids, asks }).bids.length, 10,
     'Default ten levels remain unchanged for compact operator view.');
-  assert.equal(toPriceLadder(null, 50).spread, null,
-    'Invalid RAW feed cannot become valid merely by increasing depth.');
+  assert.equal(toPriceLadder(null, 'raw').spread, null,
+    'Invalid RAW feed cannot become valid merely by selecting RAW.');
 });
 
 test('own orders beyond ten levels never acquire invented public liquidity', () => {
@@ -166,15 +166,15 @@ test('own orders beyond ten levels never acquire invented public liquidity', () 
   assert.ok(outside10.some(x => x.price === 2600));
   assert.ok(!outside10.some(x => x.price === 2500));
 
-  const dom25 = toPriceLadder({ bids, asks }, 25);
-  const outside25 = ownOrdersOutsideDepth(own, dom25);
-  assert.deepEqual(outside25.map(x => x.price).sort((a, b) => a - b), [2526, 2600]);
+  const dom20 = toPriceLadder({ bids, asks }, 20);
+  const outside20 = ownOrdersOutsideDepth(own, dom20);
+  assert.deepEqual(outside20.map(x => x.price).sort((a, b) => a - b), [2480, 2526, 2600]);
 
-  const dom50 = toPriceLadder({ bids, asks }, 50);
-  assert.deepEqual(ownOrdersOutsideDepth(own, dom50).map(x => x.price), [2600],
-    'Even beyond top 50 levels, own order remains visible only in the separate own list.');
-  assert.equal(dom50.bids.length, 50);
-  assert.equal(dom50.asks.length, 50);
+  const raw = toPriceLadder({ bids, asks }, 'raw');
+  assert.deepEqual(ownOrdersOutsideDepth(own, raw).map(x => x.price), [2600],
+    'Beyond the first 50 RAW levels, own order remains only in the separate list.');
+  assert.equal(raw.bids.length, 50);
+  assert.equal(raw.asks.length, 50);
 });
 
 test('own price visibility must be both side- and price-exact', () => {
