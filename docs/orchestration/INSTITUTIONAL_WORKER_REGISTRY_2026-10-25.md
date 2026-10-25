@@ -17,9 +17,15 @@ Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private
 | F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63) | `TradeOps/f1-01-deribit-react-van-parity` @ `246bd259` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | REVIEWED; React build and screenshots REQUIRED; Draft, no merge |
 | F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64) | `TradeOps/f2-01-coincall-react-workstation` @ `4322c8aa` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | REVIEWED; 4/4 local Node tests self-reported, Vite build and screenshot evidence REQUIRED; Draft, no merge |
 
+| CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `c7a0d2` (reserved) | main @ `c7a0d2` | `.github/workflows/**`, NEW `scripts/ci/**` and `docs/ci/**` only | ASSIGNED; NOT STARTED; .NET 10 / React exact-SHA gate |
+
 ## 2026-10-25 orchestration check
 
 All four assigned workers submitted separate Draft PRs, each with correct base and no out-of-scope paths. `main` remains `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`. The GitHub status/check and PR-triggered workflow APIs returned **no exact-HEAD CI** for #61–#64. Orchestrator posted reviews on all four Draft PRs: G0 report accepted as a *documentation audit only*, keeping its institutional execution NO-GO; B1 contract code awaits actual .NET 10 compilation and tests; F1 awaits Node build/tests and exact browser comparison; F2 awaits Vite TypeScript build and actual browser comparison (self-reported pure test 4/4 is not CI). **0 merges authorized.** Next prerequisite: repair .NET 8 vs net10 CI toolchain and run pinned exact-HEAD acceptance.
+
+
+### New CI-01 lane, 2026-10-25
+CI-01 [Issue #65](https://github.com/avysotsky/TradeOps-v2/issues/65) reserves the dedicated branch from main for repairing .NET 8 SDK vs net10 targets and producing independent exact-HEAD React/.NET acceptance gates. Workflow code is NOT implemented yet; a separate worker chat must be started explicitly. Last observable GitHub Actions run is dated 2026-10-09; repository Actions availability/permissions remains UNVERIFIED. CI-01 owns no `src/`, no `apps/` and no trading API changes. B1/F1/F2 stay draft until their exact SHA receives actual build/test evidence. F1’s large unmerged parent stack requires explicit inherited base verification.
 
 ## Dependency and noncollision protocol
 - G0 is the *first acceptance gate* for B1 merge, frontend integration and subsequent B2/B3/FIX. B1 may prepare purely additive contracts while G0 runs; no risk-affecting behavior until G0 accepted.
