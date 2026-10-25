@@ -42,7 +42,7 @@ test('collapsed operator diagnostics distinguish public/private and local websoc
 });
 
 test('pinned launcher still has both mainnet execution switches hard-disabled', () => {
-  assert.match(launcher, /to-v2-50-depth-aware-market-subscriptions/);
+  assert.match(launcher, /to-v2-51-deribit-clock-skew-diagnostics/);
   assert.match(launcher, /DeribitTerminal__ExecutionEnabled = 'false'/);
   assert.match(launcher, /DeribitTerminal__MainnetExecutionEnabled = 'false'/);
   assert.match(launcher, /TRADEOPS_RAW_L2_REGRESSIONS_FAILED/);
