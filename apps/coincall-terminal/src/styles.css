@@ -45,3 +45,21 @@
 @media(max-width:1180px){.cc-header-metrics{gap:6px}.cc-trading{grid-template-columns:minmax(275px,1fr) 250px 255px}.cc-spread-bottom{grid-template-columns:1fr 320px}}
 @media(max-width:940px){.cc-primary{padding:0 8px}.cc-header-metrics{justify-content:flex-start;padding:6px}.cc-trading{grid-template-columns:minmax(0,1fr) 260px}.cc-trading .cc-ticket{grid-column:1/-1;height:auto}.cc-spread-bottom{grid-template-columns:1fr}.cc-assets{grid-template-columns:1fr}.cc-main{padding:7px}}
 @media(max-width:620px){.cc-top{flex-wrap:wrap;padding:7px 10px}.cc-online{margin-left:auto}.cc-warning{width:100%;text-align:center}.cc-primary>.cc-row{width:100%;overflow-x:auto}.cc-header-metrics{font-size:10px}.cc-trading{grid-template-columns:1fr}.cc-trading>.cc-card{height:auto;min-height:360px}.cc-trading .cc-book{min-height:445px}.cc-trading .cc-chartcard{min-height:270px}.cc-balances{grid-template-columns:1fr}.cc-matrixhead{display:block}.cc-spreadtable{min-width:720px}}
+
+/* VAN-derived F2-VIS grid geometry: two-axis cross-instrument matrix, not a flat quote list. */
+.cc-grid-scroll{overflow:auto;max-height:min(630px,65vh);background:#050b16;scrollbar-color:#263d57 #06101f;scrollbar-width:thin;outline-offset:-3px}
+.cc-matrix-grid{display:grid;min-width:max-content;width:100%;font-variant-numeric:tabular-nums;align-items:stretch}
+.cc-grid-corner,.cc-grid-col,.cc-grid-rowhead,.cc-grid-cell{min-width:0;border-right:1px solid #1e293b;border-bottom:1px solid #1e293b}
+.cc-grid-corner,.cc-grid-col{background:#0f172a;position:sticky;top:0;z-index:3;min-height:38px;padding:4px 7px;color:#cbd5e1;font-size:11px;font-weight:600}
+.cc-grid-corner{left:0;z-index:5;color:#64748b}
+.cc-grid-col{display:flex;justify-content:center;align-items:center;flex-direction:column;text-align:center;white-space:nowrap}
+.cc-grid-col small,.cc-grid-corner small{display:block;color:#64748b;font-size:9px;font-weight:400;margin-top:2px}
+.cc-grid-rowhead{position:sticky;left:0;z-index:2;background:#0b1220;display:flex;align-items:center;padding:4px 7px;color:#cbd5e1;font-weight:600;font-size:11px;white-space:nowrap}
+.cc-grid-cell{background:#06101f;min-height:58px;padding:3px}
+.cc-grid-empty{display:grid;place-items:center;color:#334155;background:#050a13;font-size:10px}
+.cc-grid-quote{width:100%;height:100%;min-height:52px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1px;border:1px solid transparent;background:#071424;border-radius:4px;padding:2px 4px;color:#b9cbe0;line-height:1.14;white-space:nowrap}
+.cc-grid-quote:hover{background:#112a3e;border-color:#2d4d6f}
+.cc-grid-quote>span{font-size:12px;font-weight:600}
+.cc-grid-quote small{font-size:9.5px;font-weight:400}
+.cc-grid-quote:focus-visible{outline:2px solid #93c5fd;outline-offset:-2px}
+@media(max-width:940px){.cc-grid-scroll{max-width:100%;max-height:500px}.cc-matrix-grid{width:max-content}.cc-grid-cell{min-height:51px}}
