@@ -253,3 +253,122 @@ class Runner:
         summary["postgres_mock_smoke"] = "NOT_RUN"
         self.smoke(summary, source, temp, out)
 
+    def smoke(self, summary: dict, source: Path, temp: Path, out: Path):
+        ident = "ci01-" + secrets.token_hex(6)
+        net, pg, api = ident + "-net", ident + "-pg", ident + "-api"
+        password = secrets.token_urlsafe(24)
+        made_net = made_pg = made_api = False
+        log = out / "docker-resources.log"
+        try:
+            cp = self.docker(["network", "create", "--label", "tradeops.ci01=temporary", net], log=log)
+            if cp.returncode: raise EnvironmentErrorCI("Cannot create isolated Docker bridge network")
+            made_net = True
+            pg_cmd = ["run", "-d", "--rm", "--name", pg, "--network", net,
+                      "--label", "tradeops.ci01=temporary",
+                      "--tmpfs", "/var/lib/postgresql/data:rw,size=536870912",
+                      "-e", "POSTGRES_DB=tradeops_ci", "-e", "POSTGRES_USER=postgres",
+                      "-e", f"POSTGRES_PASSWORD={password}", self.images["postgres"]]
+            if self.docker(pg_cmd, out / "postgres-start.log").returncode:
+                raise EnvironmentErrorCI("Cannot start disposable PostgreSQL17; see postgres-start.log")
+            made_pg = True
+            for _ in range(40):
+                ready = self.docker(["exec", pg, "pg_isready", "-U", "postgres", "-d", "tradeops_ci"], quiet=True)
+                if ready.returncode == 0: break
+                time.sleep(1)
+            else: raise EnvironmentErrorCI("PostgreSQL17 was not ready after 40 checks")
+            env = {"ConnectionStrings__TradeOpsDb": f"Host={pg};Port=5432;Database=tradeops_ci;Username=postgres;Password={password}",
+                   "ASPNETCORE_URLS": "http://0.0.0.0:5080", "ASPNETCORE_ENVIRONMENT": "Development",
+                   "Worker__ReconciliationIntervalSeconds": "300"}
+            api_cmd = self.container_cmd("dotnet", source, temp,
+                       ["dotnet", "run", "--project", "src/TradeOps.Api", "-c", "Release", "--no-build", "--no-restore"],
+                       network=net, env=env, detach=True, name=api)
+            if self.step(summary, "start Mock-only API", api_cmd, out, "api-start.log", 120) is False:
+                raise EnvironmentErrorCI("Could not start Mock API in disposable network")
+            made_api = True
+            checks = [("api-health-live", f"http://{api}:5080/health/live"),
+                      ("api-health-ready", f"http://{api}:5080/health/ready"),
+                      ("api-openapi", f"http://{api}:5080/swagger/v1/swagger.json")]
+            for label, url in checks:
+                cmd = ["docker", "run", "--rm", "--network", net, "--cap-drop", "ALL",
+                       "--security-opt", "no-new-privileges", self.images["curl"],
+                       "--fail", "--silent", "--show-error", "--max-time", "5", url]
+                for attempt in range(30 if label == "api-health-live" else 1):
+                    ok = self.step(summary, label + (f" attempt {attempt+1}" if attempt else ""),
+                                   cmd, out, f"{label}.log", timeout=30)
+                    if ok: break
+                    if label == "api-health-live": time.sleep(2)
+                if not ok:
+                    summary["postgres_mock_smoke"] = "FAIL"
+                    return
+                if label == "api-health-ready":
+                    try:
+                        health = json.loads((out / "api-health-ready.log").read_text())
+                        if health.get("status") != "ready" or health.get("dependencies", {}).get("postgres") != "ready":
+                            summary["postgres_mock_smoke"] = "FAIL"
+                            summary["notes"].append("Mock API /health/ready did not confirm PostgreSQL ready")
+                            return
+                    except (ValueError, OSError):
+                        summary["postgres_mock_smoke"] = "FAIL"
+                        return
+            # Only a synthetic order mutation on isolated Mock; never an exchange operation.
+            payload = json.dumps({"symbol": "BTCUSDT", "side": "Buy", "quantity": 0.001,
+                                  "source": "ci01-disposable-mock", "signalId": str(uuid.uuid4())})
+            post = ["docker", "run", "--rm", "--network", net, "--cap-drop", "ALL",
+                    "--security-opt", "no-new-privileges", self.images["curl"],
+                    "--fail", "--silent", "--show-error", "--max-time", "15",
+                    "-H", "Content-Type: application/json", "--data-raw", payload,
+                    f"http://{api}:5080/api/signals"]
+            if not self.step(summary, "isolated Mock signal order", post, out, "mock-order.log", 60):
+                summary["postgres_mock_smoke"] = "FAIL"
+                return
+            try:
+                order_response = json.loads((out / "mock-order.log").read_text())
+                order = order_response["order"]
+                if order.get("status") != "PartiallyFilled" or abs(float(order.get("filledQuantity", 0)) - 0.0006) >= 1e-12:
+                    summary["postgres_mock_smoke"] = "FAIL"
+                    summary["notes"].append("Synthetic Mock order response failed semantic assertion")
+                    return
+            except (ValueError, KeyError, TypeError):
+                summary["postgres_mock_smoke"] = "FAIL"
+                return
+            summary["postgres_mock_smoke"] = "PASS"
+        finally:
+            # Delete only uniquely named resources we created; never prune/stop external stacks.
+            if made_api:
+                self.docker(["logs", api], out / "api-service.log", quiet=True)
+                self.docker(["rm", "-f", api], quiet=True)
+            if made_pg:
+                self.docker(["logs", pg], out / "postgres-service.log", quiet=True)
+                self.docker(["rm", "-f", pg], quiet=True)
+            if made_net:
+                self.docker(["network", "rm", net], quiet=True)
+
+    def frontend(self, gate: str, summary: dict, source: Path, temp: Path, out: Path):
+        self.require_images(["node"], out)
+        folder = "apps/trade-terminal" if gate == "deribit" else "apps/coincall-terminal"
+        if not (source / folder / "package.json").is_file():
+            raise RuntimeError(f"Required frontend missing: {folder}")
+        if gate == "deribit" and not (source / folder / "tests/vanLayout.test.mjs").is_file():
+            raise RuntimeError("Required Deribit VAN layout regression test missing")
+        lock = (source / folder / "package-lock.json").is_file()
+        summary["lockfile_present"] = lock
+        summary["dependency_reproducibility"] = "PINNED_LOCKFILE" if lock else "LIMITED_NO_LOCKFILE"
+        npm = lambda args, network="none": self.container_cmd("node", source, temp,
+                         ["npm", "--prefix", folder, *args], network)
+        version = self.container_cmd("node", source, temp, ["node", "--version"])
+        if not self.step(summary, "node version", version, out, "node-version.log"): return
+        node_ver = (out / "node-version.log").read_text().strip()
+        summary["tool_versions"]["node"] = node_ver
+        if not node_ver.startswith("v24."):
+            raise EnvironmentErrorCI(f"Node24 required, found {node_ver}")
+        if not self.step(summary, "npm version", self.container_cmd("node", source, temp, ["npm", "--version"]), out, "npm-version.log"): return
+        summary["tool_versions"]["npm"] = (out / "npm-version.log").read_text().strip()
+        install = ["ci", "--no-audit", "--no-fund"] if lock else ["install", "--no-package-lock", "--no-audit", "--no-fund"]
+        if not self.step(summary, "npm " + install[0], npm(install, "bridge"), out, "npm-install.log", 1800): return
+        if not self.step(summary, "npm test", npm(["test"]), out, "npm-test.log", 600): return
+        if gate == "deribit":
+            van = self.container_cmd("node", source, temp, ["node", "--test", "tests/vanLayout.test.mjs"])
+            van[van.index("--workdir") + 1] = "/workspace/" + folder
+            if not self.step(summary, "explicit VAN layout test", van, out, "van-layout.log", 600): return
+        self.step(summary, "React build", npm(["run", "build"]), out, "react-build.log", 1200)
+
