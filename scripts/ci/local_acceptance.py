@@ -132,6 +132,8 @@ class Runner:
         # Never import host exchange keys, auth tokens, .env files or Docker env files.
         self.image_info: dict[str, dict] = {}
         self.docker_engine_version: str | None = None
+        self.git_transport: dict[int, str] = {}
+        self.windows_repo: str | None = None
 
     def exec(self, args: list[str], log: Path | None = None, timeout: int = 600,
              cwd: Path | None = None, quiet: bool = False) -> subprocess.CompletedProcess:
@@ -159,14 +161,52 @@ class Runner:
                 log.write_text(f"COMMAND UNAVAILABLE: {type(exc).__name__}\n", encoding="utf-8")
             return subprocess.CompletedProcess(args, 127, "", type(exc).__name__)
 
+    def windows_git(self, git_args: list[str]) -> list[str] | None:
+        """Use existing Windows Git credentials without changing Ubuntu Git configuration."""
+        if not shutil.which("git.exe") or not shutil.which("wslpath"):
+            return None
+        if self.windows_repo is None:
+            translated = self.exec(["wslpath", "-w", str(self.repo)], quiet=True, timeout=20)
+            if translated.returncode or not translated.stdout.strip():
+                return None
+            self.windows_repo = translated.stdout.strip()
+        return ["git.exe", "-C", self.windows_repo, *git_args]
+
+    @staticmethod
+    def git_error(cp: subprocess.CompletedProcess) -> str:
+        # Surfaced in summary.json, never include URLs containing embedded credentials.
+        detail = sanitized((cp.stderr or cp.stdout or "").strip())
+        detail = re.sub(r"https?://[^/\\s@]+@", "https://[REDACTED]@", detail)
+        return (" ".join(detail.split())[:480] or "no error detail")
+
     def remote_sha(self, number: int) -> str:
         branch = SPECS[number][0]
         wanted = {f"refs/pull/{number}/head", f"refs/heads/{branch}"}
-        cmd = ["git", "-C", str(self.repo), "ls-remote", "--exit-code", "origin", *sorted(wanted)]
-        cp = self.exec(cmd, quiet=True, timeout=120)
+        query = ["ls-remote", "--exit-code", "origin", *sorted(wanted)]
+        linux = ["git", "-C", str(self.repo), *query]
+        cp = self.exec(linux, quiet=True, timeout=120)
+        selected = "wsl-git"
         if cp.returncode:
-            raise EnvironmentErrorCI(f"Cannot read PR #{number} refs from GitHub (git ls-remote exit {cp.returncode})")
-        refs = parse_ls_remote(cp.stdout, wanted)
+            original_error = self.git_error(cp)
+            fallback = self.windows_git(query)
+            if fallback is None:
+                raise EnvironmentErrorCI(
+                    f"PR #{number} GitHub HEAD lookup failed in WSL (exit {cp.returncode}): "
+                    f"{original_error}; Windows Git bridge unavailable in WSL PATH")
+            second = self.exec(fallback, quiet=True, timeout=120)
+            if second.returncode:
+                raise EnvironmentErrorCI(
+                    f"PR #{number} GitHub HEAD lookup: WSL git exit {cp.returncode}: "
+                    f"{original_error}; Windows git.exe exit {second.returncode}: "
+                    f"{self.git_error(second)}")
+            cp, selected = second, "windows-git"
+        self.git_transport[number] = selected
+        try:
+            refs = parse_ls_remote(cp.stdout, wanted)
+        except (StaleShaError, RuntimeError) as exc:
+            if isinstance(exc, StaleShaError):
+                raise
+            raise EnvironmentErrorCI(f"PR #{number} refs unavailable: {exc}") from exc
         return refs[f"refs/pull/{number}/head"]
 
     def docker(self, args: list[str], log: Path | None = None, timeout: int = 120,
@@ -442,9 +482,21 @@ class Runner:
                 (tmp / "home").mkdir()
                 (tmp / "npm").mkdir()
                 (tmp / "nuget").mkdir()
-                if self.exec(["git", "-C", str(self.repo), "fetch", "--no-tags", "--no-write-fetch-head", "origin", source_sha],
-                             out / "git-fetch.log", 180).returncode:
-                    raise EnvironmentErrorCI("Fetch of exact GitHub HEAD failed")
+                fetch_args = ["fetch", "--no-tags", "--no-write-fetch-head", "origin", source_sha]
+                git_fetch = ["git", "-C", str(self.repo), *fetch_args]
+                if self.git_transport.get(number) == "windows-git":
+                    git_fetch = self.windows_git(fetch_args) or git_fetch
+                fetched = self.exec(git_fetch, out / "git-fetch.log", 180)
+                if fetched.returncode and git_fetch[0] != "git.exe":
+                    win_fetch = self.windows_git(fetch_args)
+                    if win_fetch is not None:
+                        fetched = self.exec(win_fetch, out / "git-fetch-windows.log", 180)
+                        if fetched.returncode == 0:
+                            self.git_transport[number] = "windows-git"
+                if fetched.returncode:
+                    raise EnvironmentErrorCI(
+                        f"Fetch of PR #{number} exact SHA failed (exit {fetched.returncode}): "
+                        f"{self.git_error(fetched)}")
                 if self.exec(["git", "-C", str(self.repo), "worktree", "add", "--detach", str(worktree), source_sha],
                              out / "git-worktree.log", 180).returncode:
                     raise EnvironmentErrorCI("Cannot create isolated detached worktree")
@@ -503,6 +555,7 @@ class Runner:
             except (StaleShaError, EnvironmentErrorCI) as exc:
                 if result["status"] == "PASS": result["status"] = "BLOCKED_ENV"
                 result["notes"].append(f"Cannot revalidate live PR HEAD: {exc}")
+            result["git_transport"] = self.git_transport.get(number, "not-connected")
             result["completed_utc"] = utc()
             result["images"] = {key: self.image_info[key] for key in
                                   (["dotnet", "postgres", "curl"] if gate == "backend" else ["node"])
