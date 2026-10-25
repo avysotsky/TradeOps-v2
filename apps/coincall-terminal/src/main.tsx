@@ -1,0 +1,1 @@
+import {StrictMode} from 'react';import {createRoot} from 'react-dom/client';import {Workstation} from './workstation';import './styles.css';createRoot(document.getElementById('root')!).render(<StrictMode><Workstation/></StrictMode>);
