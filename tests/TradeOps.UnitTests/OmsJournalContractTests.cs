@@ -56,7 +56,7 @@ public sealed class OmsJournalContractTests
         }));
         Assert.Throws<ArgumentException>(() => OmsJournalCanonical.EncodeCommand(request with
         {
-            Payload = request.Payload with { RequestedAtUtc = DateTimeOffset.Now }
+            Payload = request.Payload with { RequestedAtUtc = new DateTimeOffset(2026, 10, 25, 17, 0, 0, TimeSpan.FromHours(2)) }
         }));
         Assert.Throws<ArgumentException>(() => OmsJournalCanonical.EncodeCommand(request with
         {
