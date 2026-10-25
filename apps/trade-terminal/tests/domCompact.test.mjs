@@ -70,14 +70,15 @@ test('read-only event-driven market stream remains isolated from order ticket', 
   assert.doesNotMatch(ladder, /onClick|onMouseDown|orders\/preview|orders\/confirm/);
 });
 
-test('L2 depth selector requests 10/25/50 and bounds each local view', () => {
+test('Depth selector offers native Deribit 1/10/20 and explicit RAW', () => {
   assert.match(ui, /const \[domDepth, setDomDepth\] = useState<DomDepth>\(10\)/);
   assert.match(ui, /<option value=\{10\}>10<\/option>/);
-  assert.match(ui, /<option value=\{25\}>25<\/option>/);
-  assert.match(ui, /<option value=\{50\}>50<\/option>/);
+  assert.match(ui, /<option value=\{1\}>1<\/option>/);
+  assert.match(ui, /<option value=\{20\}>20<\/option>/);
+  assert.match(ui, /<option value="raw">RAW<\/option>/);
   assert.match(ui, /toPriceLadder\([\s\S]*?book : null, domDepth\)/);
   assert.match(ui, /ownOrdersOutsideDepth\(ownOrders.levels, dom\)/);
-  assert.match(ui, /Мои заявки вне \{domDepth\} уровней/);
+  assert.match(ui, /Мои заявки вне \{domDepth === 'raw' \? 'видимых 50' : domDepth\} уровней/);
   assert.match(ui, /formatDomPrice\(level.price, priceDecimals\)/);
   assert.match(css, /\.dom-ladder\s*\{\s*position: relative;\s*max-height: 460px;/);
   assert.match(ui, /ladderScrollRef/);
@@ -91,7 +92,7 @@ test('Depth controls show live exchange-to-local lag on far right in same row', 
   assert.ok(marker >= 0);
   const block = ui.slice(marker, ui.indexOf('<div className="dom-own-status"', marker));
   const depth = block.indexOf('<label htmlFor="dom-depth">Depth</label>');
-  const options = block.indexOf('<option value={50}>50</option>');
+  const options = block.indexOf('<option value="raw">RAW</option>');
   const raw = block.indexOf('className="dom-depth-source"');
   const lag = block.indexOf('className="dom-stream-lag"');
   assert.ok(depth >= 0 && depth < options && options < raw && raw < lag);
