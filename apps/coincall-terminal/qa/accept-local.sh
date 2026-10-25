@@ -21,6 +21,7 @@ fi
 report="${2:-$HOME/TradeOps-acceptance/F2-01/$expected}"
 mkdir -p "$report"
 printf 'Expected SHA: %s\nUTC start: %s\n' "$expected" "$(date -u +%FT%TZ)" | tee "$report/identity.log"
+printf 'NOT RUN: exact-HEAD acceptance incomplete\n' > "$report/status.txt"
 if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
   echo 'NOT RUN: WSL2 Docker not available' | tee "$report/status.txt"
   exit 2
@@ -95,7 +96,7 @@ fi
 echo 'PHASE 3: original VAN static HTML/CSS and compiled React browser parity'
 van_sha='702a6f51006be4e9c35c65d21ec7f85c40c5a2d4'
 if ! git init -q "$tmp/van"; then
-  echo 'NOT RUN: unable to initialize source-pinned VAN reference' | tee "$report/van-parity-status.txt"
+  echo 'NOT RUN: unable to initialize source-pinned VAN reference' | tee "$report/van-parity-status.txt" "$report/status.txt"
   exit 2
 fi
 git -C "$tmp/van" remote add origin https://github.com/avysotsky/alexvysotsky.com.git
@@ -107,11 +108,11 @@ git -C "$tmp/van" checkout -q --detach FETCH_HEAD
 van_actual="$(git -C "$tmp/van" rev-parse HEAD)"
 printf 'VAN reference SHA: %s\n' "$van_actual" | tee -a "$report/identity.log"
 if [[ "$van_actual" != "$van_sha" ]]; then
-  echo 'FAIL: VAN reference SHA mismatch' | tee "$report/van-parity-status.txt"
+  echo 'FAIL: VAN reference SHA mismatch' | tee "$report/van-parity-status.txt" "$report/status.txt"
   exit 1
 fi
 for f in coincall.html coincall-spreads.html assets/coincall-spreads-full.js; do
-  test -s "$tmp/van/frontend/dist/$f" || { echo "FAIL: VAN missing $f" | tee "$report/van-parity-status.txt"; exit 1; }
+  test -s "$tmp/van/frontend/dist/$f" || { echo "FAIL: VAN missing $f" | tee "$report/van-parity-status.txt" "$report/status.txt"; exit 1; }
 done
 set +e
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/.npm \
@@ -137,6 +138,6 @@ fi
 echo 'PASS: offline screenshot capture of original VAN HTML/CSS and compiled React' | tee "$report/van-parity-status.txt"
 
 test_count="$(grep -E '^# tests [0-9]+' "$report/build-tests.log" | tail -n1 || true)"
-printf 'PASS: exact SHA %s | %s | browser 18 checks | offline VAN screenshots captured\n' "$expected" "${test_count:-see TAP log}" | tee "$report/status.txt"
+printf 'PASS: exact SHA %s | %s | browser 20 checks | offline VAN screenshots captured\n' "$expected" "${test_count:-see TAP log}" | tee "$report/status.txt"
 printf 'Evidence: %s\n' "$report"
 echo 'Offline original VAN markup/CSS and compiled React screenshots created; independent visual assessment required; VAN JS disabled intentionally.'
