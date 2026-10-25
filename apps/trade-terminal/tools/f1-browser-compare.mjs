@@ -44,6 +44,7 @@ function parseArgs(argv) {
   return args;
 }
 const args = parseArgs(process.argv.slice(2));
+const isSynthetic = args.fixture === 'synthetic';
 const output = resolve(args.out);
 await mkdir(output, { recursive: true });
 
@@ -92,7 +93,7 @@ const manifest = {
   sha: args.sha,
   sourceURLs: { van: args.van, react: args.react },
   dataPolicy: 'localhost/file only; no credentials, no orders, no history fabrication',
-  note: 'VAN CSS reference precision != React RAW selector. Comparability requires a controlled identical public fixture.',
+  note: 'VAN precision differs from TradeOps RAW; controlled synthetic DOM fixture is NOT exchange transport evidence.',
   generatedAtUtc: new Date().toISOString(),
   results: records
 };
@@ -129,6 +130,10 @@ async function metrics(page, selectors) {
       domRowCount: document.querySelectorAll(selectors.rows).length,
       domFirstRowHeightPx: rowHeight,
       deltaVisible: /Δ exchange → local/.test(bookText),
+      bookTextHasFixturePrice: /2,000/.test(bookText),
+      orderMutationButtonsEnabled: [...document.querySelectorAll('button')]
+        .filter(b=>/^(?:Cancel|Разместить|Проверить заявку|Отменить)/i.test(b.textContent?.trim()||''))
+        .filter(b=>!b.disabled).length,
       mainnetReadOnlyLabel: /MAINNET READ-ONLY/.test(document.body.innerText),
       browserErrors: null
     };
@@ -173,7 +178,8 @@ try {
     for (const source of ['van', 'react']) {
       const sel = targets[source];
       const record = {
-        source, width: viewport.width, height: viewport.height, screenshots: [],
+        source, width: viewport.width, height: viewport.height,
+        fixture:isSynthetic?'OFFLINE_SYNTHETIC':'UNSPECIFIED', screenshots: [],
         status: 'NOT_RUN', error: null, pageErrors: 0, blockedExternalRequests: 0
       };
       records.push(record);
@@ -198,6 +204,27 @@ try {
         if (response && !response.ok()) throw Error('HTTP ' + response.status());
         await page.locator(sel.root).waitFor({ state: 'visible', timeout: 9000 });
         await selectSafeInstrument(page, source);
+        if (isSynthetic) {
+          await page.evaluate(() => {
+            const tag = document.createElement('div');
+            tag.textContent = 'SYNTHETIC OFFLINE FIXTURE — NO LIVE DATA / NO EXECUTION';
+            Object.assign(tag.style,{position:'fixed',right:'8px',bottom:'8px',
+              zIndex:'2147483647',font:'bold 11px sans-serif',color:'#fff',
+              background:'#7f1d1d',padding:'5px 8px',pointerEvents:'none'});
+            document.body.append(tag);
+          });
+        }
+        if (isSynthetic && source==='van') {
+          record.fixtureRenderer=await page.evaluate(() => {
+            if(typeof window.ccRenderBook!=='function')return 'UNAVAILABLE';
+            const asks=Array.from({length:50},(_,i)=>[2000+0.5+i*0.5,Math.round((0.15+i*0.031)*10000)/10000]);
+            const bids=Array.from({length:50},(_,i)=>[2000-0.5-i*0.5,Math.round((0.15+i*0.031)*10000)/10000]);
+            const sel=document.getElementById('ccFuturesInst');
+            if(sel)sel.value='ETHUSD';
+            window.ccRenderBook('futures',{asks,bids});
+            return 'VAN_NATIVE_RENDERER';
+          }).catch(e=>'ERROR: '+String(e.message).slice(0,120));
+        }
         await capture(page, record, 'workstation', sel);
         for (const [label, tab] of [['positions', sel.positionTab], ['orders', sel.ordersTab]]) {
           const locator = page.locator(tab);
@@ -210,6 +237,15 @@ try {
         record.orderHistoryControl = await history.count() ?
           ((await history.isEnabled()) ? 'ENABLED' : 'DISABLED') : 'MISSING';
         record.status = 'CAPTURED';
+        if(isSynthetic&&source==='van'&&record.fixtureRenderer!=='VAN_NATIVE_RENDERER'){
+          record.status='FAIL';
+          record.error='VAN book native renderer unavailable: '+record.fixtureRenderer;
+        }
+        if(source==='react'&&
+          record.screenshots.find(s=>s.view==='workstation')?.metrics?.orderMutationButtonsEnabled>0){
+          record.status='FAIL';
+          record.error='Execution button was enabled on MAINNET fixture';
+        }
       } catch (e) {
         record.status = 'FAIL';
         record.error = String(e.message || e).slice(0, 350);
