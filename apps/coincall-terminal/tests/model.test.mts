@@ -12,6 +12,7 @@ test('2D spread grid includes instruments across rows and columns with diagonal 
   const symbols=matrixSymbols(btc);
   assert.ok(symbols.includes('BTC/USDT'));
   assert.ok(symbols.includes('BTCUSDT-Perp'));
+  assert.deepEqual(symbols,['BTC/USDT','BTCUSDT-Perp','BTC-30OCT26','BTC-06NOV26','BTC-27NOV26']);
   assert.equal(matrixQuote(btc,'BTC/USDT','BTC/USDT'),undefined);
   const q=matrixQuote(btc,'BTCUSDT-Perp','BTC-30OCT26');
   assert.equal(q?.id,'btc-perp-oct');
