@@ -566,3 +566,38 @@
   .dom-reference-value > span { font-size: 8px; }
   .dom-reference-value > strong { font-size: 11px; }
 }
+
+
+/* TO-V2-46: own live limit orders, read-only visibility overlay.
+   Preserve accepted 18px DOM row geometry and three dense columns. */
+.dom-own-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  margin: -1px 0 5px;
+  font-size: 10px;
+  color: #a9bfd6;
+  min-height: 15px;
+}
+.dom-own-status strong { font-variant-numeric: tabular-nums; }
+.dom-own-status span:last-child { font-size: 9px; color: #8da8c2; }
+.dom-row.own-order-level {
+  box-shadow: inset 2px 0 #f0ca73;
+  background-color: #604f2129;
+}
+.dom-row .dom-own-marker {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 700;
+  color: #f4d383;
+  pointer-events: none;
+}
+.dom-row.own-order-level .dom-price { color: #ffe7a2; }
+@media (max-width: 650px) {
+  .dom-own-status { gap: 4px 6px; }
+}
