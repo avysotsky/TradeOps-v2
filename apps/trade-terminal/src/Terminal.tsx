@@ -1050,6 +1050,7 @@ export default function DeribitTerminal() {
                 <span className="count">{tape?.instrument === marketInstrument ? tape.trades.length : 0}</span>
               </div>
               <div className="tape-header"><span>Время</span><span>Цена</span><span>Amount</span></div>
+              <div className="tape-list" role="region" aria-label="Последние публичные сделки" tabIndex={0}>
               {(tape?.instrument === marketInstrument ? tape.trades : []).map((x, i) =>
                 <div className="tape-row" key={x.tradeId || i}>
                   <span>{x.timestamp ? new Date(x.timestamp).toLocaleTimeString('ru-RU') : '—'}</span>
@@ -1057,6 +1058,7 @@ export default function DeribitTerminal() {
                   <span>{num(x.amount, 5)}</span>
                 </div>)}
               {!tape && <p className="empty-feed">Ожидание новых сделок из WebSocket…</p>}
+              </div>
               <p className="feed-note">Это публичные сделки рынка, не история твоего счёта.</p>
             </section>
           </section>
