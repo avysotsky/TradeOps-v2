@@ -1,3 +1,5 @@
+extern alias MainTradeOpsApi;
+using ApiProgram = MainTradeOpsApi::Program;
 using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
@@ -202,10 +204,10 @@ public sealed class SignalIngressRequestAuditApiIntegrationTests
         }
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(
+    private static WebApplicationFactory<ApiProgram> CreateFactory(
         string connectionString)
     {
-        return new WebApplicationFactory<Program>()
+        return new WebApplicationFactory<ApiProgram>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting(
