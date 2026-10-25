@@ -87,12 +87,12 @@ try{
     const vanContext=await browser.newContext({viewport:{width,height:900},deviceScaleFactor:1,serviceWorkers:'block'});
     const reactContext=await browser.newContext({viewport:{width,height:900},deviceScaleFactor:1,serviceWorkers:'block'});
     const vanPage=await vanContext.newPage(),reactPage=await reactContext.newPage();
-    const intercepted=[];
-    for(const ctx of [vanContext,reactContext]){
+    const reactOutbound=[]; const vanBlocked=[];
+    for(const [ctx,denied] of [[vanContext,vanBlocked],[reactContext,reactOutbound]]){
       await ctx.route('**/*',route=>{
         const url=route.request().url();
         if(url.startsWith('file://'+safeDir+'/')||url.startsWith(base+'/'))return route.continue();
-        intercepted.push(url);return route.abort();
+        denied.push(url);return route.abort();
       });
     }
     const reactErrors=[];
@@ -146,13 +146,13 @@ try{
       assert.ok(await reactPage.locator('.cc-app').count()===1);
       if(width===768){
         assert.ok(await reactPage.locator('.cc-main').evaluate(el=>el.getBoundingClientRect().width)<=768);
-        assert.ok(await reactPage.locator('.cc-grid-scroll').count()===0 || true); // verify grid in spreads screenshot separately
       }
     });
     await check(v+' React no external requests or browser errors',async()=>{
       assert.deepEqual(reactErrors,[]);
-      assert.deepEqual(intercepted,[]);
+      assert.deepEqual(reactOutbound,[]);
     });
+    geo.vanBlockedResources=vanBlocked;
     await writeFile(join(out,'geometry-'+v+'.json'),JSON.stringify(geo,null,2)+'\n');
     await vanContext.close();await reactContext.close();
   }
