@@ -1,3 +1,5 @@
+extern alias MainTradeOpsApi;
+using ApiProgram = MainTradeOpsApi::Program;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
@@ -138,9 +140,9 @@ public sealed class SignalIngressReplayProtectionApiIntegrationTests
         }
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(string connectionString)
+    private static WebApplicationFactory<ApiProgram> CreateFactory(string connectionString)
     {
-        return new WebApplicationFactory<Program>()
+        return new WebApplicationFactory<ApiProgram>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("ConnectionStrings:TradeOpsDb", connectionString);
