@@ -149,7 +149,8 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             _publicL2State = state;
             Publish(new { type = "status", instrument = _name,
                 state, receivedAtUtc = DateTimeOffset.UtcNow,
-                depth = _depth, bookChannel = _bookChannel,
+                depth = DeribitBookSubscription.PublicMode(_depth),
+                bookChannel = _bookChannel,
                 diagnostics = new {
                     requestedDepth = _depth,
                     exchangeChannel = _bookChannel,
@@ -363,7 +364,8 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                 _messages++;
                                 if (_publicL2State != "synced") State("synced");
                                 Publish(new { type = "book", instrument = _name,
-                                    depth = _depth, bookChannel = _bookChannel,
+                                    depth = DeribitBookSubscription.PublicMode(_depth),
+                                    bookChannel = _bookChannel,
                                     state = "synced", book = view, ownOrders = _ownOrders.View(),
                                     messages = _messages,
                                     exchangeAgeMs = view.ExchangeTimestamp is long tick
