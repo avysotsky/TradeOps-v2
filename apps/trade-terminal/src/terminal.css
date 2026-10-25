@@ -601,3 +601,78 @@
 @media (max-width: 650px) {
   .dom-own-status { gap: 4px 6px; }
 }
+
+
+/* TO-V2-47: optional greater visible RAW L2 depth, keeps accepted
+   18px price levels, exact original three quote columns and no trades. */
+.dom-depth-toolbar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #b3c8de;
+  margin: 1px 0 5px;
+}
+.dom-depth-toolbar select {
+  min-height: 24px;
+  width: 59px;
+  padding: 1px 5px;
+  border: 1px solid #52617a;
+  border-radius: 4px;
+  background: #1b2a3d;
+  color: #f4f7fe;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dom-depth-toolbar > span {
+  color: #82cfbb;
+  font-size: 10px;
+  letter-spacing: .02em;
+}
+.dom-own-outside {
+  width: min(100%, 335px);
+  margin: 2px 0 7px;
+  border: 1px solid #f0cc7655;
+  border-radius: 5px;
+  color: #e0d3af;
+  background: #3f36242e;
+  font-size: 11px;
+}
+.dom-own-outside > summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  font-weight: 650;
+}
+.dom-own-outside > summary:focus-visible {
+  outline: 2px solid #f1d290;
+  outline-offset: 2px;
+}
+.dom-own-outside-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border-top: 1px solid #f0cc763c;
+}
+.dom-own-outside-row {
+  display: grid;
+  grid-template-columns: 35px minmax(66px, 1fr) minmax(0, 1.3fr) 64px;
+  gap: 5px;
+  align-items: center;
+  min-height: 23px;
+  padding: 3px 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid #ffffff14;
+  white-space: nowrap;
+}
+.dom-own-outside-row strong { text-align: right; }
+.dom-own-outside-row span:nth-child(3) { text-align: right; }
+.dom-own-outside > p {
+  padding: 6px 8px;
+  margin: 0;
+  color: #b7c6d5;
+  font-size: 10px;
+  line-height: 1.5;
+}
