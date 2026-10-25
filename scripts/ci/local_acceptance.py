@@ -136,8 +136,11 @@ class Runner:
         if log is not None:
             log.parent.mkdir(parents=True, exist_ok=True)
         try:
+            environment = os.environ.copy()
+            if args and args[0] == "git":
+                environment["GIT_TERMINAL_PROMPT"] = "0"
             cp = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                                timeout=timeout, check=False, errors="replace")
+                                timeout=timeout, check=False, errors="replace", env=environment)
             output = sanitized(cp.stdout + ("\n" if cp.stdout and cp.stderr else "") + cp.stderr)
             if log is not None:
                 log.write_text(output, encoding="utf-8")
