@@ -16,6 +16,31 @@ const out=resolve(rawOut),van=resolve(rawVan),base='http://127.0.0.1:5181';
 await mkdir(out,{recursive:true});
 const manifest={reactSha,vanSha,engine:'Playwright Chromium',sourceMode:'VAN original HTML and inline CSS; all scripts stripped; network blocked; synthetic/manual DOM sections only',comparisonMode:'Visual/layout qualitative; numbers and expiries differ; functional VAN JavaScript not executed',screenshots:[],checks:[],errors:[]};
 const check=async (label,fn)=>{try{await fn();manifest.checks.push({label,status:'PASS'});console.log('PASS '+label)}catch(e){manifest.checks.push({label,status:'FAIL',message:String(e)});console.error('FAIL '+label+' '+e)}};
+// Assert rendered values in BOTH directions; order IDs are intentionally not displayed.
+async function verifyAccountRoundTrip(page, afterBeta) {
+  const main=page.getByRole('navigation',{name:'Main navigation'});
+  for (const index of [1,0]) {
+    await main.getByRole('button',{name:'Accounts',exact:true}).click();
+    await page.getByRole('radio').nth(index).check();
+    await main.getByRole('button',{name:'Assets',exact:true}).click();
+    await page.getByRole('button',{name:'Order Center',exact:true}).click();
+    const expectedOrders = index===1
+      ? [['ETHUSDT-Perp','SELL','Limit','3,560.00','1.2','0','NEW','11:51:26']]
+      : [['BTCUSDT-Perp','BUY','Limit','67,950.00','0.08','0','NEW','11:42:08'],
+         ['BTC/USDT','SELL','Limit','68,400.00','0.04','0.01','PARTIALLY_FILLED','11:16:42']];
+    const expectedPositions = index===1
+      ? [['BTCUSDT-Perp','Long','0.06','67,980.00','68,146.50','9.99','408.80','0.06']]
+      : [['BTCUSDT-Perp','Long','0.25','67,320.10','68,146.50','206.60','680.90','0.25'],
+         ['ETHUSDT-Perp','Short','1.8','3,576.20','3,516.70','107.10','633.00','-1.8']];
+    const tables=page.locator('.cc-bottom table');
+    assert.equal(await tables.count(),2);
+    const cells=table=>table.locator('tbody tr').evaluateAll(rows=>rows.map(row=>Array.from(row.querySelectorAll('td')).map(cell=>cell.textContent.trim())));
+    assert.deepEqual(await cells(tables.nth(0)),expectedOrders);
+    assert.deepEqual(await cells(tables.nth(1)),expectedPositions);
+    if(index===1 && afterBeta)await afterBeta();
+  }
+}
+
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const viewports=[1440,768];
 async function snapshot(page,filename,source,view,meta={}){
@@ -128,6 +153,9 @@ try{
         const title=document.querySelector('#ccSpreadsTradeTitle');
         const subtitle=document.querySelector('#ccSpreadsTradeSubtitle');
         assertInternal(modal && body && title && subtitle,'VAN modal absent');
+        // Static reference has no legacy JS to portal the modal out of hidden layers.
+        // Preserve original modal/CSS; only relocate its existing DOM shell.
+        document.body.appendChild(modal);
         modal.hidden=false;modal.style.display='flex';
         title.textContent='CoinCall Futures Spread · MOCK STRUCTURAL PREVIEW';
         subtitle.textContent='BTCUSDT-Perp / BTC-30OCT26 · synthetic legs · no executable controls';
@@ -167,16 +195,15 @@ try{
       }
     }
     await check(v+' account switching and mock order isolation',async()=>{
-      await reactPage.getByRole('radio').nth(1).check();
-      await reactPage.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Assets'}).click();
-      await reactPage.getByRole('button',{name:'Order Center'}).click();
-      const t=await reactPage.locator('.cc-bottom').innerText();
-      assert.match(t,/MOCK-CC-B-001/);assert.doesNotMatch(t,/MOCK-CC-A-001/);
-      await snapshot(reactPage,'react-orders-account-beta-'+v+'.png','React compiled Vite',width,{state:'account beta isolated orders'});
+      await verifyAccountRoundTrip(reactPage,()=>snapshot(reactPage,'react-orders-account-beta-'+v+'.png','React compiled Vite',width,{state:'account beta isolated orders'}));
     });
     await check(v+' keyboard focus and viewport bounds',async()=>{
+      const main=reactPage.getByRole('navigation',{name:'Main navigation'});
+      await main.getByRole('button',{name:'Markets',exact:true}).focus();
       await reactPage.keyboard.press('Tab');
-      assert.ok(await reactPage.evaluate(()=>document.activeElement?.tagName!=='BODY'));
+      assert.equal(await main.getByRole('button',{name:'Trade',exact:true}).evaluate(el=>el===document.activeElement),true,'Tab must move Markets → Trade');
+      await reactPage.keyboard.press('Shift+Tab');
+      assert.equal(await main.getByRole('button',{name:'Markets',exact:true}).evaluate(el=>el===document.activeElement),true,'Shift+Tab must move Trade → Markets');
       assert.ok(await reactPage.locator('.cc-app').count()===1);
       if(width===768){
         assert.ok(await reactPage.locator('.cc-main').evaluate(el=>el.getBoundingClientRect().width)<=768);
