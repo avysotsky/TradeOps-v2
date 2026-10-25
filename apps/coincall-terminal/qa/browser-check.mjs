@@ -65,6 +65,28 @@ try {
       await trade.getByRole('button',{name:'Futures'}).click();
       assert.equal(await page.locator('.cc-ticket .cc-actions button:disabled').count(),2);
     });
+    await check(width + ' SOL spot instrument and ticket reset',async()=>{
+      const trade = page.getByRole('navigation',{name:'Trading products'});
+      await trade.getByRole('button',{name:'Spot'}).click();
+      const instrument=page.getByRole('combobox',{name:'Instrument asset'});
+      await instrument.selectOption('SOL');
+      assert.match(await page.locator('.cc-pair').innerText(),/SOL\/USDT/);
+      assert.equal(Number(await page.getByRole('spinbutton',{name:'Order price'}).inputValue()),188.527);
+      await instrument.selectOption('BTC');
+      assert.equal(Number(await page.getByRole('spinbutton',{name:'Order price'}).inputValue()),68125.4);
+      await trade.getByRole('button',{name:'Futures'}).click();
+      const futuresAssets=await page.getByRole('combobox',{name:'Instrument asset'}).locator('option').allTextContents();
+      assert.deepEqual(futuresAssets,['BTC','ETH']);
+    });
+    await check(width + ' responsive spread matrix confines horizontal scrolling',async()=>{
+      await page.getByRole('navigation',{name:'Trading products'}).getByRole('button',{name:'Spreads'}).click();
+      const geometry=await page.evaluate(()=>{
+        const el=document.querySelector('.cc-grid-scroll');
+        return {documentWidth:document.documentElement.scrollWidth,viewport:innerWidth,gridClient:el?.clientWidth,gridScroll:el?.scrollWidth};
+      });
+      assert.ok(geometry.documentWidth<=geometry.viewport+2,'Global page horizontal overflow');
+      if(width===768)assert.ok((geometry.gridScroll??0)>(geometry.gridClient??0),'Matrix scroll should be internal');
+    });
     await check(width + ' account isolation in Order Center',async()=>{
       await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Accounts'}).click();
       await page.getByRole('radio').nth(1).check();
