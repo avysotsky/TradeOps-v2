@@ -34,21 +34,25 @@ try {
       await page.getByRole('navigation',{name:'Trading products'}).getByRole('button',{name:'Spreads'}).waitFor();
     });
     await check(width + ' default spread matrix and screenshots', async()=>{
-      assert.ok(await page.locator('table.cc-spreadtable tbody tr').count() >= 5);
+      assert.ok(await page.locator('.cc-grid-rowhead').count() >= 4);
+      assert.ok(await page.locator('.cc-grid-quote').count() >= 6);
       await page.screenshot({path:join(out,'coincall-react-'+width+'x900.png'),fullPage:false});
     });
     await check(width + ' weekly and monthly expiry filters',async()=>{
       await page.getByRole('checkbox',{name:/WeeklyExp/}).check();
-      assert.equal(await page.locator('table.cc-spreadtable tbody tr').count(),2);
+      assert.equal(await page.locator('.cc-grid-rowhead').count(),3);
       await page.getByRole('checkbox',{name:/WeeklyExp/}).uncheck();
       await page.getByRole('checkbox',{name:/MonthlyExp/}).check();
-      assert.equal(await page.locator('table.cc-spreadtable tbody tr').count(),2);
+      assert.equal(await page.locator('.cc-grid-rowhead').count(),3);
       await page.getByRole('checkbox',{name:/MonthlyExp/}).uncheck();
     });
     await check(width + ' two-leg buttons inert',async()=>{
-      await page.locator('.cc-spreadtable tbody .cc-cellbutton').first().click();
+      await page.locator('.cc-grid-quote').first().click();
       assert.equal(await page.locator('.cc-details .cc-actions button').count(),2);
       for (const item of await page.locator('.cc-details .cc-actions button').all()) assert.equal(await item.isDisabled(),true);
+      await page.getByRole('button',{name:'Table',exact:true}).click();
+      assert.ok(await page.locator('table.cc-spreadtable tbody tr').count()>=5);
+      await page.getByRole('button',{name:'Grid',exact:true}).click();
     });
     await check(width + ' spot and futures ticket buttons inert',async()=>{
       const trade = page.getByRole('navigation',{name:'Trading products'});
