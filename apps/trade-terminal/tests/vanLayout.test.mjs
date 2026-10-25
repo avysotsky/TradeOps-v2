@@ -7,7 +7,7 @@ const css = readFileSync(new URL('../src/van-parity.css', import.meta.url), 'utf
 const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
 test('VAN three-column desktop and single-column mobile layout', () => {
  assert.match(ui, /<div className="van-workstation">/);
- assert.match(ui, /<VanNavigation instrument=\{marketInstrument\}/);
+ assert.match(ui, /<VanNavigation instrument=\{marketInstrument\} environment=\{status.environment\}/);
  assert.match(ui, /<VanTradeChart instrument=\{marketInstrument\}/);
  assert.match(css, /grid-template-areas:"market book ticket" "tape book ticket"/);
  assert.match(css, /grid-template-areas:"market" "book" "ticket" "tape"/);
@@ -22,7 +22,7 @@ test('VAN positions/orders dock has controlled tabs and disabled absent APIs', (
  assert.match(nav, /tab.count \?\? '—'/);
 });
 test('tick chart consumes only real existing public WS tape and clearly avoids synthetic candles', () => {
- assert.match(ui, /tape\?\.instrument === marketInstrument \? tape\.trades : \[\]/);
+ assert.match(ui, /streamState === 'synced' && tape\?\.instrument === marketInstrument \? tape\.trades : \[\]/);
  assert.match(nav, /t.price !== null && Number.isFinite\(t.price\)/);
  assert.match(nav, /t.timestamp !== null && Number.isFinite\(t.timestamp\)/);
  assert.match(nav, /исторические свечи пока недоступны/);

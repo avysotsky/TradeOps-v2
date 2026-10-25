@@ -4,8 +4,9 @@ import { useMemo } from 'react';
 export type VanAccountTab = 'orders' | 'positions';
 type Currency = 'BTC' | 'ETH';
 
-export function VanNavigation({ instrument, onPerpetualSelect }: {
-  instrument: string; onPerpetualSelect: (currency: Currency) => void;
+export function VanNavigation({ instrument, environment, onPerpetualSelect }: {
+  instrument: string; environment: 'mainnet' | 'testnet';
+  onPerpetualSelect: (currency: Currency) => void;
 }) {
   return (
     <nav className="van-navigation" aria-label="Deribit workstation navigation">
@@ -13,7 +14,7 @@ export function VanNavigation({ instrument, onPerpetualSelect }: {
         <button type="button" role="tab" disabled aria-selected={false} title="Markets API not connected">Markets</button>
         <button type="button" role="tab" aria-selected={true} className="active">Trading</button>
         <button type="button" role="tab" disabled aria-selected={false} title="Assets API not connected">Assets</button>
-        <span className="van-nav-safe">MAINNET READ-ONLY</span>
+        <span className="van-nav-safe">{environment === 'mainnet' ? 'MAINNET READ-ONLY' : 'TESTNET · EXECUTION GATED'}</span>
       </div>
       <div className="van-trade-tabs" role="tablist" aria-label="Trading views">
         <button type="button" role="tab" disabled aria-selected={false} title="Spot workstation not connected">Spot</button>

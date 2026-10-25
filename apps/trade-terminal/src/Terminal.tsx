@@ -741,7 +741,7 @@ export default function DeribitTerminal() {
         </section>
       ) : (
         <div className="content" style={{ '--table-font-size': `${tableFontSize}px` } as CSSProperties}>
-          <VanNavigation instrument={marketInstrument} onPerpetualSelect={ccy => {
+          <VanNavigation instrument={marketInstrument} environment={status.environment} onPerpetualSelect={ccy => {
             setMarketCurrency(ccy);
             setMarketKind('future');
             setInstrumentSearch('');
@@ -827,7 +827,7 @@ export default function DeribitTerminal() {
                   <div><span><ArrowUpRight size={15}/> BEST ASK</span><strong>{num(quote?.instrument === marketInstrument ? quote.bestAskPrice : null, marketKind === 'option' ? 6 : 2)}</strong></div>
                 </div>
                 <VanTradeChart instrument={marketInstrument}
-                  ticks={tape?.instrument === marketInstrument ? tape.trades : []} />
+                  ticks={streamState === 'synced' && tape?.instrument === marketInstrument ? tape.trades : []} />
                 <div className="panel-foot"><Clock3 size={14}/> Рыночные данные: 8 сек · HTTP · без выставления ордеров
                   {quote && <span>{new Date(quote.timestampUtc).toLocaleTimeString('ru-RU')}</span>}
                 </div>

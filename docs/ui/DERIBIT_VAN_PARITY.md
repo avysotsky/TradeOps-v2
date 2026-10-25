@@ -35,3 +35,5 @@ Use existing mainnet read-only backend + React launcher. Capture 1440×900 and 3
 ## Safety
 
 Backend DeribitTerminal__ExecutionEnabled=false and DeribitTerminal__MainnetExecutionEnabled=false must remain enforced. No trading transport, data schemas, credentials, clock correction or polling changed in this PR. History/funding, OHLC and spreads require separate typed read-only services; do not connect browser directly to private venue endpoints.
+
+UI safeguard: the tick chart receives an empty tape whenever RAW WS is not `synced`; the navigation badge distinguishes mainnet read-only and testnet execution-gated modes.
