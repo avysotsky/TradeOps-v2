@@ -7,13 +7,13 @@ const backend = readFileSync(new URL('../../TradeOps.TerminalApi/Market/DeribitC
 const endpoints = readFileSync(new URL('../../TradeOps.TerminalApi/Market/MarketStreamEndpoints.cs', import.meta.url), 'utf8');
 const launcher = readFileSync(new URL('../../../scripts/deribit/Start-MainnetReactTerminalReadOnly.ps1', import.meta.url), 'utf8');
 
-test('clock probe uses independent allowlisted public Deribit GET, not RAW stream or private credentials', () => {
+test('public Deribit time probe is strictly operator-initiated, no cache or background traffic', () => {
   assert.match(backend, /public\/get_time/);
   assert.match(backend, /httpClientFactory.CreateClient\("deribit-terminal"\)/);
   assert.match(backend, /"mainnet" => "www.deribit.com"/);
   assert.match(backend, /"testnet" => "test.deribit.com"/);
-  assert.match(backend, /RefreshInterval = TimeSpan.FromSeconds\(30\)/);
   assert.match(backend, /ClockOffsetMs, long RttMs, long SampleUnixMs/);
+  assert.doesNotMatch(backend, /RefreshInterval|FailureRetryDelay|_nextRequestUtc|_latest|Task.Delay/);
   assert.doesNotMatch(backend, /ClientSecret|ClientId|public\/auth|private\//);
   assert.match(endpoints, /market\/clock/);
   assert.match(endpoints, /if \(!Authorized\(ctx, cfg\)\)/);
@@ -21,19 +21,27 @@ test('clock probe uses independent allowlisted public Deribit GET, not RAW strea
   assert.match(endpoints, /rttMs = reading.RttMs/);
 });
 
-test('estimated correction only appears inside collapsed diagnostics with RTT and disclaimer', () => {
+test('manual check button is the only trigger and measures a fixed RAW delta snapshot', () => {
+  const checkFn = ui.slice(ui.indexOf('const probeDeribitClock = async'),
+    ui.indexOf('// A fixed one-shot sample'));
   const panel = ui.slice(ui.indexOf('<details className="terminal-diagnostics"'));
-  assert.match(ui, /api<ExchangeClockSample>\(key, '\/market\/clock'\)/);
-  assert.match(ui, /window.setInterval\(\(\) => \{ void sample\(\); \}, 30000\)/);
-  assert.match(ui, /exchangeAgeMs - exchangeClock.clockOffsetMs/);
-  assert.match(ui, /streamState === 'synced'/);
+  assert.ok(checkFn.length > 200);
+  assert.match(checkFn, /api<ExchangeClockSample>\(key, '\/market\/clock'\)/);
+  assert.match(checkFn, /rawAtClick = streamState === 'synced' \? exchangeAgeMs : null/);
+  assert.match(checkFn, /setExchangeClock\(\{ \.\.\.result, rawDeltaAtCheckMs: rawAtClick \}\)/);
+  assert.doesNotMatch(checkFn, /setInterval|useEffect|setTimeout/);
+  assert.match(panel, /onClick=\{\(\) => \{ void probeDeribitClock\(\); \}\}/);
+  assert.match(panel, /disabled=\{clockProbePending \|\| !status\}/);
+  assert.match(ui, /exchangeClock.rawDeltaAtCheckMs - exchangeClock.clockOffsetMs/);
   assert.match(panel, /Windows − Deribit/);
   assert.match(panel, /RTT public\/get_time/);
+  assert.match(panel, /Δ при запуске проверки/);
   assert.match(panel, /Δ без смещения часов/);
+  assert.match(panel, /не обновляются автоматически/);
   assert.match(panel, /это не точная/);
-  const header = ui.slice(ui.indexOf('<div className="dom-depth-toolbar">'),
+  const toolbar = ui.slice(ui.indexOf('<div className="dom-depth-toolbar">'),
     ui.indexOf('<div className="dom-own-status"'));
-  assert.doesNotMatch(header, /clockOffsetMs|adjustedDeltaMs|rttMs/);
+  assert.doesNotMatch(toolbar, /clockOffsetMs|adjustedDeltaMs|rttMs|probeDeribitClock/);
 });
 
 test('same pinned READ-ONLY launcher keeps execution hard-disabled', () => {
