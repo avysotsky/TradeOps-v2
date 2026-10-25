@@ -5,7 +5,7 @@ from subprocess import CompletedProcess
 from unittest.mock import patch
 import unittest
 from local_acceptance import (Runner, SPECS, git_origin_is_github, parse_ls_remote,
-                              parse_counts, StaleShaError)
+                              parse_counts, StaleShaError, trx_totals, b2_qualified)
 
 
 class LocalAcceptanceTests(unittest.TestCase):
@@ -92,6 +92,48 @@ class LocalAcceptanceTests(unittest.TestCase):
             result = parse_counts(p, "coincall")
             self.assertFalse(result["available"])
             self.assertEqual(result["total"], 0)
+
+    def test_b2_target_postgres_contract_and_full_trx_thresholds(self):
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t)
+            suites = {}
+            for name, n in (("postgres", 19), ("contracts", 5), ("full", 626)):
+                folder = base / name
+                folder.mkdir()
+                (folder / "results.trx").write_text(
+                    '<TestRun><ResultSummary><Counters total="' + str(n) +
+                    '" passed="' + str(n) + '" failed="0" notExecuted="0" />'
+                    '</ResultSummary></TestRun>', encoding="utf-8")
+                suites[name] = trx_totals(folder)
+            self.assertTrue(b2_qualified(suites))
+            self.assertEqual(suites["postgres"]["passed"], 19)
+            self.assertEqual(suites["contracts"]["passed"], 5)
+            self.assertEqual(suites["full"]["passed"], 626)
+            self.assertFalse(b2_qualified({**suites, "postgres": {**suites["postgres"], "passed": 18}}))
+            self.assertFalse(b2_qualified({**suites, "contracts": {**suites["contracts"], "skipped": 1}}))
+            self.assertFalse(b2_qualified({**suites, "full": {**suites["full"], "failed": 1}}))
+            self.assertFalse(b2_qualified({**suites, "full": {**suites["full"], "available": False}}))
+            self.assertFalse(b2_qualified({**suites, "postgres": {**suites["postgres"], "total": 0}}))
+            self.assertFalse(b2_qualified({"postgres": suites["postgres"], "contracts": suites["contracts"]}))
+
+    def test_b2_corrupt_or_empty_trx_never_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = Path(t)
+            self.assertFalse(trx_totals(folder)["available"])
+            (folder / "bad.trx").write_text('<TestRun><Counters total="19" passed="18" failed="0" notExecuted="0"')
+            self.assertFalse(trx_totals(folder)["available"])
+            (folder / "bad.trx").write_text(
+                '<TestRun><Counters total="19" passed="19" failed="1" notExecuted="0" /></TestRun>')
+            self.assertFalse(trx_totals(folder)["available"])
+
+    def test_pr70_uses_exact_head_ref(self):
+        self.assertEqual(SPECS[70], ("TradeOps/b2-01-durable-command-journal", "b2"))
+        with tempfile.TemporaryDirectory() as t:
+            runner = Runner(Path(t), Path(t))
+            refs = {"refs/pull/70/head", "refs/heads/TradeOps/b2-01-durable-command-journal"}
+            content = "".join("f" * 40 + "\t" + ref + "\n" for ref in sorted(refs))
+            with patch.object(runner, "exec", return_value=CompletedProcess(["git"], 0, content, "")):
+                self.assertEqual(runner.remote_sha(70), "f" * 40)
 
     def test_docker_containers_never_expose_ports_or_pass_host_env(self):
         with tempfile.TemporaryDirectory() as t:
