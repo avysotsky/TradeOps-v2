@@ -310,6 +310,17 @@ class Runner:
                     except (ValueError, OSError):
                         summary["postgres_mock_smoke"] = "FAIL"
                         return
+                if label == "api-openapi":
+                    try:
+                        openapi = json.loads((out / "api-openapi.log").read_text())
+                        paths = openapi["paths"]
+                        if not {"/health/live", "/health/ready", "/api/signals"}.issubset(paths):
+                            summary["postgres_mock_smoke"] = "FAIL"
+                            summary["notes"].append("Mock API OpenAPI paths incomplete")
+                            return
+                    except (ValueError, KeyError, TypeError, OSError):
+                        summary["postgres_mock_smoke"] = "FAIL"
+                        return
             # Only a synthetic order mutation on isolated Mock; never an exchange operation.
             payload = json.dumps({"symbol": "BTCUSDT", "side": "Buy", "quantity": 0.001,
                                   "source": "ci01-disposable-mock", "signalId": str(uuid.uuid4())})
@@ -433,6 +444,12 @@ class Runner:
             elif gate != "backend" and not result["test_counts"]["available"]:
                 result["status"] = "FAIL"
                 result["notes"].append("TAP totals unavailable")
+            elif result["test_counts"]["total"] <= 0 or result["test_counts"]["failed"] != 0:
+                result["status"] = "FAIL"
+                result["notes"].append("Missing tests or nonzero failures in recorded TRX/TAP totals")
+            elif gate == "deribit" and result["test_counts"]["suites"] != 2:
+                result["status"] = "FAIL"
+                result["notes"].append("Both regular and explicit VAN Node TAP suites must be counted")
             elif any(step["name"] == "React build" and step["status"] == "PASS" for step in result["steps"]) or gate == "backend":
                 result["status"] = "PASS"
             else:
