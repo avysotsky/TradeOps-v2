@@ -91,6 +91,35 @@ SELECT aggregate_id FROM oms_intents WHERE {ScopeWhere} AND intent_id=@intent
             }
         }
 
+        await using (var intent = Command("""
+INSERT INTO oms_intents
+(tenant_id,venue_id,environment,account_id,subaccount_id,intent_id,aggregate_id,schema_version,provenance)
+VALUES (@tenant,@venue,@environment,@account,@subaccount,@intent,@aggregate,@schema,@provenance)
+ON CONFLICT DO NOTHING
+""", db, tx, request.Scope))
+        {
+            intent.Parameters.AddWithValue("intent", request.IntentId.Value);
+            intent.Parameters.AddWithValue("aggregate", request.LocalOrderId.Value);
+            intent.Parameters.AddWithValue("schema", OmsContractSchema.Version);
+            intent.Parameters.AddWithValue("provenance", request.Payload.Provenance);
+            await intent.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+
+        // Conflict arbitration on intent unique key has completed; re-read its true
+        // owning aggregate AFTER insert, not only from an earlier racing snapshot.
+        await using (var verifyIntent = Command($"""
+SELECT aggregate_id FROM oms_intents
+WHERE {ScopeWhere} AND intent_id=@intent FOR UPDATE
+""", db, tx, request.Scope))
+        {
+            verifyIntent.Parameters.AddWithValue("intent", request.IntentId.Value);
+            var linked = await verifyIntent.ExecuteScalarAsync(cancellationToken);
+            if (linked is not Guid owner || owner != request.LocalOrderId.Value)
+                throw new InvalidOperationException(
+                    "IntentId belongs to another aggregate; transaction rolled back.");
+        }
+
         long nextVersion;
         await using (var cas = Command($"""
 UPDATE oms_aggregates SET version=version+1
@@ -117,25 +146,12 @@ RETURNING version
                     await tx.CommitAsync(cancellationToken);
                     return result;
                 }
-                await tx.CommitAsync(cancellationToken);
+                // Any tentative aggregate/intent creation must roll back on stale CAS.
                 return OmsJournalWriteResult.StaleVersion;
             }
             nextVersion = (long)value;
         }
 
-        await using (var intent = Command("""
-INSERT INTO oms_intents
-(tenant_id,venue_id,environment,account_id,subaccount_id,intent_id,aggregate_id,schema_version,provenance)
-VALUES (@tenant,@venue,@environment,@account,@subaccount,@intent,@aggregate,@schema,@provenance)
-ON CONFLICT DO NOTHING
-""", db, tx, request.Scope))
-        {
-            intent.Parameters.AddWithValue("intent", request.IntentId.Value);
-            intent.Parameters.AddWithValue("aggregate", request.LocalOrderId.Value);
-            intent.Parameters.AddWithValue("schema", OmsContractSchema.Version);
-            intent.Parameters.AddWithValue("provenance", request.Payload.Provenance);
-            await intent.ExecuteNonQueryAsync(cancellationToken);
-        }
 
         await using (var write = Command("""
 INSERT INTO oms_commands
