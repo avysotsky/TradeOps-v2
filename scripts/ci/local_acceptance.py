@@ -203,7 +203,10 @@ class Runner:
             args += ["--rm"]
         if name:
             args += ["--name", name]
-        args += ["--network", network, "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
+        # Use WSL owner UID/GID for bind-mounted source/cache: never leave root-owned
+        # node_modules, obj/bin or temporary worktree files behind after Docker exits.
+        args += ["--network", network, "--user", f"{os.getuid()}:{os.getgid()}",
+                 "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
                  "--mount", f"type=bind,src={source},dst=/workspace",
                  "--mount", f"type=bind,src={temp},dst=/scratch", "--workdir", "/workspace",
                  "-e", "HOME=/scratch/home", "-e", "NUGET_PACKAGES=/scratch/nuget",
