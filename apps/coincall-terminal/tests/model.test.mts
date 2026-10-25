@@ -5,7 +5,7 @@ test('spread filters and typed buy/sell legs',()=>{assert.equal(filterSpreads(sp
 test('book sequence non-crossed for every fixture instrument',()=>{for(const i of instruments)assert.ok(isValidMockBook(makeBook(i),i))});
 test('source-specific quote label and contract symbol',()=>{assert.notEqual(quoteLabel(spreads[0],'mark'),quoteLabel(spreads[0],'median'));assert.equal(instrumentFor(instruments,'spot','BTC').symbol,'BTC/USDT')});
 
-test('expiry controls match explicit fixture expiry groups',()=>{assert.equal(filterSpreads(spreads,'BTC',['Weekly']).length,2);assert.equal(filterSpreads(spreads,'BTC',['Monthly']).length,2);assert.equal(filterSpreads(spreads,'ETH',['Weekly']).length,1);assert.equal(filterSpreads(spreads,'ETH',['Monthly']).length,0);assert.equal(filterSpreads(spreads,'BTC',['Daily']).length,0);assert.equal(filterSpreads(spreads,'BTC',['Quarterly']).length,0);assert.equal(filterSpreads(spreads,'BTC',['Weekly','Monthly']).length,4)});
+test('expiry controls match explicit fixture expiry groups',()=>{assert.equal(filterSpreads(spreads,'BTC',['Weekly']).length,2);assert.equal(filterSpreads(spreads,'BTC',['Monthly']).length,4);assert.equal(filterSpreads(spreads,'ETH',['Weekly']).length,1);assert.equal(filterSpreads(spreads,'ETH',['Monthly']).length,1);assert.equal(filterSpreads(spreads,'BTC',['30 Oct']).every(q=>q.expiryGroup==='Monthly'),true);assert.equal(filterSpreads(spreads,'BTC',['Daily']).length,0);assert.equal(filterSpreads(spreads,'BTC',['Quarterly']).length,0);assert.equal(filterSpreads(spreads,'BTC',['Weekly','Monthly']).length,6)});
 
 test('2D spread grid includes instruments across rows and columns with diagonal inert',()=>{
   const btc=filterSpreads(spreads,'BTC',[]);
