@@ -266,6 +266,40 @@ public sealed class OmsLifecycleContractTests
     }
 
     [Fact]
+    public void LocalUnknownUpdate_CannotIncreaseCumulativeExecution()
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.Accepted);
+        state = Step(state, OmsOrderPhase.Unknown, kind: OmsObservationKind.LocalCommand);
+        var forged = OmsLifecycleContract.Apply(state,
+            Event(state, OmsOrderPhase.Unknown, 5m, kind: OmsObservationKind.LocalCommand));
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, forged.Outcome);
+        Assert.Same(state, forged.State);
+        Assert.Equal(0m, state.CumulativeFilled);
+    }
+
+    [Fact]
+    public void ExecutionFill_CannotConvertOpenOrCancelPendingOrderToCancelled()
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.Accepted);
+        state = Step(state, OmsOrderPhase.CancelPending, kind: OmsObservationKind.LocalCommand);
+        var falseCancellation = OmsLifecycleContract.Apply(state,
+            Event(state, OmsOrderPhase.Cancelled, 3m, kind: OmsObservationKind.ExecutionFill));
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, falseCancellation.Outcome);
+        Assert.Equal(OmsOrderPhase.CancelPending, falseCancellation.State.Phase);
+    }
+
+    [Fact]
+    public void StaleCursorWithHigherFilledQuantity_RequiresExecutionReplay()
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.Accepted, sequence: 10);
+        state = Step(state, OmsOrderPhase.PartiallyFilled, 3m, sequence: 12);
+        var staleButHigherFill = OmsLifecycleContract.Apply(state,
+            Event(state, OmsOrderPhase.PartiallyFilled, 5m, sequence: 11));
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, staleButHigherFill.Outcome);
+        Assert.Same(state, staleButHigherFill.State);
+    }
+
+    [Fact]
     public void CursorEpochChange_NeedsExplicitRecoveryGate()
     {
         var state = Step(NewOrder(), OmsOrderPhase.Accepted, sequence: 100);
