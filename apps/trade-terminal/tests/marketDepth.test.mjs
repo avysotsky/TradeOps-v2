@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toPriceLadder, domPriceDecimals, formatDomPrice } from '../src/marketDepth.ts';
+import { toPriceLadder, contractPriceDecimals, formatDomPrice } from '../src/marketDepth.ts';
 
 test('asks descend toward spread, bids descend away from spread', () => {
   const input = {
@@ -69,53 +69,63 @@ test('Max 10 levels per side and invalid rows excluded', () => {
   assert.equal(out.bids[0].best, true);
 });
 
-test('one fixed fractional precision across all bid and ask prices', () => {
-  const ladder = toPriceLadder({
-    asks: [{ price: 2355, amount: 5 }, { price: 2354.5, amount: 9 }],
-    bids: [{ price: 2354, amount: 1 }, { price: 2353.5, amount: 2 }]
-  });
-  const decimals = domPriceDecimals(ladder, 0.5, 'future');
-  // 2354.25 midpoint requires an additional digit beyond a 0.5 tick.
-  assert.equal(decimals, 2);
-  assert.deepEqual(ladder.asks.map(x => formatDomPrice(x.price, decimals)),
-    ['2,355.00', '2,354.50']);
-  assert.deepEqual(ladder.bids.map(x => formatDomPrice(x.price, decimals)),
-    ['2,354.00', '2,353.50']);
-  assert.equal(formatDomPrice(ladder.spread.mid, decimals), '2,354.25');
-  assert.equal(formatDomPrice(ladder.spread.absolute, decimals), '0.50');
+
+test('contract tick_size fixes one price decimal for all ask/bid rows', () => {
+  const contract = {
+    name: 'ETH-PERPETUAL',
+    kind: 'future',
+    tickSize: 0.5,
+    tickSizeSteps: []
+  };
+  const decimals = contractPriceDecimals(contract);
+  assert.equal(decimals, 1, '0.5 Deribit tick requires one digit, not two');
+  assert.equal(formatDomPrice(2355, decimals), '2,355.0');
+  assert.equal(formatDomPrice(2354.5, decimals), '2,354.5');
+  assert.equal(formatDomPrice(2354, decimals), '2,354.0');
+  assert.equal(formatDomPrice(2353.5, decimals), '2,353.5');
+  // Last/Mark/Index are formatted with same contract precision,
+  // regardless of how many places those source numbers happen to have.
+  assert.equal(formatDomPrice(2354.24, decimals), '2,354.2');
+  assert.equal(formatDomPrice(2356.00001, decimals), '2,356.0');
 });
 
-test('future with whole-dollar levels reserves half-tick precision across spread changes', () => {
-  const ladder = toPriceLadder({
-    asks: [{ price: 3001, amount: 1 }],
-    bids: [{ price: 3000, amount: 1 }]
+test('options tick_size is specification-driven and preserves trailing zeros', () => {
+  const decimals = contractPriceDecimals({
+    name: 'ETH-25DEC26-3000-C',
+    kind: 'option',
+    tickSize: 0.0001,
+    tickSizeSteps: [{ abovePrice: 0.01, tickSize: 0.0005 }]
   });
-  const decimals = domPriceDecimals(ladder, 0.5, 'future');
-  assert.equal(decimals, 2);
-  assert.equal(formatDomPrice(3001, decimals), '3,001.00');
-  assert.equal(formatDomPrice(3000, decimals), '3,000.00');
-  assert.equal(formatDomPrice(3000.5, decimals), '3,000.50');
+  assert.equal(decimals, 4);
+  assert.equal(formatDomPrice(0.0016, decimals), '0.0016');
+  assert.equal(formatDomPrice(0.001, decimals), '0.0010');
+  assert.equal(formatDomPrice(0.0012, decimals), '0.0012');
+  assert.equal(formatDomPrice(0.0008, decimals), '0.0008');
 });
 
-test('ETH options share one precision, including 8-digit quotes', () => {
-  const ladder = toPriceLadder({
-    asks: [{ price: 0.0016, amount: 2 }, { price: 0.0012, amount: 3 }],
-    bids: [{ price: 0.001, amount: 3 }, { price: 0.0008, amount: 4 }]
-  });
-  const decimals = domPriceDecimals(ladder, 0.0001, 'option');
-  assert.equal(decimals, 5);
-  assert.equal(formatDomPrice(ladder.asks[0].price, decimals), '0.00160');
-  assert.equal(formatDomPrice(ladder.asks[1].price, decimals), '0.00120');
-  assert.equal(formatDomPrice(ladder.bids[0].price, decimals), '0.00100');
-  assert.equal(formatDomPrice(ladder.spread.mid, decimals), '0.00110');
+test('tick_size_steps may demand additional precision, not quote heuristics', () => {
+  const spec = {
+    name: 'ETH-25DEC26-3000-C',
+    kind: 'option',
+    tickSize: 0.0001,
+    tickSizeSteps: [{ abovePrice: 0.001, tickSize: 0.00005 }]
+  };
+  assert.equal(contractPriceDecimals(spec), 5);
+  assert.equal(formatDomPrice(0.001, 5), '0.00100');
+  assert.equal(contractPriceDecimals({
+    name: 'ETH-25DEC26-3000-P', kind: 'option',
+    tickSize: 1e-8, tickSizeSteps: []
+  }), 8);
+});
 
-  const small = toPriceLadder({
-    asks: [{ price: 0.00000012, amount: 1 }],
-    bids: [{ price: 0.0000001, amount: 1 }]
-  });
-  const digits = domPriceDecimals(small, 0.00000001, 'option');
-  assert.equal(digits, 8);
-  assert.equal(formatDomPrice(small.asks[0].price, digits), '0.00000012');
-  assert.equal(formatDomPrice(small.bids[0].price, digits), '0.00000010');
-  assert.equal(formatDomPrice(small.spread.mid, digits), '0.00000011');
+test('missing or malformed contract spec cannot invent price decimals', () => {
+  assert.equal(contractPriceDecimals(null), null);
+  assert.equal(formatDomPrice(2_340.5, null), '—');
+  assert.equal(contractPriceDecimals({
+    name: 'ETH-PERPETUAL', kind: 'future', tickSize: 0, tickSizeSteps: []
+  }), null);
+  assert.equal(contractPriceDecimals({
+    name: 'ETH-PERPETUAL', kind: 'future', tickSize: 0.5,
+    tickSizeSteps: [{ abovePrice: 1, tickSize: -1 }]
+  }), null);
 });
