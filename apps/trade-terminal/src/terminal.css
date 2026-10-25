@@ -687,3 +687,67 @@
   scrollbar-width: thin;
   scrollbar-color: #60738c #152033;
 }
+
+
+/* TO-V2-48: Depth and measured exchange-to-local timestamp delta in one
+   compact toolbar. Delta is display-only and does not affect WS ingestion. */
+.dom-depth-toolbar {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 5px;
+  row-gap: 3px;
+}
+.dom-depth-toolbar > .dom-stream-lag {
+  margin-left: auto;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: #d0dff1;
+  text-align: right;
+}
+.dom-depth-toolbar > .dom-depth-source {
+  flex-shrink: 0;
+}
+@media (max-width: 380px) {
+  .dom-depth-toolbar > .dom-stream-lag {
+    flex-basis: 100%;
+  }
+}
+
+/* Dense professional data grids for BOTH positions and open orders.
+   The owner-approved variable 14–20px font control remains untouched.
+   Cancel stays visibly disabled when mainnet execution is locked. */
+.data-panel th {
+  padding: 4px 8px;
+  line-height: 1.2;
+}
+.data-panel td {
+  padding: 2px 8px;
+  line-height: 1.25;
+}
+.data-panel .state-pill {
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1.15;
+}
+.data-panel .cancel {
+  padding: 2px 7px;
+  font-size: 13px;
+  line-height: 1.15;
+  border-radius: 4px;
+}
+.data-panel td.empty-cell {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+@media (max-width: 650px) {
+  .data-panel th,
+  .data-panel td {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
