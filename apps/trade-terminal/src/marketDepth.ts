@@ -1,7 +1,8 @@
 /**
  * Deribit-style vertical DOM (read-only presentation model).
- * Exchange raw L2 book reconstruction remains in .NET; this transforms
- * ONLY its already-validated, bounded top 50 levels for React display.
+ * The .NET backend owns either full RAW reconstruction or an exact native
+ * 1/10/20-level grouped Deribit subscription. RAW remains capped to its
+ * top 50 levels in React to keep DOM rendering bounded.
  */
 export type MarketLevel = { price: number; amount: number };
 export type DepthRow = {
@@ -15,14 +16,14 @@ export type DepthRow = {
 export type Spread = { bid: number; ask: number; mid: number; absolute: number; bps: number };
 export type PriceLadder = { asks: DepthRow[]; bids: DepthRow[]; spread: Spread | null };
 
-export type DomDepth = 10 | 25 | 50;
+export type DomDepth = 1 | 10 | 20 | 'raw';
 
 function levels(raw: MarketLevel[], side: 'ask' | 'bid', depth: DomDepth): DepthRow[] {
   const source = raw
     .filter(x => Number.isFinite(x.price) && x.price > 0 &&
       Number.isFinite(x.amount) && x.amount >= 0)
     .sort((a, b) => side === 'ask' ? a.price - b.price : b.price - a.price)
-    .slice(0, depth);
+    .slice(0, depth === 'raw' ? 50 : depth);
 
   let total = 0;
   const accumulated = source.map((row, i) => {
