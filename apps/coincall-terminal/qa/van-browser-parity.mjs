@@ -33,10 +33,14 @@ async function vanishScripts(html){
 }
 const safeDir=join(out,'_van-sanitized');
 await mkdir(safeDir,{recursive:true});
+for(const name of ['van-logo.png','coincall-logo.jpg']){
+  try { await writeFile(join(safeDir,name),await readFile(join(van,name))); }
+  catch { /* optional static logo: provenance still recorded */ }
+}
 for(const file of ['coincall.html','coincall-spreads.html']){
   const content=await readFile(join(van,file),'utf8');
   assert.ok(content.includes('ccSpreadsPanel'),'VAN source expected CoinCall markup');
-  await writeFile(join(safeDir,file),await vanishScripts(content));
+  await writeFile(join(safeDir,file),(await vanishScripts(content)).replace(/(src|href)=(['"])\/(van-logo\.png|coincall-logo\.jpg)\2/gi,(_full,attribute,quote,name)=>attribute+'='+quote+'./'+name+quote));
 }
 function vanToggle(view){
   const doc=document;
