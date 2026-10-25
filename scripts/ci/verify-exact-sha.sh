@@ -14,9 +14,9 @@ sha="$2"
 repo="${3:-.}"
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$pr" in
-  62) gate=backend ;;
-  63) gate=deribit ;;
-  64) gate=coincall ;;
+  62) gate=backend; head_branch=TradeOps/b1-01-oms-domain-identity-contracts ;;
+  63) gate=deribit; head_branch=TradeOps/f1-01-deribit-react-van-parity ;;
+  64) gate=coincall; head_branch=TradeOps/f2-01-coincall-react-workstation ;;
   *) usage ;;
 esac
 
@@ -37,7 +37,9 @@ cleanup() {
 trap cleanup EXIT
 
 echo "CI-01 gate=$gate PR=$pr requested_sha=$sha"
-echo 'Fetching only the requested immutable commit. GitHub authentication may be necessary.'
+echo 'Verify requested SHA equals the current remote PR branch HEAD. GitHub authentication may be necessary.'
+remote_head=$(git -C "$root" ls-remote origin "refs/heads/$head_branch" | awk '{print $1}')
+[[ "$remote_head" == "$sha" ]] || { echo "FAIL: $head_branch current SHA is $remote_head, expected $sha" >&2; exit 1; }
 git -C "$root" fetch --no-tags origin "$sha"
 git -C "$root" cat-file -e "$sha^{commit}"
 git -C "$root" worktree add --detach "$worktree" "$sha"
