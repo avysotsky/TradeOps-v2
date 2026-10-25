@@ -20,13 +20,16 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
     private readonly ConcurrentDictionary<string, InstrumentFeed> _feeds = new();
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public StreamLease Subscribe(string instrument)
+    public StreamLease Subscribe(string instrument, int depth)
     {
-        if (!_feeds.TryGetValue(instrument, out var feed))
+        if (!DeribitBookSubscription.ValidDepth(depth))
+            throw new ArgumentOutOfRangeException(nameof(depth));
+        var key = instrument + "|" + depth;
+        if (!_feeds.TryGetValue(key, out var feed))
         {
             if (_feeds.Count >= 4) throw new InvalidOperationException("Instrument stream limit reached.");
-            feed = _feeds.GetOrAdd(instrument,
-                name => new InstrumentFeed(name, configuration, Release));
+            feed = _feeds.GetOrAdd(key,
+                _ => new InstrumentFeed(instrument, depth, key, configuration, Release));
         }
         return feed.Subscribe();
     }
@@ -50,6 +53,9 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
     private sealed class InstrumentFeed : IDisposable
     {
         private readonly string _name;
+        private readonly int _depth;
+        private readonly string _key;
+        private readonly string _bookChannel;
         private readonly IConfiguration _config;
         private readonly Action<string, InstrumentFeed> _release;
         private readonly ConcurrentDictionary<Guid, Channel<string>> _subscribers = new();
@@ -90,10 +96,13 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             Count(code);
         }
 
-        public InstrumentFeed(string instrument, IConfiguration cfg,
+        public InstrumentFeed(string instrument, int depth, string key, IConfiguration cfg,
             Action<string, InstrumentFeed> release)
         {
             _name = instrument;
+            _depth = depth;
+            _key = key;
+            _bookChannel = DeribitBookSubscription.Channel(instrument, depth);
             _config = cfg;
             _release = release;
             _book = new DeribitRawBook(instrument);
@@ -120,7 +129,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                     removed.Writer.TryComplete();
                 if (_subscribers.IsEmpty)
                 {
-                    _release(_name, this);
+                    _release(_key, this);
                     Dispose();
                 }
             });
@@ -139,7 +148,11 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             _publicL2State = state;
             Publish(new { type = "status", instrument = _name,
                 state, receivedAtUtc = DateTimeOffset.UtcNow,
+                depth = _depth, bookChannel = _bookChannel,
                 diagnostics = new {
+                    requestedDepth = _depth,
+                    exchangeChannel = _bookChannel,
+                    exchangeMode = DeribitBookSubscription.Mode(_depth),
                     publicL2State = _publicL2State,
                     privateOrdersState = _privateState,
                     reasonCode = _lastFailureCode,
@@ -210,7 +223,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             method = "public/subscribe",
                             @params = new {
                                 channels = new[] {
-                                    "book." + _name + ".raw",
+                                    _bookChannel,
                                     "trades." + _name + ".raw",
                                     "ticker." + _name + ".raw"
                                 }
@@ -335,9 +348,13 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                 !parameters.TryGetProperty("data", out var data))
                                 continue;
                             var name = chan.GetString();
-                            if (name == "book." + _name + ".raw")
+                            if (name == _bookChannel)
                             {
-                                if (!_book.Apply(data, out var view))
+                                DeribitRawBook.BookView view;
+                                var applied = DeribitBookSubscription.IsAggregated(_depth)
+                                    ? _book.ApplyGroupedSnapshot(data, _depth, out view)
+                                    : _book.Apply(data, out view);
+                                if (!applied)
                                 {
                                     throw new FeedFaultException(
                                         _book.LastFailure?.Code ?? "L2_MALFORMED");
@@ -345,6 +362,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                 _messages++;
                                 if (_publicL2State != "synced") State("synced");
                                 Publish(new { type = "book", instrument = _name,
+                                    depth = _depth, bookChannel = _bookChannel,
                                     state = "synced", book = view, ownOrders = _ownOrders.View(),
                                     messages = _messages,
                                     exchangeAgeMs = view.ExchangeTimestamp is long tick
