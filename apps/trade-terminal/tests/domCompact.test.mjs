@@ -85,3 +85,33 @@ test('RAW book depth selector only exposes bounded 10/25/50 local views', () => 
   assert.doesNotMatch(ui, /\/market\/orderbook\?instrument=/);
   assert.match(ui, /new WebSocket\(url\)/);
 });
+
+test('Depth controls show live exchange-to-local lag on far right in same row', () => {
+  const marker = ui.indexOf('<div className="dom-depth-toolbar">');
+  assert.ok(marker >= 0);
+  const block = ui.slice(marker, ui.indexOf('<div className="dom-own-status"', marker));
+  const depth = block.indexOf('<label htmlFor="dom-depth">Depth</label>');
+  const options = block.indexOf('<option value={50}>50</option>');
+  const raw = block.indexOf('>RAW L2</span>');
+  const lag = block.indexOf('className="dom-stream-lag"');
+  assert.ok(depth >= 0 && depth < options && options < raw && raw < lag);
+  assert.match(block, /Δ exchange → local:/);
+  assert.match(block, /streamState === 'synced' && exchangeAgeMs !== null/);
+  assert.match(block, /exchangeAgeMs \+ ' ms' : '—'/);
+  assert.doesNotMatch(block, /Глубина \/ сторона/);
+  assert.match(css, /\.dom-depth-toolbar > \.dom-stream-lag\s*\{\s*margin-left: auto;/);
+  assert.match(css, /font-variant-numeric: tabular-nums;/);
+});
+
+test('positions and orders tables are dense but preserve adjustable readable fonts', () => {
+  const compact = css.slice(css.indexOf('/* TO-V2-48: Depth'));
+  assert.ok(compact.length > 400);
+  assert.match(compact, /\.data-panel th\s*\{\s*padding: 4px 8px;/);
+  assert.match(compact, /\.data-panel td\s*\{\s*padding: 2px 8px;/);
+  assert.match(compact, /\.data-panel \.state-pill\s*\{\s*padding: 2px 6px;/);
+  assert.match(compact, /\.data-panel \.cancel\s*\{\s*padding: 2px 7px;/);
+  assert.match(css, /\.data-panel td\s*\{\s*padding: 18px;\s*font-size: var\(--table-font-size, 16px\);/);
+  assert.match(ui, /setTableFontSize\(size => Math.min\(20, size \+ 2\)\)/);
+  assert.match(ui, /EXCHANGE STATE<\/span><h2>Открытые позиции<\/h2>/);
+  assert.match(ui, /ORDER MANAGEMENT<\/span><h2>Активные ордера<\/h2>/);
+});
