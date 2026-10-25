@@ -1,0 +1,30 @@
+name: Deribit compact account tables and live depth lag
+
+on:
+  push:
+    branches:
+      - TradeOps/to-v2-48-dom-lag-compact-portfolio-tables
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test compact DOM, lag indicator and portfolio tables
+        working-directory: apps/trade-terminal
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Verify standalone read-only .NET backend unchanged
+        run: dotnet build apps/TradeOps.TerminalApi/TradeOps.TerminalApi.csproj --configuration Release
