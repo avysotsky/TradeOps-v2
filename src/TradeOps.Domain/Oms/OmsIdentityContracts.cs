@@ -209,9 +209,47 @@ public sealed record OmsOrderIdentity
 }
 
 /// <summary>Same remote label/ID is valid in different scopes but never globally resolvable alone.</summary>
-public sealed record ScopedClientOrderId(AccountKey Scope, ClientOrderLabel Label);
-public sealed record ScopedExchangeOrderId(AccountKey Scope, ExchangeOrderKey OrderId);
-public sealed record ScopedExecutionId(AccountKey Scope, ExecutionNamespace Namespace, ExecutionKey ExecutionId);
+public sealed record ScopedClientOrderId
+{
+    public AccountKey Scope { get; }
+    public ClientOrderLabel Label { get; }
+
+    public ScopedClientOrderId(AccountKey scope, ClientOrderLabel label)
+    {
+        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        OmsGuard.Opaque(label.Value, nameof(label));
+        Label = label;
+    }
+}
+
+public sealed record ScopedExchangeOrderId
+{
+    public AccountKey Scope { get; }
+    public ExchangeOrderKey OrderId { get; }
+
+    public ScopedExchangeOrderId(AccountKey scope, ExchangeOrderKey orderId)
+    {
+        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        OmsGuard.Opaque(orderId.Value, nameof(orderId));
+        OrderId = orderId;
+    }
+}
+
+public sealed record ScopedExecutionId
+{
+    public AccountKey Scope { get; }
+    public ExecutionNamespace Namespace { get; }
+    public ExecutionKey ExecutionId { get; }
+
+    public ScopedExecutionId(AccountKey scope, ExecutionNamespace executionNamespace, ExecutionKey executionId)
+    {
+        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        OmsGuard.Opaque(executionNamespace.Value, nameof(executionNamespace));
+        OmsGuard.Opaque(executionId.Value, nameof(executionId));
+        Namespace = executionNamespace;
+        ExecutionId = executionId;
+    }
+}
 
 public enum OmsQuantityUnit
 {
