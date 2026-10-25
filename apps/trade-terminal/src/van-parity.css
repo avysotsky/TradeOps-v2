@@ -98,3 +98,21 @@
  .van-bottom-tabs { flex-wrap:nowrap; overflow-x:auto; }
  .van-bottom-tabs button { flex:0 0 auto; }
 }
+
+/* VAN chart: time-window buttons and a plot similar in vertical scale to the
+   original desktop workstation, with data labels outside the SVG. */
+.van-chart-head { align-items:center; flex-wrap:wrap; }
+.van-chart-head > span { margin-right:auto; }
+.van-chart-range { display:flex; gap:3px; margin-left:auto; }
+.van-chart-range button { background:#101b2c; color:#94a3b8; border:1px solid #34445b;
+  border-radius:3px; padding:3px 7px; font:600 10px/1.2 'JetBrains Mono',monospace; }
+.van-chart-range button.active { background:#1d3b35; color:#80e4c6; border-color:#3a9079; }
+.van-chart-plot { position:relative; background:#090f1b; }
+.van-tick-chart svg,.van-chart-unavailable { height:268px; }
+.van-chart-price-labels { position:absolute; inset:8px 6px 8px auto; display:flex;
+  pointer-events:none; flex-direction:column; justify-content:space-between;
+  font:10px 'JetBrains Mono',monospace; color:#b5c7de; text-shadow:0 1px 3px #000; }
+.van-tick-chart svg { padding-right:52px; }
+@media(max-width:760px) {
+  .van-tick-chart svg,.van-chart-unavailable { height:190px; }
+}

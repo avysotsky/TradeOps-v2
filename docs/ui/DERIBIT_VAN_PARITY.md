@@ -37,3 +37,9 @@ Use existing mainnet read-only backend + React launcher. Capture 1440×900 and 3
 Backend DeribitTerminal__ExecutionEnabled=false and DeribitTerminal__MainnetExecutionEnabled=false must remain enforced. No trading transport, data schemas, credentials, clock correction or polling changed in this PR. History/funding, OHLC and spreads require separate typed read-only services; do not connect browser directly to private venue endpoints.
 
 UI safeguard: the tick chart receives an empty tape whenever RAW WS is not `synced`; the navigation badge distinguishes mainnet read-only and testnet execution-gated modes.
+
+## F1-01 interaction/accessibility follow-up
+- Public trade chart supports 1m/5m/15m/All windows **relative to the latest observed trade** in the existing WebSocket buffer. This is NOT a guarantee of data coverage and never turns ticks into OHLC candles.
+- `vanChartSeries.ts` validates finite positive prices/timestamps, sorts event time, caps chart to 120 trades, and handles flat/simultaneous prints without infinite/NaN coordinates. Node24 `vanLayout.test.mjs` includes actual pure-function unit tests (in addition to source assertions).
+- Orders and Positions use linked `tab`/`tabpanel` IDs. Home, End, ArrowLeft and ArrowRight switch between the two currently available account panels; unavailable history/funding panels remain disabled.
+- Source `deribit.html` uses a 340px canvas; React's public-tick chart is now 268px desktop / 190px mobile. Pixel-exact chart parity is NOT claimed, because equivalent OHLC API is absent. Browser comparison remains required.

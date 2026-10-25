@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
+import { createVanTickSeries, type VanTradeTick, type VanTickRange } from './vanChartSeries';
+export type { VanTradeTick } from './vanChartSeries';
 
 /** VAN presentation primitives: no exchange transports or imperative globals. */
 export type VanAccountTab = 'orders' | 'positions';
@@ -34,40 +36,47 @@ export function VanNavigation({ instrument, environment, onPerpetualSelect }: {
   );
 }
 
-export type VanTradeTick = { price: number | null; timestamp: number | null };
 export function VanTradeChart({ instrument, ticks }: {
   instrument: string; ticks: readonly VanTradeTick[];
 }) {
-  // A truthful public-trade microchart. NOT historical OHLC.
-  const points = useMemo(() => ticks
-    .filter((t): t is { price: number; timestamp: number } =>
-      t.price !== null && Number.isFinite(t.price) && t.price > 0 &&
-      t.timestamp !== null && Number.isFinite(t.timestamp))
-    .slice(0, 80).sort((a, b) => a.timestamp - b.timestamp), [ticks]);
-  const low = Math.min(...points.map(p => p.price));
-  const high = Math.max(...points.map(p => p.price));
-  const span = Math.max(high - low, Number.EPSILON);
-  const polyline = points.map((p, index) => {
-    const x = 12 + (points.length === 1 ? 0 : index * 456 / (points.length - 1));
-    const y = 138 - (p.price - low) / span * 116;
-    return x.toFixed(2) + ',' + y.toFixed(2);
-  }).join(' ');
-  const rising = points.length > 1 && points[points.length - 1].price >= points[0].price;
+  // Filters *existing* WS tape only. UI timeframes are not OHLC/bar data.
+  const [range, setRange] = useState<VanTickRange>('all');
+  const series = useMemo(() => createVanTickSeries(ticks, range), [ticks, range]);
+  const rising = series.points.length > 1 &&
+    series.points[series.points.length - 1].price >= series.points[0].price;
   return (
-    <section className="van-tick-chart" aria-label={'Live public trade prices ' + instrument}>
-      <div className="van-chart-head"><strong>Price chart</strong><span>PUBLIC TRADES · TICK VIEW</span></div>
-      {points.length < 2
-        ? <div className="van-chart-unavailable" role="status">Ожидание публичных сделок WebSocket · исторические свечи пока недоступны</div>
-        : <svg viewBox="0 0 480 152" role="img" preserveAspectRatio="none"
-            aria-label={instrument + ': последние ' + points.length + ' публичных сделок; диапазон ' +
-              low.toFixed(2) + '–' + high.toFixed(2)}>
-            <line x1="0" y1="22" x2="480" y2="22" />
-            <line x1="0" y1="80" x2="480" y2="80" />
-            <line x1="0" y1="138" x2="480" y2="138" />
-            <polyline points={polyline} fill="none" stroke={rising ? '#45c4a5' : '#f04e60'}
-              strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-          </svg>}
-      <p className="van-chart-caption">Live ticks, не OHLC · текущая публичная лента · без исторического backfill</p>
+    <section className="van-tick-chart" aria-label={'Public trade chart ' + instrument}>
+      <div className="van-chart-head">
+        <strong>Price chart</strong>
+        <span>PUBLIC WS · TICKS ONLY</span>
+        <div className="van-chart-range" role="group" aria-label="Visible public trade window">
+          {(['1m', '5m', '15m', 'all'] as const).map(option =>
+            <button type="button" key={option} aria-pressed={range === option}
+              className={range === option ? 'active' : ''}
+              onClick={() => setRange(option)}>{option === 'all' ? 'All' : option}</button>)}
+        </div>
+      </div>
+      {series.points.length < 2
+        ? <div className="van-chart-unavailable" role="status">Недостаточно публичных сделок в выбранном окне · исторические свечи пока недоступны</div>
+        : <div className="van-chart-plot">
+            <svg viewBox="0 0 480 152" role="img" preserveAspectRatio="none"
+              aria-label={instrument + ': ' + series.points.length + ' public trades; price range ' +
+                series.low?.toFixed(2) + '–' + series.high?.toFixed(2)}>
+              <line x1="0" y1="22" x2="480" y2="22" />
+              <line x1="0" y1="80" x2="480" y2="80" />
+              <line x1="0" y1="138" x2="480" y2="138" />
+              <polyline points={series.polyline} fill="none"
+                stroke={rising ? '#45c4a5' : '#f04e60'} strokeWidth="2"
+                vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+            </svg>
+            <div className="van-chart-price-labels" aria-hidden="true">
+              <span>{series.high?.toFixed(2)}</span><span>{series.low?.toFixed(2)}</span>
+            </div>
+          </div>}
+      <p className="van-chart-caption">
+        {series.points.length} trades · {range === 'all' ? 'buffer' : range + ' до последней сделки'}
+        {' · '}WS buffer, не OHLC · без исторического backfill
+      </p>
     </section>
   );
 }
@@ -82,9 +91,22 @@ export function VanBottomTabs({ selected, onSelect, positionsCount, ordersCount 
     { id: 'positions', label: 'Positions', count: positionsCount },
     { id: 'orders', label: 'Orders', count: ordersCount }
   ];
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: VanAccountTab) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const target: VanAccountTab = event.key === 'Home' ? 'positions'
+      : event.key === 'End' ? 'orders'
+      : event.key === 'ArrowLeft' ? 'positions' : 'orders';
+    if (target !== current) onSelect(target);
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(
+      '[data-van-tab="' + target + '"]')?.focus();
+  }
   return <div className="van-bottom-tabs" role="tablist" aria-label="Account state panels">
-    {active.map(tab => <button key={tab.id} type="button" role="tab"
+    {active.map(tab => <button key={tab.id} id={'van-account-tab-' + tab.id}
+      data-van-tab={tab.id} aria-controls={'van-account-panel-' + tab.id}
+      type="button" role="tab" tabIndex={selected === tab.id ? 0 : -1}
       aria-selected={selected === tab.id} className={selected === tab.id ? 'active' : ''}
+      onKeyDown={event => onTabKeyDown(event, tab.id)}
       onClick={() => onSelect(tab.id)}>{tab.label} ({tab.count ?? '—'})</button>)}
     {['Order history', 'Trade history', 'Position history', 'Funding', 'Exercise', 'Assets'].map(label =>
       <button key={label} type="button" role="tab" aria-selected={false} disabled

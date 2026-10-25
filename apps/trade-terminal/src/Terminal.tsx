@@ -1066,7 +1066,8 @@ export default function DeribitTerminal() {
             <VanBottomTabs selected={accountTab} onSelect={setAccountTab}
               positionsCount={snapshotCount(positionsSnapshot)}
               ordersCount={snapshotCount(ordersSnapshot)} />
-            <div className="van-dock-pane" hidden={accountTab !== 'positions'}>
+            <div id="van-account-panel-positions" role="tabpanel" aria-labelledby="van-account-tab-positions"
+              tabIndex={0} className="van-dock-pane" hidden={accountTab !== 'positions'}>
           <section className="panel data-panel">
             <div className="panel-header">
               <div><span className="eyebrow">EXCHANGE STATE</span><h2>Открытые позиции</h2></div>
@@ -1108,7 +1109,8 @@ export default function DeribitTerminal() {
             </div>
           </section>
             </div>
-            <div className="van-dock-pane" hidden={accountTab !== 'orders'}>
+            <div id="van-account-panel-orders" role="tabpanel" aria-labelledby="van-account-tab-orders"
+              tabIndex={0} className="van-dock-pane" hidden={accountTab !== 'orders'}>
           <section className="panel data-panel">
             <div className="panel-header"><div><span className="eyebrow">ORDER MANAGEMENT</span><h2>Активные ордера</h2></div><span className="count" aria-live="polite">{ordersSnapshot.state === 'ready'
                 ? orders.length + ' orders · ' + new Date(ordersSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
