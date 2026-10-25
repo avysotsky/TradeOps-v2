@@ -62,7 +62,7 @@ test('Max 10 levels per side and invalid rows excluded', () => {
       ...data.map(x => ({ price: 201 + (200 - x.price), amount: x.amount }))
     ],
     bids: data
-  });
+  }, 10);
   assert.equal(out.asks.length, 10);
   assert.equal(out.bids.length, 10);
   assert.equal(out.asks[9].best, true);
@@ -143,8 +143,8 @@ test('native 1/10/20 depths and separate RAW display cap preserve the selected v
     assert.equal(dom.bids[count - 1].price, 2501 - count);
     assert.equal(dom.spread.absolute, 1);
   }
-  assert.equal(toPriceLadder({ bids, asks }).bids.length, 10,
-    'Default ten levels remain unchanged for compact operator view.');
+  assert.equal(toPriceLadder({ bids, asks }).bids.length, 50,
+    'Default RAW view displays up to fifty reconstructed levels per side.');
   assert.equal(toPriceLadder(null, 'raw').spread, null,
     'Invalid RAW feed cannot become valid merely by selecting RAW.');
 });
