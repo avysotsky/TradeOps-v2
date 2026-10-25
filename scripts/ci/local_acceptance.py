@@ -154,3 +154,102 @@ class Runner:
                 log.write_text(f"COMMAND UNAVAILABLE: {type(exc).__name__}\n", encoding="utf-8")
             return subprocess.CompletedProcess(args, 127, "", type(exc).__name__)
 
+    def remote_sha(self, number: int) -> str:
+        branch = SPECS[number][0]
+        wanted = {f"refs/pull/{number}/head", f"refs/heads/{branch}"}
+        cmd = ["git", "-C", str(self.repo), "ls-remote", "--exit-code", "origin", *sorted(wanted)]
+        cp = self.exec(cmd, quiet=True, timeout=120)
+        if cp.returncode:
+            raise EnvironmentErrorCI(f"Cannot read PR #{number} refs from GitHub (git ls-remote exit {cp.returncode})")
+        refs = parse_ls_remote(cp.stdout, wanted)
+        return refs[f"refs/pull/{number}/head"]
+
+    def docker(self, args: list[str], log: Path | None = None, timeout: int = 120,
+               quiet: bool = False) -> subprocess.CompletedProcess:
+        return self.exec(["docker", *args], log, timeout, quiet=quiet)
+
+    def require_images(self, names: list[str], out: Path):
+        for key in names:
+            if key in self.image_info:
+                continue
+            image = self.images[key]
+            if not ("://" not in image and " " not in image and "\n" not in image):
+                raise EnvironmentErrorCI(f"Unsafe Docker image reference for {key}")
+            result = self.docker(["image", "inspect", image], quiet=True)
+            if result.returncode:
+                pulled = self.docker(["pull", image], out / f"image-{key}.log", timeout=1200)
+                if pulled.returncode:
+                    raise EnvironmentErrorCI(f"Cannot pull {key} image ({image}); see image-{key}.log")
+            cp = self.docker(["image", "inspect", "--format", "{{json .Id}}|{{json .RepoDigests}}", image], quiet=True)
+            if cp.returncode:
+                raise EnvironmentErrorCI(f"Unable to inspect {key} image")
+            try:
+                image_id, digests = cp.stdout.strip().split("|", 1)
+                self.image_info[key] = {"reference": image, "id": json.loads(image_id),
+                                        "repo_digests": json.loads(digests)}
+            except (ValueError, json.JSONDecodeError):
+                raise EnvironmentErrorCI(f"Invalid image inspect result for {key}")
+
+    def container_cmd(self, image_key: str, source: Path, temp: Path, cmd: list[str],
+                      network: str = "none", env: dict[str, str] | None = None,
+                      detach: bool = False, name: str | None = None) -> list[str]:
+        args = ["run", "-d" if detach else "--rm"]
+        if detach:
+            args += ["--rm"]
+        if name:
+            args += ["--name", name]
+        args += ["--network", network, "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
+                 "--mount", f"type=bind,src={source},dst=/workspace",
+                 "--mount", f"type=bind,src={temp},dst=/scratch", "--workdir", "/workspace",
+                 "-e", "HOME=/scratch/home", "-e", "NUGET_PACKAGES=/scratch/nuget",
+                 "-e", "DOTNET_CLI_TELEMETRY_OPTOUT=1", "-e", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1",
+                 "-e", "NPM_CONFIG_CACHE=/scratch/npm", "-e", "CI=true",
+                 "-e", "Exchange__Provider=Mock", "-e", "Telegram__Enabled=false",
+                 "-e", "DeribitTerminal__ExecutionEnabled=false",
+                 "-e", "DeribitTerminal__MainnetExecutionEnabled=false"]
+        for key, value in (env or {}).items():
+            args.extend(["-e", f"{key}={value}"])
+        return ["docker", *args, self.images[image_key], *cmd]
+
+    def step(self, summary: dict, label: str, args: list[str], out: Path,
+             log_name: str, timeout: int = 900, cwd: Path | None = None) -> bool:
+        begin = utc()
+        cp = self.exec(args, out / log_name, timeout, cwd=cwd)
+        summary["steps"].append({"name": label, "command": label, "exit_code": cp.returncode,
+                                 "status": "PASS" if cp.returncode == 0 else "FAIL",
+                                 "started_utc": begin, "completed_utc": utc(), "log": log_name})
+        return cp.returncode == 0
+
+    def backend(self, summary: dict, source: Path, temp: Path, out: Path):
+        self.require_images(["dotnet", "postgres", "curl"], out)
+        sdk_file = source / "global.json"
+        expected = json.loads(sdk_file.read_text())["sdk"]["version"]
+        summary["sdk_expected"] = expected
+        base = lambda cmd, net="none", env=None, name=None, detach=False: self.container_cmd(
+            "dotnet", source, temp, cmd, net, env, detach, name)
+        if not self.step(summary, "dotnet version", base(["dotnet", "--version"]), out, "dotnet-version.log"):
+            return
+        observed = (out / "dotnet-version.log").read_text().strip()
+        summary["tool_versions"]["dotnet"] = observed
+        if observed != expected:
+            raise EnvironmentErrorCI(f"Expected global.json .NET {expected}, Docker reported {observed}")
+        if not self.step(summary, "dotnet info", base(["dotnet", "--info"]), out, "dotnet-info.log"):
+            return
+        if not self.step(summary, "dotnet restore", base(["dotnet", "restore", "TradeOps.sln"], "bridge"), out, "restore.log", 1800):
+            return
+        if not self.step(summary, "dotnet build", base(["dotnet", "build", "TradeOps.sln", "-c", "Release", "--no-restore"]), out, "build.log", 1800):
+            return
+        tests = base(["dotnet", "test", "TradeOps.sln", "-c", "Release", "--no-build", "--no-restore",
+                      "--logger", "trx;LogFileName=tests.trx", "--results-directory", "/scratch/trx"])
+        tests_passed = self.step(summary, "all backend xUnit (including OMS)", tests, out, "dotnet-test.log", 1800)
+        # Copy TRX even for a failing test invocation so failure totals are preserved.
+        (out / "trx").mkdir(exist_ok=True)
+        for file in (temp / "trx").rglob("*.trx"):
+            destination = out / "trx" / file.relative_to(temp / "trx")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(file, destination)
+        if not tests_passed:
+            return
+        summary["postgres_mock_smoke"] = "NOT_RUN"
+        self.smoke(summary, source, temp, out)
+
