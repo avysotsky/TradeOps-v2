@@ -36,7 +36,7 @@ for(const file of ['coincall.html','coincall-spreads.html']){
   assert.ok(content.includes('ccSpreadsPanel'),'VAN source expected CoinCall markup');
   await writeFile(join(safeDir,file),await vanishScripts(content));
 }
-function vanToggle(source,view){
+function vanToggle(view){
   const doc=document;
   const set=(s,show)=>{const el=doc.querySelector(s);if(!el)return;el.hidden=!show;el.classList.toggle('active',show)};
   for(const s of ['#cc-layer-trade','#cc-layer-assets','#cc-layer-accounts','#cc-layer-markets'])set(s,view!=='portfolio'&&view!=='accounts'?s==='#cc-layer-trade':s==='#cc-layer-'+(view==='portfolio'?'assets':'accounts'));
