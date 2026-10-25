@@ -181,7 +181,7 @@ export default function DeribitTerminal() {
   const [contractSpecError, setContractSpecError] = useState('');
   const [universeCount, setUniverseCount] = useState(0);
   const [book, setBook] = useState<OrderBook | null>(null);
-  const [domDepth, setDomDepth] = useState<DomDepth>(10);
+  const [domDepth, setDomDepth] = useState<DomDepth>('raw');
   const ladderScrollRef = useRef<HTMLDivElement | null>(null);
   const ladderCenterRef = useRef<HTMLDivElement | null>(null);
   const [ownOrders, setOwnOrders] = useState<OwnOrders | null>(null);
