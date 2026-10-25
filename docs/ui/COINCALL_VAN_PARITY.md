@@ -23,3 +23,15 @@ Fully implemented *mock UX*: tab state, typed accounts, deterministic market/boo
 - Strict safety gate: no authenticated API calls, all order actions HTML-disabled, credentials absent, no backend or Deribit changes.
 - Shared component proposals for orchestrator / F1 / F3: compact account badge, token palette, L2 book, tab navigation, typed order/position table. Not extracted into shared paths to preserve worker isolation.
 - Remaining parity gap: screenshot baselines against exact VAN browser output, historical tabs, options Greeks, full spreads row types and source-specific precision, keyboard/e2e accessibility, and broker-certified read models. These require follow-on issue approvals. No merge before G0+orchestrator review.
+
+## F2-01 fixes and acceptance plan (2026-10-25)
+
+Original defect: WeeklyExp and MonthlyExp controls matched their display labels against literal tenor strings 30 Oct / 27 Nov / Perp; therefore selecting them yielded no matches. Typed SpreadQuote.expiryGroup now classifies 30 Oct = Weekly, 27 Nov = Monthly and Perp = Perpetual. Daily/Quarterly show explicit empty fixture results. No live exchange expiry classification is implied.
+
+Book-row selection now also populates the inert order-ticket price field (no order submission). Unit-test declarations increased from 4 to 5 with regression coverage for expiry filtering.
+
+Exact-SHA runner: apps/coincall-terminal/qa/accept-local.sh <SHA>. It uses local WSL2 Docker node:24-bookworm and Playwright Chromium with the built Vite bundle. Refuses a mismatched PR HEAD. Preserves identity.log, worktree.log, build-tests.log, browser.log, browser-check.json, screenshots at 1440x900 and 768x900, plus status.txt. Browser runner executes 14 named assertions (7 at each viewport).
+
+Manual reference parity: capture VAN CoinCall Spreads with matching viewport, account/navigation and source revision; compare header and product navigation, spread matrix rows/columns, chart and leg split, order-ticket and book footprint, font/spacing/colors, and narrow scrolling. Record screenshot provenance, discrepancy list and explicit PASS/FAIL. React-only screenshot evidence is not VAN parity.
+
+Current new-HEAD unit/build/browser results: NOT RUN in this chat's container, which cannot access user WSL2/Docker. Reference VAN screenshots: NOT RUN. GitHub Actions are prohibited, not a blocker. No merge before independent orchestration review.
