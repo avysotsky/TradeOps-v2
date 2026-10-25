@@ -364,8 +364,10 @@ public sealed class OmsJournalPostgresTests
             var options = new DbContextOptionsBuilder<TradeOpsDbContext>()
                 .UseNpgsql(cs).Options;
             await using var db = new TradeOpsDbContext(options);
-            await Assert.ThrowsAnyAsync<Exception>(() =>
+            var refusal = await Assert.ThrowsAsync<PostgresException>(() =>
                 db.Database.MigrateAsync("20261004190000_AddTradingViewDeliveryHealthState"));
+            Assert.Equal("P0001", refusal.SqlState);
+            Assert.Contains("Refusing destructive OMS journal rollback", refusal.MessageText);
             Assert.Equal(1, await Count(cs, "oms_commands"));
             Assert.Equal(1, await Count(cs, "oms_outbox"));
         });
