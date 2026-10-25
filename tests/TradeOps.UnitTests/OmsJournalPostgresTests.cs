@@ -281,8 +281,8 @@ public sealed class OmsJournalPostgresTests
             await using var connection = new NpgsqlConnection(cs);
             await connection.OpenAsync();
             await using var check = new NpgsqlCommand(
-                "SELECT to_regclass('public.oms_commands')", connection);
-            Assert.Null(await check.ExecuteScalarAsync());
+                "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname='oms_commands' AND relkind='r')", connection);
+            Assert.False((bool)(await check.ExecuteScalarAsync() ?? true));
             await using var legacy = new NpgsqlCommand(
                 @"SELECT to_regclass('public.""Orders""')", connection);
             Assert.NotNull(await legacy.ExecuteScalarAsync());
