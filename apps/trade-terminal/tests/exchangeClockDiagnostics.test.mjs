@@ -45,7 +45,7 @@ test('manual check button is the only trigger and measures a fixed RAW delta sna
 });
 
 test('same pinned READ-ONLY launcher keeps execution hard-disabled', () => {
-  assert.match(launcher, /to-v2-51-deribit-clock-skew-diagnostics/);
+  assert.match(launcher, /to-v2-52-private-snapshot-freshness/);
   assert.match(launcher, /DeribitTerminal__ExecutionEnabled = 'false'/);
   assert.match(launcher, /DeribitTerminal__MainnetExecutionEnabled = 'false'/);
 });
