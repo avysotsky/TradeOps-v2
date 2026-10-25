@@ -694,11 +694,12 @@ export default function DeribitTerminal() {
                   <div className="dom-reference-value">
                     <span>Last Trade Price</span>
                     <strong>{formatDomPrice(
-                      quote?.instrument === marketInstrument && streamState === 'synced'
-                        ? quote.lastPrice ?? (
-                            tape?.instrument === marketInstrument
-                              ? [...tape.trades].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))[0]?.price
-                              : null)
+                      streamState === 'synced'
+                        ? (quote?.instrument === marketInstrument ? quote.lastPrice : null) ??
+                          (tape?.instrument === marketInstrument
+                            ? [...tape.trades].sort((a, b) =>
+                                (b.timestamp ?? 0) - (a.timestamp ?? 0))[0]?.price
+                            : null)
                         : null,
                       priceDecimals
                     )}</strong>
