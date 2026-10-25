@@ -50,13 +50,13 @@ public sealed record OmsJournalCommandPayload(
         if (LimitPrice is <= 0m || TriggerPrice is <= 0m)
             throw new ArgumentOutOfRangeException(nameof(LimitPrice), "Present prices must be positive.");
         if (Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace &&
-            OrderType == OrderType.Limit && !LimitPrice.HasValue)
+            OrderType == TradeOps.Domain.Enums.OrderType.Limit && !LimitPrice.HasValue)
             throw new ArgumentException("Limit order commands require an explicit limit price.");
         if (Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace &&
-            OrderType == OrderType.Stop && !TriggerPrice.HasValue)
+            OrderType == TradeOps.Domain.Enums.OrderType.Stop && !TriggerPrice.HasValue)
             throw new ArgumentException("Stop order commands require an explicit trigger price.");
         if (Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace &&
-            OrderType == OrderType.Market && PostOnly)
+            OrderType == TradeOps.Domain.Enums.OrderType.Market && PostOnly)
             throw new ArgumentException("A market order cannot be post-only.");
         if (RequestedAtUtc.Offset != TimeSpan.Zero)
             throw new ArgumentException("RequestedAtUtc must have UTC offset zero.", nameof(RequestedAtUtc));
