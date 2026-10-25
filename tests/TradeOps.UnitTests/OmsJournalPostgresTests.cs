@@ -31,7 +31,7 @@ public sealed class OmsJournalPostgresTests
             new OrderVersion(expected),
             new OmsJournalCommandPayload(OmsJournalCommandKind.Place, "BTC-PERPETUAL",
                 OrderSide.Buy, OrderType.Limit, quantity, OmsQuantityUnit.Contracts,
-                65000m, null, "GTC", reduceOnly: false, postOnly: true,
+                65000m, null, "GTC", false, true,
                 "synthetic-test", "strategy-1", "risk-verdict-1",
                 new DateTimeOffset(2026, 10, 25, 10, 0, 0, TimeSpan.Zero)));
 
