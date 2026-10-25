@@ -296,11 +296,17 @@ class Runner:
                 cmd = ["docker", "run", "--rm", "--network", net, "--cap-drop", "ALL",
                        "--security-opt", "no-new-privileges", self.images["curl"],
                        "--fail", "--silent", "--show-error", "--max-time", "5", url]
+                probe_started = utc()
                 for attempt in range(30 if label == "api-health-live" else 1):
-                    ok = self.step(summary, label + (f" attempt {attempt+1}" if attempt else ""),
-                                   cmd, out, f"{label}.log", timeout=30)
+                    probe = self.exec(cmd, out / f"{label}.log", timeout=30, quiet=True)
+                    ok = probe.returncode == 0
                     if ok: break
                     if label == "api-health-live": time.sleep(2)
+                summary["steps"].append({"name": label, "command": sanitized(shlex.join(cmd)),
+                                         "exit_code": 0 if ok else probe.returncode,
+                                         "status": "PASS" if ok else "FAIL", "attempts": attempt + 1,
+                                         "started_utc": probe_started, "completed_utc": utc(),
+                                         "log": f"{label}.log"})
                 if not ok:
                     summary["postgres_mock_smoke"] = "FAIL"
                     return
