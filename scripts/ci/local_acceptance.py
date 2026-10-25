@@ -581,7 +581,7 @@ class Runner:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local TradeOps exact PR-HEAD WSL2/Docker acceptance")
-    parser.add_argument("target", nargs="?", default="all", choices=["all", "62", "63", "64"])
+    parser.add_argument("target", nargs="?", default="all", choices=["all", "frontends", "62", "63", "64"])
     parser.add_argument("repo", nargs="?", default=str(Path(__file__).resolve().parents[2]))
     parser.add_argument("--results-dir", default=str(Path.home() / "tradeops-acceptance-results"))
     args = parser.parse_args()
@@ -605,7 +605,7 @@ def main() -> int:
         print("BLOCKED_ENV: WSL Docker daemon is not reachable", file=sys.stderr)
     else:
         engine.docker_engine_version = docker_info.stdout.strip()
-    targets = list(SPECS) if args.target == "all" else [int(args.target)]
+    targets = list(SPECS) if args.target == "all" else ([63, 64] if args.target == "frontends" else [int(args.target)])
     results = [engine.run_one(pr) for pr in targets]
     aggregate = {"schema_version": 1, "run_id": engine.run_id, "created_utc": utc(),
                  "results": [{"pr": r["pr"], "sha": r["source_sha"], "status": r["status"],
