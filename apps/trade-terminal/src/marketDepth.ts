@@ -1,7 +1,7 @@
 /**
  * Deribit-style vertical DOM (read-only presentation model).
  * Exchange raw L2 book reconstruction remains in .NET; this transforms
- * ONLY its already-validated top 10 levels for React display.
+ * ONLY its already-validated, bounded top 50 levels for React display.
  */
 export type MarketLevel = { price: number; amount: number };
 export type DepthRow = {
@@ -15,12 +15,14 @@ export type DepthRow = {
 export type Spread = { bid: number; ask: number; mid: number; absolute: number; bps: number };
 export type PriceLadder = { asks: DepthRow[]; bids: DepthRow[]; spread: Spread | null };
 
-function levels(raw: MarketLevel[], side: 'ask' | 'bid'): DepthRow[] {
+export type DomDepth = 10 | 25 | 50;
+
+function levels(raw: MarketLevel[], side: 'ask' | 'bid', depth: DomDepth): DepthRow[] {
   const source = raw
     .filter(x => Number.isFinite(x.price) && x.price > 0 &&
       Number.isFinite(x.amount) && x.amount >= 0)
     .sort((a, b) => side === 'ask' ? a.price - b.price : b.price - a.price)
-    .slice(0, 10);
+    .slice(0, depth);
 
   let total = 0;
   const accumulated = source.map((row, i) => {
@@ -44,11 +46,12 @@ function levels(raw: MarketLevel[], side: 'ask' | 'bid'): DepthRow[] {
 }
 
 export function toPriceLadder(
-  book: { bids: MarketLevel[]; asks: MarketLevel[] } | null
+  book: { bids: MarketLevel[]; asks: MarketLevel[] } | null,
+  depth: DomDepth = 10
 ): PriceLadder {
   if (!book) return { asks: [], bids: [], spread: null };
-  const asks = levels(book.asks, 'ask');
-  const bids = levels(book.bids, 'bid');
+  const asks = levels(book.asks, 'ask', depth);
+  const bids = levels(book.bids, 'bid', depth);
   const bestAsk = asks.length ? asks[asks.length - 1].price : null;
   const bestBid = bids.length ? bids[0].price : null;
   if (bestAsk === null || bestBid === null || bestAsk <= bestBid)
@@ -113,4 +116,34 @@ export function formatDomPrice(value: number | null | undefined, decimals: numbe
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(value);
+}
+
+/**
+ * Own orders outside the selected, verified public L2 depth window.
+ * This does NOT imply that off-screen orders belong to any public level.
+ * Orders are displayed with the actual side, price and own remaining size.
+ */
+export type OwnRestingLevel = {
+  direction: 'buy' | 'sell';
+  price: number;
+  amount: number;
+  orders: number;
+};
+export function ownOrdersOutsideDepth(
+  own: OwnRestingLevel[],
+  ladder: PriceLadder
+): OwnRestingLevel[] {
+  const shown = new Set([
+    ...ladder.bids.map(level => 'buy:' + level.price),
+    ...ladder.asks.map(level => 'sell:' + level.price)
+  ]);
+  return own
+    .filter(item => (item.direction === 'buy' || item.direction === 'sell') &&
+      Number.isFinite(item.price) && item.price > 0 &&
+      Number.isFinite(item.amount) && item.amount > 0 &&
+      Number.isSafeInteger(item.orders) && item.orders > 0 &&
+      !shown.has(item.direction + ':' + item.price))
+    .sort((a, b) => a.direction === b.direction
+      ? b.price - a.price
+      : a.direction === 'sell' ? -1 : 1);
 }
