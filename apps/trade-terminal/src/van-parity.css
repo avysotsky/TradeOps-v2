@@ -26,12 +26,11 @@
 .stat > strong { font-size:16px; letter-spacing:0; line-height:1.2; }
 .stat > small { margin-top:2px; font-size:9px; }
 .van-workstation { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(328px,355px) minmax(275px,.85fr);
-  grid-template-areas:"market book ticket" "tape book ticket"; gap:7px; align-items:start; margin-bottom:8px; }
+  grid-template-areas:"market book ticket"; gap:7px; align-items:start; margin-bottom:8px; }
 .van-workstation > .main-grid,.van-workstation > .market-feed-grid { display:contents; }
 .van-workstation .stack { grid-area:market; display:grid; gap:7px; min-width:0; }
 .van-workstation > .main-grid > .ticket { grid-area:ticket; }
 .van-workstation > .market-feed-grid > .market-feed:first-child { grid-area:book; }
-.van-workstation > .market-feed-grid > .market-feed:last-child { grid-area:tape; }
 .van-workstation .panel,.van-dock-pane .panel { border:1px solid #263348; border-radius:3px; padding:9px; background:#0b1423; }
 .van-workstation .panel-header { margin-bottom:8px; gap:5px; }
 .van-workstation .panel-header h2 { font-size:14px; margin-top:1px; }
@@ -84,12 +83,12 @@
 .van-dock-pane .data-panel .font-controls span { font-size:11px; }
 @media(max-width:1160px) {
  .van-workstation { grid-template-columns:minmax(0,1fr) minmax(328px,355px);
-  grid-template-areas:"market book" "ticket book" "tape tape"; }
+  grid-template-areas:"market book" "ticket book"; }
 }
 @media(max-width:760px) {
  .content { padding:8px 8px 30px; }
  .topbar { padding-inline:10px; }
- .van-workstation { grid-template-columns:minmax(0,1fr); grid-template-areas:"market" "book" "ticket" "tape"; }
+ .van-workstation { grid-template-columns:minmax(0,1fr); grid-template-areas:"market" "book" "ticket"; }
  .summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .van-contract-strip > span { flex-basis:100%; margin-left:0; }
  .van-nav-safe { margin-left:0; }
@@ -128,7 +127,7 @@
     width: min(100%, 1280px);
     margin: 0 auto 8px;
     grid-template-columns: minmax(420px,1fr) 355px 300px;
-    grid-template-areas: "market book ticket" "tape book ticket";
+    grid-template-areas: "market book ticket";
     gap: 8px;
   }
   .van-navigation, .headline, .summary, .van-bottom-dock {
@@ -161,3 +160,16 @@
   .van-workstation .van-tick-chart svg,.van-workstation .van-chart-unavailable { height:150px; }
   .van-workstation .dom-ladder { max-height:360px; }
 }
+
+/* Account tables follow the primary workstation; auxiliary panels follow the dock. */
+.van-secondary-panels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-width:1280px; margin:0 auto 8px; }
+.van-secondary-panels > .panel { border:1px solid #263348; border-radius:3px; padding:9px; background:#0b1423; min-width:0; }
+.van-secondary-panels .panel-header { margin-bottom:8px; gap:5px; flex-wrap:wrap; }
+.van-secondary-panels .panel-header h2 { font-size:14px; margin:1px 0 0; }
+.van-secondary-panels .tape-list { max-height:108px; overflow:auto; overscroll-behavior:contain; }
+.van-secondary-panels .account-grid { gap:5px; }
+.van-secondary-panels .account-card { padding:8px; border-radius:3px; }
+.van-secondary-panels .account-card > strong { font-size:18px; margin:4px 0 8px; }
+.van-secondary-panels .account-card > div { margin-top:5px; padding-top:5px; }
+.van-secondary-panels .currency { margin-bottom:4px; }
+@media(max-width:760px) { .van-secondary-panels { grid-template-columns:minmax(0,1fr); } }
