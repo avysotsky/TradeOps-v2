@@ -256,8 +256,14 @@ CREATE TRIGGER tr_oms_aggregates_guard BEFORE UPDATE OR DELETE ON oms_aggregates
         migrationBuilder.Sql("""
 DO $
 BEGIN
- IF EXISTS (SELECT 1 FROM oms_commands) OR EXISTS (SELECT 1 FROM oms_inbox)
+ IF EXISTS (SELECT 1 FROM oms_aggregates)
+    OR EXISTS (SELECT 1 FROM oms_intents)
+    OR EXISTS (SELECT 1 FROM oms_commands)
+    OR EXISTS (SELECT 1 FROM oms_outbox)
+    OR EXISTS (SELECT 1 FROM oms_attempts)
+    OR EXISTS (SELECT 1 FROM oms_inbox)
     OR EXISTS (SELECT 1 FROM oms_integrity_incidents)
+    OR EXISTS (SELECT 1 FROM oms_account_leases)
  THEN RAISE EXCEPTION 'Refusing destructive OMS journal rollback: export and verify empty tables first';
  END IF;
 END; $;
