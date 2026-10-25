@@ -34,7 +34,11 @@ public sealed record OmsJournalCommandPayload(
     string Provenance,
     string OperatorOrStrategyId,
     string RiskDecisionReference,
-    DateTimeOffset RequestedAtUtc)
+    DateTimeOffset RequestedAtUtc,
+    string? TargetClientOrderId = null,
+    string? TargetExchangeOrderId = null,
+    string? FixClOrdId = null,
+    string? FixOrigClOrdId = null)
 {
     public void Validate()
     {
@@ -46,6 +50,15 @@ public sealed record OmsJournalCommandPayload(
         Check(OperatorOrStrategyId, 128, nameof(OperatorOrStrategyId));
         Check(RiskDecisionReference, 128, nameof(RiskDecisionReference));
         if (TimeInForce is not null) Check(TimeInForce, 32, nameof(TimeInForce));
+        if (TargetClientOrderId is not null)
+            Check(TargetClientOrderId, 160, nameof(TargetClientOrderId));
+        if (TargetExchangeOrderId is not null)
+            Check(TargetExchangeOrderId, 160, nameof(TargetExchangeOrderId));
+        if (FixClOrdId is not null) Check(FixClOrdId, 160, nameof(FixClOrdId));
+        if (FixOrigClOrdId is not null) Check(FixOrigClOrdId, 160, nameof(FixOrigClOrdId));
+        if (Kind is OmsJournalCommandKind.Cancel or OmsJournalCommandKind.Replace &&
+            TargetClientOrderId is null && TargetExchangeOrderId is null)
+            throw new ArgumentException("Cancel/Replace requires an explicit target order identity.");
         if (Quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(Quantity));
         if (LimitPrice is <= 0m || TriggerPrice is <= 0m)
             throw new ArgumentOutOfRangeException(nameof(LimitPrice), "Present prices must be positive.");
