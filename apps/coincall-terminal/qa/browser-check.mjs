@@ -43,7 +43,7 @@ try {
       assert.equal(await page.locator('.cc-grid-rowhead').count(),3);
       await page.getByRole('checkbox',{name:/WeeklyExp/}).uncheck();
       await page.getByRole('checkbox',{name:/MonthlyExp/}).check();
-      assert.equal(await page.locator('.cc-grid-rowhead').count(),3);
+      assert.equal(await page.locator('.cc-grid-rowhead').count(),4);
       await page.getByRole('checkbox',{name:/MonthlyExp/}).uncheck();
     });
     await check(width + ' two-leg buttons inert',async()=>{
