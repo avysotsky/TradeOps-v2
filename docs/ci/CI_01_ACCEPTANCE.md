@@ -115,7 +115,22 @@ First full owner WSL2/Docker run: aggregate `acceptance-20261025T165017Z-e9c46a.
 
 **Parser correction:** Node.js emits test totals in TAP (`# tests 4`) or the human-readable spec reporter (`ℹ tests 4`). Previously the parser accepted TAP **only**, causing a false negative where shell commands exited successfully but counts remained zero. It now parses **both**, handles ANSI escape codes, records per-log totals and fails closed if required suite summaries remain unavailable. Local source-only parser tests include TAP, spec, ANSI, malformed/missing test summaries, and Deribit two-suite integrity; these do **not** replace an owner-local rerun. The original FAIL records must not be overwritten or retroactively declared PASS without parsing their saved logs.
 
-For an updated frontend acceptance status, rerun the **same owner PowerShell-to-WSL bootstrap** from this PR, but change `python3 $wslScript all $wslRepo` to `python3 $wslScript frontends $wslRepo`. This runs **only F1 #63 and F2 #64**, queries their current GitHub HEADs, and writes a new evidence file without repeating all 602 backend tests. The original B1 PASS stands as historical evidence for its tested SHA, subject to the PR HEAD remaining unchanged. For the entire matrix, keep the original `all` argument.
+### Successful owner-local React rerun (run 20261025T170622Z-1af70d)
+
+The owner ran `frontends` using CI-01 source HEAD `6f39ecfc2e61bc9d3c4236d7f91def27cacbdc43` after the Node reporter fix. Both frontends completed with **PASS**, and each required command exited 0.
+
+| Gate | Verified PR HEAD | Results | Evidence |
+| --- | --- | --- | --- |
+| F1 #63 | `e1b7c276c2bdce08de9467f382ea339c46862f83` | **PASS: 42/42**, 0 failed, 0 skipped. `npm test` 33/33; explicit `vanLayout.test.mjs` 9/9; React build exit 0 | `pr-63/<sha>/20261025T170622Z-1af70d/summary.json` |
+| F2 #64 | `9261e94efc66aa935d273379ea668199321adfd4` | **PASS: 7/7**, 0 failed, 0 skipped. `npm test` and React build exit 0 | `pr-64/<sha>/20261025T170622Z-1af70d/summary.json` |
+
+Aggregate result: `~/tradeops-acceptance-results/acceptance-20261025T170622Z-1af70d.json`, runner exit **0**.
+
+**Final local command-gate tally across the two owner runs:** B1 #62 **602/602 PASS** (PostgreSQL17 Mock smoke successful); F1 #63 **42/42 PASS**; F2 #64 **7/7 PASS**. Total **651 tests passed; 0 failed, 0 skipped**. Both original frontend FAIL reports from the first parser version remain stored and are superseded by the separate successful rerun, **not overwritten**.
+
+At the time of the evidence update, the GitHub PR HEADs for #62/#63/#64 still matched the tested SHAs. This verifies local automated command gates, **not** screenshot parity in a real browser. Visual comparisons remain outstanding for F1 at 1440×900 and 390×844, and F2 at 1440×900 and 768×900. Until separately verified, report browser acceptance as **NOT RUN**.
+
+Source-only harness tests are independent of these PR acceptance counts: the current file `scripts/ci/test_local_acceptance.py` contains 10 cases, but no owner-local run of this harness was supplied with these logs. Do not conflate the source harness checks with 651 application tests.
 
 ## Evidence
 
@@ -138,8 +153,8 @@ Possible statuses: `PASS`, `FAIL`, `NOT_RUN`, `STALE_SHA`, `BLOCKED_ENV`. **PASS
 ## Worker verification and current limitations (2026-10-25)
 
 - `python3 -m py_compile scripts/ci/{local_acceptance,test_local_acceptance}.py` and `bash -n scripts/ci/verify-exact-sha.sh`: syntax validation only.
-- `cd scripts/ci && python3 -m unittest -v test_local_acceptance`: orchestration logic unit tests, **5/5 PASS** in authoring environment.
-- No access to owner's WSL2; this authoring environment has **no Docker binary**. B1 .NET build, OMS tests, full backend tests, PostgreSQL Mock smoke, F1/F2 npm tests and React builds and screenshot comparison: **NOT RUN**. Tests cannot be declared successful from source review.
+- `cd scripts/ci && python3 -m unittest -v test_local_acceptance`: optional standalone check of CI-01 orchestration logic (10 test methods in current source; no owner-local execution evidence included).
+- Authoring environment does not have access to owner's WSL2, but **actual owner console logs now confirm the .NET, PostgreSQL17 Mock and frontend Docker gates above as PASS on the exact PR HEADs**. Browser screenshot comparisons are still **NOT RUN**. The full logs and `summary.json` files remain stored on the owner's machine, not in GitHub.
 - GitHub workflow diff must remain **empty**: `build.yml` restored **byte-for-byte** to `main`, new workflow removed. No GitHub Actions run is requested, expected or required.
 
 Draft PR #66 stays unmerged until orchestrator reviews scope, SHA proofs and real owner-local acceptance evidence.
