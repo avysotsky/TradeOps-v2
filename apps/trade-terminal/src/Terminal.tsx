@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { toPriceLadder, domPriceDecimals, formatDomPrice } from './marketDepth';
+import { toPriceLadder, contractPriceDecimals, formatDomPrice, type InstrumentTickSpecification } from './marketDepth';
 import {
   Activity, ArrowDownRight, ArrowUpRight, CheckCircle2,
   CircleDollarSign, Clock3, KeyRound, RefreshCw,
@@ -150,6 +150,8 @@ export default function DeribitTerminal() {
   const [instrumentSearch, setInstrumentSearch] = useState('');
   const [marketInstrument, setMarketInstrument] = useState('ETH-PERPETUAL');
   const [marketInstruments, setMarketInstruments] = useState<MarketInstrument[]>([]);
+  const [contractSpec, setContractSpec] = useState<InstrumentTickSpecification | null>(null);
+  const [contractSpecError, setContractSpecError] = useState('');
   const [universeCount, setUniverseCount] = useState(0);
   const [book, setBook] = useState<OrderBook | null>(null);
 
@@ -230,14 +232,47 @@ export default function DeribitTerminal() {
     () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null),
     [book, marketInstrument, streamState]
   );
-  const priceDecimals = useMemo(() => {
-    const metadata = marketInstruments.find(item => item.name === marketInstrument);
-    // The marketKind filter can change before instrument selection, so
-    // derive kind from the SELECTED symbol, not from pending search filters.
-    const selectedKind = metadata?.kind === 'option' || /-[CP]$/.test(marketInstrument)
-      ? 'option' : 'future';
-    return domPriceDecimals(dom, metadata?.tickSize, selectedKind);
-  }, [dom, marketInstruments, marketInstrument]);
+  // Display precision is fixed by the selected instrument specification.
+  // Never derive a number of decimals from spread or observed market prices.
+  const priceDecimals = useMemo(
+    () => contractPriceDecimals(
+      contractSpec?.name === marketInstrument ? contractSpec : null
+    ),
+    [contractSpec, marketInstrument]
+  );
+
+  useEffect(() => {
+    if (!key || !status) return;
+    let active = true;
+    let retry: number | undefined;
+    const abort = new AbortController();
+    setContractSpec(null);
+    setContractSpecError('');
+    async function loadSpecification(attempt = 0): Promise<void> {
+      try {
+        const result = await api<InstrumentTickSpecification>(key,
+          '/market/instrument?instrument=' + encodeURIComponent(marketInstrument),
+          { signal: abort.signal });
+        if (active) {
+          setContractSpec(result);
+          setContractSpecError('');
+        }
+      } catch (e) {
+        if (!active || abort.signal.aborted) return;
+        setContractSpecError('Не удалось загрузить спецификацию ценового шага Deribit.');
+        if (attempt < 2) {
+          retry = window.setTimeout(() => { void loadSpecification(attempt + 1); }, 2000);
+        }
+      }
+    }
+    void loadSpecification();
+    return () => {
+      active = false;
+      abort.abort();
+      if (retry !== undefined) window.clearTimeout(retry);
+    };
+  }, [key, status, marketInstrument]);
+
   const [exchangeAgeMs, setExchangeAgeMs] = useState<number | null>(null);
   const [streamMessages, setStreamMessages] = useState(0);
   // ONE continuous WebSocket for selected instrument: NO 8-second market
@@ -272,6 +307,7 @@ export default function DeribitTerminal() {
         if (updates.state !== 'synced') {
           setBook(null);
           setTape(null);
+          setQuote(null);
         }
       }
       if (updates.book) setBook(updates.book);
@@ -633,7 +669,6 @@ export default function DeribitTerminal() {
                     {streamState === 'synced' ? 'LIVE RAW' : streamState.toUpperCase()}
                   </strong>
                   <span>{marketInstrument}</span>
-                  {streamState === 'synced' && <span>Δ {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}*</span>}
                 </div>
               </div>
               <div className="dom-ladder" aria-label={'Вертикальный стакан ' + marketInstrument}>
@@ -654,17 +689,36 @@ export default function DeribitTerminal() {
                   ))}
                   {dom.asks.length === 0 && <p className="dom-empty">Ожидаем синхронизацию Ask</p>}
                 </div>
-                <div className="dom-mid" aria-label="Спред и средняя цена между лучшими котировками">
-                  {dom.spread ? (
-                    <>
-                      <span className="dom-mid-label">SPREAD</span>
-                      <strong className="dom-mid-price">{formatDomPrice(dom.spread.mid, priceDecimals)}</strong>
-                      <span className="dom-mid-spread">
-                        {formatDomPrice(dom.spread.absolute, priceDecimals)}
-                        <span className="dom-bps"> · {num(dom.spread.bps, 2)} bps</span>
-                      </span>
-                    </>
-                  ) : <strong className="dom-mid-unsynced">НЕТ ПОДТВЕРЖДЁННОГО СПРЕДА</strong>}
+                <div className="dom-reference-prices"
+                  aria-label="Последняя сделка, маркировочная и индексная цены Deribit">
+                  <div className="dom-reference-value">
+                    <span>Last Trade Price</span>
+                    <strong>{formatDomPrice(
+                      quote?.instrument === marketInstrument && streamState === 'synced'
+                        ? quote.lastPrice ?? (
+                            tape?.instrument === marketInstrument
+                              ? [...tape.trades].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))[0]?.price
+                              : null)
+                        : null,
+                      priceDecimals
+                    )}</strong>
+                  </div>
+                  <div className="dom-reference-value">
+                    <span>Mark Price</span>
+                    <strong>{formatDomPrice(
+                      streamState === 'synced' && quote?.instrument === marketInstrument
+                        ? quote.markPrice : null,
+                      priceDecimals
+                    )}</strong>
+                  </div>
+                  <div className="dom-reference-value">
+                    <span>Index Price</span>
+                    <strong>{formatDomPrice(
+                      streamState === 'synced' && quote?.instrument === marketInstrument
+                        ? quote.indexPrice : null,
+                      priceDecimals
+                    )}</strong>
+                  </div>
                 </div>
                 <div className="dom-half dom-bids" aria-label="Bids — покупатели снизу">
                   {dom.bids.map(level => (
@@ -681,16 +735,6 @@ export default function DeribitTerminal() {
                   {dom.bids.length === 0 && <p className="dom-empty">Ожидаем синхронизацию Bid</p>}
                 </div>
               </div>
-              <div className="dom-legend">
-                <span><i className="dom-legend-swatch ask" /> ASK — предложения на продажу</span>
-                <span><i className="dom-legend-swatch bid" /> BID — заявки на покупку</span>
-              </div>
-              <p className="feed-note">
-                Raw L2 snapshot + каждое изменение без 8-секундного polling.
-                Последний change_id: {book?.changeId ?? '—'}, сообщений: {streamMessages}.
-                * Δ = время сообщения Deribit → локальные часы; требуется синхронизация времени Windows.
-                Объёмы в исходных единицах Deribit.
-              </p>
             </section>
             <section className="panel market-feed">
               <div className="panel-header">
@@ -759,6 +803,25 @@ export default function DeribitTerminal() {
                   onClick={() => void cancelOrder(o.orderId)}>Cancel</button></td>
               </tr>) : <tr><td colSpan={7} className="empty-cell">Открытых ордеров нет или данные недоступны.</td></tr>}</tbody></table></div>
           </section>
+
+          <details className="terminal-diagnostics">
+            <summary>Диагностика рыночного потока</summary>
+            <div className="terminal-diagnostics-content">
+              <span>Инструмент: {marketInstrument}</span>
+              <span>Статус: {streamState}</span>
+              <span>Change ID: {book?.changeId ?? '—'}</span>
+              <span>Сообщений RAW L2: {streamMessages}</span>
+              <span>Δ exchange → local: {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}</span>
+              <span>Ценовой шаг: {contractSpec?.name === marketInstrument ? contractSpec.tickSize : '—'}</span>
+              <span>Дополнительных правил шага: {contractSpec?.tickSizeSteps.length ?? '—'}</span>
+              <span>Знаков цены по спецификации: {priceDecimals ?? '—'}</span>
+              {contractSpecError && <span className="error">{contractSpecError}</span>}
+              <p>RAW L2: снимок, проверка последовательности и изменения.
+                Δ рассчитывается по времени биржи и локальным часам Windows;
+                для точной оценки задержки необходима синхронизация часов.
+                Объёмы показаны в исходных единицах Deribit.</p>
+            </div>
+          </details>
 
           <footer className="footer"><span><Terminal size={14}/> TradeOps · Manual Deribit Terminal</span>
             <span>Не выполняет автоматических сделок · Только локальный доступ</span></footer>
