@@ -55,6 +55,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
         private readonly ConcurrentDictionary<Guid, Channel<string>> _subscribers = new();
         private readonly CancellationTokenSource _stop = new();
         private readonly DeribitRawBook _book;
+        private readonly DeribitOwnOrderBook _ownOrders;
         private Task? _run;
         private string? _current;
         private long _messages;
@@ -67,6 +68,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             _config = cfg;
             _release = release;
             _book = new DeribitRawBook(instrument);
+            _ownOrders = new DeribitOwnOrderBook(instrument);
         }
 
         public StreamLease Subscribe()
@@ -119,6 +121,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                     try
                     {
                         _book.Invalidate();
+                        _ownOrders.Reset("loading");
                         State("connecting");
                         var host = (_config["DeribitTerminal:Environment"] ?? "testnet") switch
                         {
@@ -177,6 +180,17 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             @params = new { interval = 15 }
                         }, _stop.Token);
 
+                        // A separate PRIVATE read subscription, NEVER a trading
+                        // request. If missing trade:read, public RAW depth must
+                        // remain available and private overlay stays unavailable.
+                        await SendAsync(ws, new {
+                            jsonrpc = "2.0", id = 5,
+                            method = "private/subscribe",
+                            @params = new {
+                                channels = new[] { "user.orders." + _name + ".raw" }
+                            }
+                        }, _stop.Token);
+
                         State("waiting_snapshot");
                         backoff = 500;
                         while (ws.State == WebSocketState.Open && !_stop.IsCancellationRequested)
@@ -186,9 +200,58 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                             receiveDeadline.CancelAfter(TimeSpan.FromSeconds(40));
                             using var frame = await ReceiveDocumentAsync(ws, receiveDeadline.Token);
                             var root = frame.RootElement;
+                            // Private feed/initial snapshot errors must never
+                            // disconnect or delay the PUBLIC market L2 stream.
+                            if (root.TryGetProperty("id", out var rpcId) &&
+                                rpcId.ValueKind == JsonValueKind.Number &&
+                                rpcId.TryGetInt32(out var callId))
+                            {
+                                if (callId == 5)
+                                {
+                                    if (root.TryGetProperty("error", out var subscriptionError) &&
+                                        subscriptionError.ValueKind != JsonValueKind.Null)
+                                    {
+                                        _ownOrders.Reset("unavailable");
+                                        Publish(new { type = "own_orders", instrument = _name,
+                                            orders = _ownOrders.View() });
+                                    }
+                                    else if (root.TryGetProperty("result", out var subscriptions) &&
+                                             subscriptions.ValueKind == JsonValueKind.Array &&
+                                             subscriptions.EnumerateArray().Any(x =>
+                                                 x.ValueKind == JsonValueKind.String &&
+                                                 x.GetString() == "user.orders." + _name + ".raw"))
+                                    {
+                                        // Snapshot request AFTER subscription ack.
+                                        // Stream updates received before response
+                                        // are buffered by DeribitOwnOrderBook.
+                                        await SendAsync(ws, new { jsonrpc = "2.0", id = 6,
+                                            method = "private/get_open_orders_by_instrument",
+                                            @params = new { instrument_name = _name }
+                                        }, _stop.Token);
+                                    }
+                                    else
+                                    {
+                                        _ownOrders.Reset("unavailable");
+                                        Publish(new { type = "own_orders", instrument = _name,
+                                            orders = _ownOrders.View() });
+                                    }
+                                    continue;
+                                }
+                                if (callId == 6)
+                                {
+                                    if (root.TryGetProperty("error", out var snapshotError) &&
+                                        snapshotError.ValueKind != JsonValueKind.Null ||
+                                        !root.TryGetProperty("result", out var snapshotOrders) ||
+                                        !_ownOrders.Hydrate(snapshotOrders))
+                                        _ownOrders.Reset("unavailable");
+                                    Publish(new { type = "own_orders", instrument = _name,
+                                        orders = _ownOrders.View() });
+                                    continue;
+                                }
+                            }
                             if (root.TryGetProperty("error", out var err) &&
                                 err.ValueKind != JsonValueKind.Null)
-                                throw new InvalidOperationException("Deribit subscription error.");
+                                throw new InvalidOperationException("Deribit public subscription error.");
                             if (!root.TryGetProperty("method", out var method) ||
                                 method.ValueKind != JsonValueKind.String)
                                 continue;
@@ -216,9 +279,22 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                                 }
                                 _messages++;
                                 Publish(new { type = "book", instrument = _name,
-                                    state = "synced", book = view, messages = _messages,
+                                    state = "synced", book = view, ownOrders = _ownOrders.View(),
+                                    messages = _messages,
                                     exchangeAgeMs = view.ExchangeTimestamp is long tick
                                       ? Math.Max(0L, view.LocalReceivedAtUnixMs - tick) : (long?)null });
+                            }
+                            else if (name == "user.orders." + _name + ".raw" &&
+                                     data.ValueKind == JsonValueKind.Object)
+                            {
+                                // Never publish raw order IDs/labels/account data
+                                // to React. Aggregate remaining resting volume
+                                // by instrument + side + exact price, and only
+                                // after initial snapshot reconciliation.
+                                if (!_ownOrders.Notification(data))
+                                    _ownOrders.Reset("unavailable");
+                                Publish(new { type = "own_orders", instrument = _name,
+                                    orders = _ownOrders.View() });
                             }
                             else if (name == "trades." + _name + ".raw" &&
                                      data.ValueKind == JsonValueKind.Array)
@@ -255,6 +331,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
                         // Intentionally suppress exception details: auth exceptions
                         // might contain exchange tokens or private key data.
                         _book.Invalidate();
+                        _ownOrders.Reset("resyncing");
                         State("resyncing");
                     }
                     if (!_stop.IsCancellationRequested)
@@ -268,6 +345,7 @@ public sealed class DeribitRawFeedHub(IConfiguration configuration) : IDisposabl
             finally
             {
                 _book.Invalidate();
+                _ownOrders.Reset("disconnected");
                 State("disconnected");
                 foreach (var subscriber in _subscribers.Values)
                     subscriber.Writer.TryComplete();
