@@ -1,96 +1,82 @@
-# CI-01 — Exact-SHA .NET 10 / React acceptance
+# CI-01 — Local WSL2 / Docker exact-SHA acceptance
 
-**Work package:** [Issue #65](https://github.com/avysotsky/TradeOps-v2/issues/65)  
-**Related:** [G0 audit #61](https://github.com/avysotsky/TradeOps-v2/pull/61), [master roadmap #56](https://github.com/avysotsky/TradeOps-v2/pull/56).  
-**Change ownership:** only `.github/workflows/**`, `scripts/ci/**`, `docs/ci/**`. No OMS, terminal UI, trading API, migrations or test source has been edited.
+**Canonical spec:** [Issue #65](https://github.com/avysotsky/TradeOps-v2/issues/65). **Draft PR:** [#66](https://github.com/avysotsky/TradeOps-v2/pull/66). Acceptance and merge belong to orchestrator.
 
-## 1. Exact source refs inspected on 2026-10-25
+**GitHub Actions is PROHIBITED.** This work neither changes nor runs it; GitHub is used solely for source refs and Draft PR review.
 
-| Target | SHA | Qualification needed |
-| --- | --- | --- |
-| Merged `main` | `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14` | Baseline; React apps absent |
-| B1 OMS [#62](https://github.com/avysotsky/TradeOps-v2/pull/62) | `814f7ea5c470f01e87719a75b778a1b5226a7d69` | .NET 10 build, OMS/unit tests, Mock+PG smoke |
-| F1 Deribit [#63](https://github.com/avysotsky/TradeOps-v2/pull/63) | `246bd259a87958338ab56f9dc705224b0ed2b074` | Node 24, existing npm tests, **explicit** VAN test, Vite build |
-| F2 CoinCall [#64](https://github.com/avysotsky/TradeOps-v2/pull/64) | `4322c8aaed09d76c3b3a95d3784d2676613139de` | Node 24, `npm run check` |
+## One-command Windows entrypoint
 
-These are inspection-time SHAs, **not permanent assertions**. Always query the live HEAD before dispatch and never reuse results after the PR moves. The CI branch starts from `main@c7a0d290...`; it deliberately does **not** contain either React application or the B1 OMS contracts.
-
-## 2. GitHub Actions design and runbook
-
-### Default `build.yml`
-
-- `push` on `main` and `TradeOps/**`, `pull_request` targeting `main`, and a reusable `workflow_call(target_sha)`.
-- `actions/checkout@v4` checks out the actual PR head or supplied immutable SHA (not the synthetic merge ref); a hard assertion compares `git rev-parse HEAD` to the selected SHA.
-- `actions/setup-dotnet@v4` installs SDK from **`global.json`: 10.0.401**, rather than the previous hardcoded SDK 8. Includes `dotnet --info`, solution restore/build, `dotnet test` with TRX results, and the **unchanged** existing API+PostgreSQL Mock-only smoke assertions and Docker/deployment checks.
-- `Exchange__Provider=Mock`, `DeribitTerminal__ExecutionEnabled=false`, `DeribitTerminal__MainnetExecutionEnabled=false` and Telegram disabled. Database mutation, signals and cancel assertions are permitted only in isolated local CI PostgreSQL with the Mock exchange.
-- An always-attempted evidence artifact retains source SHA, SDK info and test TRX (14 days). Test failures are not swallowed. Full smoke outcomes are visible by named GitHub job steps; a skipped or failed step does **not** constitute a PASS.
-
-### `exact-sha-acceptance.yml`
-
-This workflow is **manually dispatched after it has been accepted into the default branch**. It deliberately does not falsely promise that a newly introduced workflow on a PR branch can automatically run on stacked PRs that have not inherited it.
-
-1. Open **Actions → exact-sha-acceptance → Run workflow** on `main`.
-2. Choose **62**, **63** or **64** and paste the current full **40-character lowercase HEAD SHA** from that PR.
-3. The `validate` job checks allowed PR number, current open PR state, same-repo source, exact current HEAD equality and SHA syntax through GitHub API. Mismatch **fails closed**.
-4. For B1, call reusable `build.yml` against that SHA (including existing PostgreSQL smoke). For F1, require `apps/trade-terminal` and execute `npm test`, `node --test tests/vanLayout.test.mjs`, `npm run build`. For F2, require `apps/coincall-terminal` and execute `npm run check`.
-5. Both frontend jobs use Node **24**. With `package-lock.json` use `npm ci`; without it, use `npm install --no-package-lock --no-audit --no-fund`, explicitly record **reproducibility limited** in the artifact and job summary. This is not a pinned dependency qualification.
-6. The final `finalize` job rejects failures, selected-job skips, and a PR HEAD that changed during verification. No missing required app path may be skipped as success.
-7. Record the exact tested SHA, GitHub run ID/attempt, steps and downloadable evidence. If the PR SHA changes, rerun.
-
-**Gate specificity:** React paths missing from merged `main` are **NOT RUN / unavailable** on that baseline. The designated F1/F2 gate requires its app and fails if missing. PR #63 is stacked on the #55 ancestry, so testing it by its own commit SHA includes that ancestry; this does **not** approve or merge the predecessor chain.
-
-**Visual scope:** builds and source-level tests do not certify 1440×900 or 390×844 browser screenshot parity. Golden-browser acceptance remains **NOT RUN** until independent snapshots are actually captured and compared.
-
-## 3. Verified GitHub Actions run gap / operational blocker
-
-The accessible GitHub Actions runs endpoint returned **51 historical runs**; its latest entry is `build` run [37946112254](https://github.com/avysotsky/TradeOps-v2/actions/runs/37946112254), `2026-10-09T14:41:53Z`, on `main@30e821f93611d3dc771a358090b8d502291b5018` (success). As of **2026-10-25**, no newer runs were returned despite later commits to `main` and `TradeOps/**`. The commit-run/status lookups for the current `main`, B1/F1/F2 HEADs and new CI commits returned **zero associated run results/statuses**. A 9 October success is NOT evidence that 25 October heads pass.
-
-**What is established:** `build.yml` has `push` triggers for `main` and `TradeOps/**` and the run gap spans eligible branch updates; SDK 8 versus net10.0 would explain a failed *started* build, but by itself cannot explain the absence of a workflow run record. PR branch-base filtering prevents some stacked PR runs; it does not explain missing eligible push runs.
-
-GitHub additionally documents [workflow recursion suppression](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow): a push made with a workflow's own `GITHUB_TOKEN` normally does not launch a second workflow. Whether any of the post-9-October changes used such a token has **not** been established, so this remains a hypothesis, not the diagnosis. A direct authorized UI push or manually dispatched supported workflow can distinguish it from repository-wide disabled Actions.
-
-**Root cause remains unverified.** The linked GitHub API surface provided run listings but does not authorize the repository `/actions/permissions` endpoint; therefore this worker cannot distinguish conclusively between repository/owner-level Actions disabled, workflow disabled, Actions billing/quota restriction, policy restrictions and runner dispatch/service problems. No logs exist for missing runs, and no fabricated PASS is reported.
-
-**Owner action, minimum UI investigation:**
-
-- Repository **Settings → Actions → General**: confirm Actions are enabled/allowed for this repository; check inherited account/organization policy and that `actions/checkout`, `actions/setup-dotnet`, `actions/setup-node`, `actions/upload-artifact` and local reusable workflows are permitted.
-- Repository **Actions → Workflows → build**: confirm the workflow is enabled, rather than showing an **Enable workflow** action/banner.
-- Verify **Settings → Billing / Plans and usage → Actions** availability/limits and whether jobs are queued without an eligible hosted runner; check recent workflow activity/runs and any GitHub-wide incident.
-- After owner resolves the restriction, make an authorized new commit/dispatch and compare its **run ID, event, head SHA, runner outcome** to the target. Do not confuse an old green check with a current one.
-- Until this exact-SHA acceptance workflow lands on default branch, its **Run workflow** button may not appear. Do not merge merely to force a run; orchestration approval is required.
-
-## 4. Non-destructive local fallback (WSL/Linux)
-
-Prerequisites: authenticated Git access to the private repo, .NET SDK **10.0.401** for B1 or Node **24** and npm for F1/F2, package-download access, and a clean external disk location for the temporary detached worktree. No live keys or exchange access required.
-
-From the root of the CI-01 branch checkout, for example in WSL:
-
-```bash
-bash scripts/ci/verify-exact-sha.sh 62 814f7ea5c470f01e87719a75b778a1b5226a7d69 /mnt/d/Projects/TradeOps-v2
-bash scripts/ci/verify-exact-sha.sh 63 246bd259a87958338ab56f9dc705224b0ed2b074 /mnt/d/Projects/TradeOps-v2
-bash scripts/ci/verify-exact-sha.sh 64 4322c8aaed09d76c3b3a95d3784d2676613139de /mnt/d/Projects/TradeOps-v2
-```
-
-The helper first compares the supplied SHA to the actual **remote worker branch HEAD** via `git ls-remote`, fetches the commit, creates a disposable detached worktree, asserts `git rev-parse HEAD`, runs the selected native SDK/test/build commands, then removes the worktree. It does not reset another worker's branch or rewrite `main`. If Git credentials, packages or runtime are unavailable, the command **fails**, not PASS. Local backend fallback validates compile and xUnit, but reports **PostgreSQL Mock smoke NOT RUN**: that full assertion sequence is retained in GitHub `build.yml` and requires a service-backed runner. Local fallback also does not create a GitHub check run.
-
-For PowerShell, invoke the script through WSL, adapting your checkout path:
+Once this PR branch's scripts are accessible at `D:\Projects\TradeOps-v2`, open PowerShell:
 
 ```powershell
-wsl.exe -- bash -lc 'cd /mnt/d/Projects/TradeOps-v2 && bash scripts/ci/verify-exact-sha.sh 62 814f7ea5c470f01e87719a75b778a1b5226a7d69 .'
+& 'D:\Projects\TradeOps-v2\scripts\ci\Run-TradeOpsAcceptance.ps1'
 ```
 
-## 5. Evidence / qualification ledger (2026-10-25)
+If script execution policy prevents a `.ps1` launcher, invoke WSL2 directly with **one** PowerShell command:
 
-| Requirement | Evidence now | Status |
+```powershell
+wsl.exe --exec bash /mnt/d/Projects/TradeOps-v2/scripts/ci/verify-exact-sha.sh all /mnt/d/Projects/TradeOps-v2
+```
+
+For another checkout path, pass `-Repository 'D:\your\path\TradeOps-v2'` to the launcher. In Ubuntu, use `bash scripts/ci/verify-exact-sha.sh all /mnt/d/Projects/TradeOps-v2`. Individual checks accept `62`, `63` or `64` instead of `all`. **Do not switch any active TradeOps/ResidentChat branch to run this tool**; use a separate checkout containing the CI-01 scripts. The Python driver requires host WSL `git`, `python3`, Docker daemon access and working GitHub Git credentials. It **never requires .NET or Node installed in host Ubuntu**.
+
+## Source verification and isolation
+
+For each run, the driver calls `git ls-remote origin` against **both** the actual `refs/pull/<number>/head` and the designated source `refs/heads/TradeOps/...`. The two SHAs must be equal, and the repo `origin` must be the canonical `github.com/avysotsky/TradeOps-v2`. It fetches **that exact current SHA**, creates a disposable detached `git worktree` and asserts `git rev-parse HEAD`. At the end it repeats both remote-ref checks. Any intervening head movement produces **STALE_SHA**. No `git reset`, checkout of an active branch, stashing, branch mutation or reuse of another worker's temporary files.
+
+Source SHA snapshots from the initial issue (never automatically assumed as current): B1 #62 `814f7ea5c470f01e87719a75b778a1b5226a7d69`; F1 #63 `246bd259a87958338ab56f9dc705224b0ed2b074`; F2 #64 `4322c8aaed09d76c3b3a95d3784d2676613139de`.
+
+**F1 #63 is stacked onto #55.** A passing F1 test validates its entire checked-out source tree; it does not approve or merge any unmerged ancestor.
+
+## Docker matrix
+
+| PR/gate | Container and commands | Requirements |
 | --- | --- | --- |
-| Issue/G0/roadmap and target SHA discovery | Connected GitHub issue/PR/ref and source inspection | **PASS (metadata only)** |
-| SDK alignment / exact checkout / workflow changes committed | `build.yml`, `exact-sha-acceptance.yml` source changes | **IMPLEMENTED; runtime NOT RUN** |
-| Backend `dotnet restore/build/test` at B1 HEAD | .NET SDK not present in this worker execution environment; no Actions run | **NOT RUN** |
-| Existing Mock+PostgreSQL smoke at B1 HEAD | Existing workflow assertions preserved, but no hosted run | **NOT RUN** |
-| F1 `npm test`, explicit VAN and Vite build at PR #63 HEAD | No Node 24 + npm dependency installation against private PR source in worker runtime | **NOT RUN** |
-| F2 `npm run check` at PR #64 HEAD | Same constraints, no matching GitHub Actions run | **NOT RUN** |
-| Actual pixel-diff browser screenshot parity | No browser golden baseline or captured screenshot | **NOT RUN** |
-| Explanation of missing Actions executions | Gap proven; disabled/policy/billing/runners not inspectable via connected permissions | **BLOCKED: owner UI inspection** |
-| Mainnet execution/read-only | No execution flags enabled, no credentials accessed or real orders sent | **UNCHANGED** |
+| B1 #62 | .NET SDK 10.0.401, `dotnet --info`, `dotnet restore TradeOps.sln`, `dotnet build TradeOps.sln -c Release --no-restore`, `dotnet test TradeOps.sln -c Release --no-build --no-restore` | Existing backend tests **and** OMS contracts; SDK must equal target `global.json`; capture TRX/test counts |
+| B1 isolated Mock smoke | One disposable PostgreSQL **17**, one .NET API container, one private bridge network, curl probe | PostgreSQL `pg_isready`; `/health/live`, `/health/ready` (PostgreSQL-ready assertion), OpenAPI JSON; one **synthetic Mock-only** signal with PartiallyFilled/0.0006 assertion |
+| F1 #63 | Node **24**, `npm test`, explicit `node --test tests/vanLayout.test.mjs`, `npm run build` | Existing RAW L2/clock regressions; VAN source-regex test does **not** qualify screenshot parity |
+| F2 #64 | Node **24**, `npm test`, `npm run build` | Equivalent to `npm run check`, reports test and build separately |
 
-**Acceptance:** this is a Draft PR. G0 and the orchestrator must independently review workflow security, exact SHA, tests and final statuses before any merge. Never promote missing evidence to success; no automatic mainnet order entry.
+### Image pinning and dependencies
+
+- .NET SDK: `mcr.microsoft.com/dotnet/sdk:10.0.401-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317` — **digest pinned**.
+- Node: `node:24.12.0-bookworm-slim` — fixed version tag, **not** digest pinned.
+- PostgreSQL: `postgres:17.6-bookworm` — fixed version tag, **not** digest pinned.
+- curl: `curlimages/curl:8.12.1` — fixed version tag, **not** digest pinned.
+
+The runner records the actual `docker image inspect` ID and RepoDigests per image. Operator-reviewed immutable images can be configured by `CI01_DOTNET_IMAGE`, `CI01_NODE_IMAGE`, `CI01_POSTGRES_IMAGE` and `CI01_CURL_IMAGE`. Unavailable images or dependencies produce a documented failure/blocker, **never PASS**. NuGet/npm caches and source worktrees are ephemeral and live under `~/tradeops-acceptance-results/.scratch` on the WSL Linux filesystem (not NTFS); only restore/package install have bridge networking, while tests/builds default to `--network none`.
+
+F1 and F2 lack lockfiles at the inspected heads; the runner uses `npm install --no-package-lock` and records `dependency_reproducibility=LIMITED_NO_LOCKFILE`. If future worker changes add lockfiles, the runner uses `npm ci`. Real dependency resolution remains less reproducible until frontend workers add committed lockfiles.
+
+### No impact on ResidentChat / other Docker services
+
+The Mock smoke starts only unique `ci01-<random>-pg`, `ci01-<random>-api` and `ci01-<random>-net` resources, with PostgreSQL database files on **temporary container tmpfs**. The runner publishes **zero host ports**; only the private Docker network connects the API, database and probe. It never calls `docker system prune`, `docker compose down`, stops existing containers, changes resident services, reuses volumes or creates a shared PostgreSQL database. Cleanup targets **only the names created by this run**, including on exceptions.
+
+All runner containers explicitly receive `Exchange__Provider=Mock`, `Telegram__Enabled=false`, `DeribitTerminal__ExecutionEnabled=false`, `DeribitTerminal__MainnetExecutionEnabled=false`; they do **not** import host exchange secrets, `.env` files, tokens, DPAPI or live broker credentials. The synthetic signal goes exclusively to the disposable local Mock API. No real trading operations.
+
+## Evidence
+
+Default root: `~/tradeops-acceptance-results/` (not tracked by GitHub). Example structure:
+
+```text
+pr-62/<exact-sha>/summary.json
+pr-62/<exact-sha>/dotnet-version.log, dotnet-info.log, restore.log, build.log, dotnet-test.log
+pr-62/<exact-sha>/trx/*.trx
+pr-62/<exact-sha>/api-health-live.log, api-health-ready.log, api-openapi.log, mock-order.log
+pr-63/<exact-sha>/summary.json, npm-test.log, van-layout.log, react-build.log
+pr-64/<exact-sha>/summary.json, npm-test.log, react-build.log
+acceptance-<utc-time>-<run-id>.json
+```
+
+On repeated runs of the same SHA, artifacts go under `pr-<number>/<sha>/<run-id>/` to preserve previous records. `summary.json` contains PR, gate, source SHA, checkout SHA, remote SHAs before/after, timestamps, status, individual step command names/exit codes/log names, test totals/passes/failures/skips (TRX or Node TAP), versions, image IDs and digests, npm lockfile state and reproducibility warning, PostgreSQL smoke outcome and failure notes. The aggregate JSON references the three individual summaries. Results are local, never auto-uploaded. Don't publish sensitive logs or environment variables.
+
+Possible statuses: `PASS`, `FAIL`, `NOT_RUN`, `STALE_SHA`, `BLOCKED_ENV`. **PASS is only the listed local build/test/Mock contract suite**, not OMS institutional readiness or browser visual parity. Browser screenshot comparisons remain independently **NOT RUN**: F1 viewports 1440×900 / 390×844 and F2 1440×900 / 768×900.
+
+## Worker verification and current limitations (2026-10-25)
+
+- `python3 -m py_compile scripts/ci/{local_acceptance,test_local_acceptance}.py` and `bash -n scripts/ci/verify-exact-sha.sh`: syntax validation only.
+- `cd scripts/ci && python3 -m unittest -v test_local_acceptance`: orchestration logic unit tests, **5/5 PASS** in authoring environment.
+- No access to owner's WSL2; this authoring environment has **no Docker binary**. B1 .NET build, OMS tests, full backend tests, PostgreSQL Mock smoke, F1/F2 npm tests and React builds and screenshot comparison: **NOT RUN**. Tests cannot be declared successful from source review.
+- GitHub workflow diff must remain **empty**: `build.yml` restored **byte-for-byte** to `main`, new workflow removed. No GitHub Actions run is requested, expected or required.
+
+Draft PR #66 stays unmerged until orchestrator reviews scope, SHA proofs and real owner-local acceptance evidence.
