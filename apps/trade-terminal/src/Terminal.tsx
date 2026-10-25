@@ -833,22 +833,7 @@ export default function DeribitTerminal() {
                 </div>
               </section>
 
-              <section className="panel">
-                <div className="panel-header"><div><span className="eyebrow">PORTFOLIO</span><h2>Состояние счёта</h2></div>
-                  <span className="count" aria-live="polite">{accountSnapshot.state === 'ready'
-                    ? 'Снимок ' + new Date(accountSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
-                    : accountSnapshot.state === 'loading' ? 'Загрузка счёта…' : 'Счёт недоступен'}</span></div>
-                <div className="account-grid">
-                  {accountSnapshot.state !== 'ready'
-                    ? <div className="empty">Данные счёта не подтверждены биржей.</div>
-                    : accounts.map(a => <div className="account-card" key={a.currency}>
-                    <span className="currency">{a.currency}</span>
-                    <span className="caption">EQUITY</span><strong>{num(a.equity, 6)}</strong>
-                    <div><span>Balance</span><b>{num(a.balance, 6)}</b></div>
-                    <div><span>Available funds</span><b>{num(a.availableFunds, 6)}</b></div>
-                  </div>)}
-                </div>
-              </section>
+
             </div>
 
             <section className="panel ticket">
@@ -1044,23 +1029,7 @@ export default function DeribitTerminal() {
                 </div>
               </div>
             </section>
-            <section className="panel market-feed">
-              <div className="panel-header">
-                <div><span className="eyebrow">LIVE PUBLIC TRADE STREAM</span><h2>Последние сделки</h2></div>
-                <span className="count">{tape?.instrument === marketInstrument ? tape.trades.length : 0}</span>
-              </div>
-              <div className="tape-header"><span>Время</span><span>Цена</span><span>Amount</span></div>
-              <div className="tape-list" role="region" aria-label="Последние публичные сделки" tabIndex={0}>
-              {(tape?.instrument === marketInstrument ? tape.trades : []).map((x, i) =>
-                <div className="tape-row" key={x.tradeId || i}>
-                  <span>{x.timestamp ? new Date(x.timestamp).toLocaleTimeString('ru-RU') : '—'}</span>
-                  <strong className={x.direction === 'buy' ? 'success-text' : 'red-text'}>{num(x.price, 6)}</strong>
-                  <span>{num(x.amount, 5)}</span>
-                </div>)}
-              {!tape && <p className="empty-feed">Ожидание новых сделок из WebSocket…</p>}
-              </div>
-              <p className="feed-note">Это публичные сделки рынка, не история твоего счёта.</p>
-            </section>
+
           </section>
 
           </div>
@@ -1133,6 +1102,41 @@ export default function DeribitTerminal() {
             </div>
           </section>
 
+          <div className="van-secondary-panels" aria-label="Портфель и публичные сделки">
+              <section className="panel">
+                <div className="panel-header"><div><span className="eyebrow">PORTFOLIO</span><h2>Состояние счёта</h2></div>
+                  <span className="count" aria-live="polite">{accountSnapshot.state === 'ready'
+                    ? 'Снимок ' + new Date(accountSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
+                    : accountSnapshot.state === 'loading' ? 'Загрузка счёта…' : 'Счёт недоступен'}</span></div>
+                <div className="account-grid">
+                  {accountSnapshot.state !== 'ready'
+                    ? <div className="empty">Данные счёта не подтверждены биржей.</div>
+                    : accounts.map(a => <div className="account-card" key={a.currency}>
+                    <span className="currency">{a.currency}</span>
+                    <span className="caption">EQUITY</span><strong>{num(a.equity, 6)}</strong>
+                    <div><span>Balance</span><b>{num(a.balance, 6)}</b></div>
+                    <div><span>Available funds</span><b>{num(a.availableFunds, 6)}</b></div>
+                  </div>)}
+                </div>
+              </section>
+            <section className="panel market-feed">
+              <div className="panel-header">
+                <div><span className="eyebrow">LIVE PUBLIC TRADE STREAM</span><h2>Последние сделки</h2></div>
+                <span className="count">{tape?.instrument === marketInstrument ? tape.trades.length : 0}</span>
+              </div>
+              <div className="tape-header"><span>Время</span><span>Цена</span><span>Amount</span></div>
+              <div className="tape-list" role="region" aria-label="Последние публичные сделки" tabIndex={0}>
+              {(tape?.instrument === marketInstrument ? tape.trades : []).map((x, i) =>
+                <div className="tape-row" key={x.tradeId || i}>
+                  <span>{x.timestamp ? new Date(x.timestamp).toLocaleTimeString('ru-RU') : '—'}</span>
+                  <strong className={x.direction === 'buy' ? 'success-text' : 'red-text'}>{num(x.price, 6)}</strong>
+                  <span>{num(x.amount, 5)}</span>
+                </div>)}
+              {!tape && <p className="empty-feed">Ожидание новых сделок из WebSocket…</p>}
+              </div>
+              <p className="feed-note">Это публичные сделки рынка, не история твоего счёта.</p>
+            </section>
+          </div>
           <details className="terminal-diagnostics">
             <summary>Диагностика рыночного потока</summary>
             <div className="terminal-diagnostics-content">
