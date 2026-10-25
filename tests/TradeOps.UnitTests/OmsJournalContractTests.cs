@@ -65,6 +65,32 @@ public sealed class OmsJournalContractTests
     }
 
     [Fact]
+    public void CancelAndReplace_MustPersistExplicitRemoteTargetCorrelation()
+    {
+        var place = Request();
+        var invalidCancel = place with
+        {
+            Payload = place.Payload with { Kind = OmsJournalCommandKind.Cancel }
+        };
+        Assert.Throws<ArgumentException>(() => OmsJournalCanonical.EncodeCommand(invalidCancel));
+
+        var validCancel = invalidCancel with
+        {
+            Payload = invalidCancel.Payload with
+            {
+                TargetClientOrderId = "client-label-ABC",
+                FixClOrdId = "cancel-request-2",
+                FixOrigClOrdId = "original-request-1"
+            }
+        };
+        var encoded = OmsJournalCanonical.EncodeCommand(validCancel);
+        Assert.Contains("client-label-ABC", encoded.Json);
+        Assert.Contains("cancel-request-2", encoded.Json);
+        Assert.Contains("original-request-1", encoded.Json);
+        Assert.False(encoded.Sha256.SequenceEqual(OmsJournalCanonical.EncodeCommand(place).Sha256));
+    }
+
+    [Fact]
     public void RemoteInboxDigest_IsAccountScopedAndPayloadSensitive()
     {
         var first = new OmsJournalInboxEvent(Account, "FIX:session-1", "execution-1",
