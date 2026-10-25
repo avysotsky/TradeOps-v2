@@ -71,7 +71,7 @@ test('read-only event-driven market stream remains isolated from order ticket', 
 });
 
 test('Depth selector offers native Deribit 1/10/20 and explicit RAW', () => {
-  assert.match(ui, /const \[domDepth, setDomDepth\] = useState<DomDepth>\(10\)/);
+  assert.match(ui, /const \[domDepth, setDomDepth\] = useState<DomDepth>\('raw'\)/);
   assert.match(ui, /<option value=\{10\}>10<\/option>/);
   assert.match(ui, /<option value=\{1\}>1<\/option>/);
   assert.match(ui, /<option value=\{20\}>20<\/option>/);
