@@ -6,7 +6,18 @@ if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Usage: bash apps/coincall-terminal/qa/accept-local.sh <40-char-PR-HEAD-SHA> [report-dir]" >&2
   exit 2
 fi
-repo="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
+# When piped through "git show ... | bash -s", BASH_SOURCE is empty.
+# Use the calling checkout. For a file invocation, derive it from the script.
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+  repo="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
+else
+  repo="$(git rev-parse --show-toplevel)"
+fi
+repo="$(realpath "$repo")"
+if [[ ! -d "$repo/.git" && ! -f "$repo/.git" ]]; then
+  printf 'NOT RUN: missing Git checkout: %s\n' "$repo" >&2
+  exit 2
+fi
 report="${2:-$HOME/TradeOps-acceptance/F2-01/$expected}"
 mkdir -p "$report"
 printf 'Expected SHA: %s\nUTC start: %s\n' "$expected" "$(date -u +%FT%TZ)" | tee "$report/identity.log"
@@ -117,7 +128,7 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp
     trap "kill $pid >/dev/null 2>&1 || true" EXIT
     node ./van-browser-parity.mjs /results/dist /van /results/van-ui "$EXPECTED_SHA" "$VAN_SHA"
   ' 2>&1 | tee "$report/van-parity.log"
-van_status=$?
+van_status=${PIPESTATUS[0]}
 set -e
 if [[ "$van_status" -ne 0 ]]; then
   printf 'FAIL: VAN-versus-React visual render gate (exit %s)\n' "$van_status" | tee "$report/van-parity-status.txt" "$report/status.txt"
