@@ -476,3 +476,93 @@
   .dom-row .dom-price,
   .dom-row.best .dom-price { font-size: 12px; }
 }
+
+
+/* TO-V2-45 — Reference prices at the spread boundary, no indicative MID.
+   Triple real-time values from the same authenticated RAW ticker, using
+   selected contract tick_size/tick_size_steps formatting. */
+.dom-reference-prices {
+  display: grid;
+  grid-template-columns: 105px 88px 102px;
+  column-gap: 4px;
+  align-items: stretch;
+  min-height: 36px;
+  padding: 3px 5px;
+  background: #253247;
+  border-top: 1px solid #7892ad63;
+  border-bottom: 1px solid #7892ad63;
+}
+.dom-reference-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.dom-reference-value > span {
+  font-size: 9px;
+  line-height: 11px;
+  white-space: nowrap;
+  color: #b5c8e1;
+}
+.dom-reference-value > strong {
+  font-size: 12px;
+  line-height: 15px;
+  white-space: nowrap;
+  color: #f5f8ff;
+  font-weight: 700;
+}
+.dom-reference-value:first-child > strong { color: #f0dba2; }
+.dom-reference-value:nth-child(2) > strong { color: #d7e8ff; }
+.dom-reference-value:nth-child(3) > strong { color: #bdd1e8; }
+
+/* Diagnostics must not take DOM vertical space during trading. */
+.terminal-diagnostics {
+  margin: 12px 0 0;
+  background: #151f2f;
+  color: #b5c7dd;
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.terminal-diagnostics summary {
+  cursor: pointer;
+  padding: 10px 15px;
+  color: #bed0e5;
+  font-weight: 600;
+}
+.terminal-diagnostics summary:focus-visible {
+  outline: 2px solid #86aaff;
+  outline-offset: 2px;
+}
+.terminal-diagnostics-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 12px 15px 14px;
+  border-top: 1px solid #ffffff1f;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+.terminal-diagnostics-content > span {
+  font-variant-numeric: tabular-nums;
+}
+.terminal-diagnostics-content p {
+  width: 100%;
+  margin: 0;
+  line-height: 1.6;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #90a8c3;
+}
+@media (max-width: 650px) {
+  .dom-reference-prices {
+    grid-template-columns: 92px 80px 94px;
+    column-gap: 3px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .dom-reference-value > span { font-size: 8px; }
+  .dom-reference-value > strong { font-size: 11px; }
+}
