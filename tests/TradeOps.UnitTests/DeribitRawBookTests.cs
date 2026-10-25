@@ -190,6 +190,18 @@ public sealed class DeribitRawBookTests
     }
 
     [Fact]
+    public void StandaloneTerminalApiHasNoSecondGlobalProgramEntryPoint()
+    {
+        // The shared test project references both TradeOps.Api and TerminalApi.
+        // A second global Program type makes unrelated WebApplicationFactory
+        // integration tests fail to compile (CS0433).
+        var terminalAssembly = typeof(DeribitRawBook).Assembly;
+        Assert.Null(terminalAssembly.GetType("Program"));
+        Assert.NotNull(terminalAssembly.GetType(
+            "TradeOps.TerminalApi.TerminalApiEntryPoint"));
+    }
+
+    [Fact]
     public void RawFeedIsEventDrivenAndLocalWebSocketOnly()
     {
         var root = LocateRoot();
