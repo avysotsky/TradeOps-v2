@@ -14,6 +14,31 @@ async function check(name, fn) {
   try { await fn(); cases++; evidence.push({name,status:'PASS'}); console.log('PASS ' + name); }
   catch (error) { failures++; evidence.push({name,status:'FAIL',message:String(error)}); console.error('FAIL ' + name + ' ' + error); }
 }
+// Assert rendered values in BOTH directions; order IDs are intentionally not displayed.
+async function verifyAccountRoundTrip(page, afterBeta) {
+  const main=page.getByRole('navigation',{name:'Main navigation'});
+  for (const index of [1,0]) {
+    await main.getByRole('button',{name:'Accounts',exact:true}).click();
+    await page.getByRole('radio').nth(index).check();
+    await main.getByRole('button',{name:'Assets',exact:true}).click();
+    await page.getByRole('button',{name:'Order Center',exact:true}).click();
+    const expectedOrders = index===1
+      ? [['ETHUSDT-Perp','SELL','Limit','3,560.00','1.2','0','NEW','11:51:26']]
+      : [['BTCUSDT-Perp','BUY','Limit','67,950.00','0.08','0','NEW','11:42:08'],
+         ['BTC/USDT','SELL','Limit','68,400.00','0.04','0.01','PARTIALLY_FILLED','11:16:42']];
+    const expectedPositions = index===1
+      ? [['BTCUSDT-Perp','Long','0.06','67,980.00','68,146.50','9.99','408.80','0.06']]
+      : [['BTCUSDT-Perp','Long','0.25','67,320.10','68,146.50','206.60','680.90','0.25'],
+         ['ETHUSDT-Perp','Short','1.8','3,576.20','3,516.70','107.10','633.00','-1.8']];
+    const tables=page.locator('.cc-bottom table');
+    assert.equal(await tables.count(),2);
+    const cells=table=>table.locator('tbody tr').evaluateAll(rows=>rows.map(row=>Array.from(row.querySelectorAll('td')).map(cell=>cell.textContent.trim())));
+    assert.deepEqual(await cells(tables.nth(0)),expectedOrders);
+    assert.deepEqual(await cells(tables.nth(1)),expectedPositions);
+    if(index===1 && afterBeta)await afterBeta();
+  }
+}
+
 const browser = await chromium.launch({headless:true, args:['--no-sandbox']});
 try {
   for (const width of [1440,768]) {
@@ -69,6 +94,7 @@ try {
       const bookRow = page.locator('.cc-bookrow.cc-buy').first();
       const selected = Number((await bookRow.locator('span').first().innerText()).replaceAll(',',''));
       await bookRow.click();
+      await page.waitForFunction(expected => Number(document.querySelector('input[aria-label="Order price"]')?.value) === expected, selected, {timeout:3000});
       assert.equal(Number(await page.getByRole('spinbutton',{name:'Order price'}).inputValue()),selected);
       await trade.getByRole('button',{name:'Futures'}).click();
       assert.equal(await page.locator('.cc-ticket .cc-actions button:disabled').count(),2);
@@ -107,13 +133,7 @@ try {
       if(width===768)assert.ok((geometry.gridScroll??0)>(geometry.gridClient??0),'Matrix scroll should be internal');
     });
     await check(width + ' account isolation in Order Center',async()=>{
-      await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Accounts'}).click();
-      await page.getByRole('radio').nth(1).check();
-      await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Assets'}).click();
-      await page.getByRole('button',{name:'Order Center'}).click();
-      const text = await page.locator('.cc-bottom').innerText();
-      assert.match(text,/MOCK-CC-B-001/);
-      assert.doesNotMatch(text,/MOCK-CC-A-001/);
+      await verifyAccountRoundTrip(page);
     });
     await check(width + ' no page crashes or outbound HTTP',async()=>{
       assert.deepEqual(errors,[]);
