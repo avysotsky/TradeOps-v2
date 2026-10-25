@@ -564,6 +564,8 @@ class Runner:
             out.mkdir(parents=True, exist_ok=True)
             (out / "summary.json").write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
             print(f"PR #{number}: {result['status']} at {result['source_sha']} | {out / 'summary.json'}", flush=True)
+            for note in result.get("notes", [])[:3]:
+                print("  Detail: " + sanitized(note), flush=True)
         return result
 
 
