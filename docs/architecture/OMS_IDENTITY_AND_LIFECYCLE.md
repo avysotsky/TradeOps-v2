@@ -28,7 +28,7 @@ OMS phases: `Created`, `DispatchPending`, `Submitted`, `Accepted`, `PartiallyFil
 | Unknown | Submitted, Accepted, PartiallyFilled, Filled, Cancelled, Rejected, Expired **only with authoritative remote evidence** |
 | Filled, Cancelled, Rejected, Expired | No status rewrite; cancelled may receive *late confirmed fills* while remaining cancelled |
 
-`Created -> exchange outcome` allows *confirmed* exchange-discovered orders; local command evidence cannot manufacture a filled, rejected or cancelled order. Terminal = Filled/Cancelled/Rejected/Expired. Unknown, CancelPending, ReplacePending are nonterminal and risk-unresolved. Terminal status is never evidence of account reconciliation completion.
+`Created -> exchange outcome` allows *confirmed* exchange-discovered orders; local command evidence cannot manufacture a filled, rejected or cancelled order. Terminal = Filled/Cancelled/Rejected/Expired. DispatchPending, Submitted, Unknown, CancelPending and ReplacePending have pending/uncertain outcomes; **all nonterminal orders**, including Accepted and PartiallyFilled, must be accounted for in pending exposure and risk budget. Terminal status is never evidence of account reconciliation completion.
 
 `OmsLifecycleContract.Apply(current, observation)` returns `Applied`, `Duplicate`, `Stale`, or `RequiresReconciliation` and an immutable next/current state. No IO, no clock, no accidental persistence.
 
@@ -36,7 +36,7 @@ OMS phases: `Created`, `DispatchPending`, `Submitted`, `Accepted`, `PartiallyFil
 - Source labels: `LocalCommand`, `PrivateOrderReport`, `OrderLookup`, `OrderHistory`, `ExecutionFill`, `OpenOrdersPresence`. A local command never proves a venue outcome. Open-order presence cannot prove terminal state. Missing from open-order listing is returned explicitly as `RequiresReconciliation`, without status change.
 - A local `Unknown` after possible transmission prohibits automatic resend. `OmsDispatchSafety.IsProvablyNotSent` is true **only** for Prepared / PersistedNotSent; the latter is a B2 journaling guarantee, not a blind deduction after process crash. `DispatchStarted`, `Acknowledged`, `Rejected`, `Ambiguous` are ineligible for automatic reissue. Unknown can be cleared only with authoritative order lookup/history/private execution evidence and gap checks (B4).
 - Compare per-stream ordered cursors only within identical `(stream, epoch)`. Lower sequence = stale; repeated sequence+identical state = replay; repeated sequence+conflicting state = reconcile; incomparable streams/epochs = reconcile until a B4 epoch reset. Event timestamps **are not** causal sequence numbers. Missing venue-native sequence means monotonic fills/status invariants still apply, but ordering proof is incomplete.
-- Late confirmed execution on `Cancelled` may increase cumulative fill without reopening the cancelled order. Conflicting `Filled -> Cancelled`, `Cancelled -> Filled`, regression of cum fill, overfill, missed revisions and invalid terminal status all enter reconciliation. Fill aggregation B2/B4 must be computed from de-duplicated trade facts, not order-status events alone.
+- Late confirmed execution on `Cancelled` may increase cumulative fill without reopening the cancelled order. Conflicting `Filled -> Cancelled`, `Cancelled -> Filled`, regression of cum fill, old-revision late fills, overfill, missed revisions and invalid terminal status all enter reconciliation. Fill aggregation B2/B4 must be computed from de-duplicated trade facts, not order-status events alone.
 
 ## Execution identity and collision
 
