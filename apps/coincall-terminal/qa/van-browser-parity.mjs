@@ -40,6 +40,8 @@ function vanToggle(view){
   const doc=document;
   const set=(s,show)=>{const el=doc.querySelector(s);if(!el)return;el.hidden=!show;el.classList.toggle('active',show)};
   for(const s of ['#cc-layer-trade','#cc-layer-assets','#cc-layer-accounts','#cc-layer-markets'])set(s,view!=='portfolio'&&view!=='accounts'?s==='#cc-layer-trade':s==='#cc-layer-'+(view==='portfolio'?'assets':'accounts'));
+  const current=view==='portfolio'?'assets':view==='accounts'?'accounts':'trade';
+  for(const tab of doc.querySelectorAll('.okx-primary-tab[data-cc-layer]'))tab.classList.toggle('active',tab.getAttribute('data-cc-layer')===current);
   for(const s of ['#ccSpreadsPanel','#ccSpotShell','#ccSpotBottomPanel','#ccFuturesShell','#ccFuturesBottomPanel','#ccOptionsPanel','#ccMarketDataPanel'])set(s,false);
   if(view==='spreads'){set('#ccSpreadsPanel',true)}
   if(view==='spot'){set('#ccSpotShell',true);set('#ccSpotBottomPanel',true)}
@@ -129,8 +131,10 @@ try{
     await snapshot(vanPage,'van-spread-legs-'+v+'.png','VAN modal original HTML/CSS shell',width,{state:'synthetic two-leg modal content, scripts disabled'});
     await vanPage.locator('#ccSpreadsTradeModal').evaluate(el=>{el.hidden=true;el.style.display='none'});
 
+    await reactPage.locator('.cc-details').scrollIntoViewIfNeeded();
     await snapshot(reactPage,'react-spreads-legs-'+v+'.png','React compiled Vite',width,{state:'selected spread legs'});
     await reactPage.getByRole('button',{name:'Close spread details'}).click();
+    await reactPage.locator('.cc-grid-scroll').scrollIntoViewIfNeeded();
     await snapshot(reactPage,'react-spreads-grid-'+v+'.png','React compiled Vite',width,{state:'unselected spread matrix'});
     const geo={viewport:v,van:{},react:{}};
     geo.van.matrix=await vanPage.locator('#coincallSpreadsGridHost').evaluate(rect);
