@@ -47,6 +47,8 @@ The accessible GitHub Actions runs endpoint returned **51 historical runs**; its
 
 **What is established:** `build.yml` has `push` triggers for `main` and `TradeOps/**` and the run gap spans eligible branch updates; SDK 8 versus net10.0 would explain a failed *started* build, but by itself cannot explain the absence of a workflow run record. PR branch-base filtering prevents some stacked PR runs; it does not explain missing eligible push runs.
 
+GitHub additionally documents [workflow recursion suppression](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow): a push made with a workflow's own `GITHUB_TOKEN` normally does not launch a second workflow. Whether any of the post-9-October changes used such a token has **not** been established, so this remains a hypothesis, not the diagnosis. A direct authorized UI push or manually dispatched supported workflow can distinguish it from repository-wide disabled Actions.
+
 **Root cause remains unverified.** The linked GitHub API surface provided run listings but does not authorize the repository `/actions/permissions` endpoint; therefore this worker cannot distinguish conclusively between repository/owner-level Actions disabled, workflow disabled, Actions billing/quota restriction, policy restrictions and runner dispatch/service problems. No logs exist for missing runs, and no fabricated PASS is reported.
 
 **Owner action, minimum UI investigation:**
