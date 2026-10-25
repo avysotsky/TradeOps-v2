@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { VanNavigation, VanTradeChart, VanBottomTabs, type VanAccountTab } from './VanWorkbench';
 import { toPriceLadder, ownOrdersOutsideDepth, contractPriceDecimals, formatDomPrice, type DomDepth, type InstrumentTickSpecification } from './marketDepth';
 import {
   PrivateReadGate, emptyReadSnapshot, settleReadSnapshot, settleAccountPair, snapshotCount,
@@ -201,6 +202,7 @@ function num(value?: number | null, digits = 2) {
 export default function DeribitTerminal() {
   const [key, setKey] = useState('auto-readonly');
   const [tableFontSize, setTableFontSize] = useState(16);
+  const [accountTab, setAccountTab] = useState<VanAccountTab>('orders');
   const [status, setStatus] = useState<Status | null>(null);
   const [instrument, setInstrument] = useState('BTC-PERPETUAL');
   const [marketCurrency, setMarketCurrency] = useState<'BTC' | 'ETH'>('ETH');
@@ -739,6 +741,12 @@ export default function DeribitTerminal() {
         </section>
       ) : (
         <div className="content" style={{ '--table-font-size': `${tableFontSize}px` } as CSSProperties}>
+          <VanNavigation instrument={marketInstrument} onPerpetualSelect={ccy => {
+            setMarketCurrency(ccy);
+            setMarketKind('future');
+            setInstrumentSearch('');
+            setMarketInstrument(ccy + '-PERPETUAL');
+          }} />
           <section className="headline">
             <div><span className="eyebrow">TRADING WORKSPACE / DERIBIT</span>
               <h1>Trading overview</h1>
@@ -764,6 +772,7 @@ export default function DeribitTerminal() {
             Биржевые credentials на backend ещё не настроены. Публичные котировки доступны; состояние счёта — нет.
           </div>}
 
+          <div className="van-workstation">
           <div className="main-grid">
             <div className="stack">
               <section className="panel quote-panel">
@@ -817,6 +826,8 @@ export default function DeribitTerminal() {
                   <div><span><ArrowDownRight size={15}/> BEST BID</span><strong>{num(quote?.instrument === marketInstrument ? quote.bestBidPrice : null, marketKind === 'option' ? 6 : 2)}</strong></div>
                   <div><span><ArrowUpRight size={15}/> BEST ASK</span><strong>{num(quote?.instrument === marketInstrument ? quote.bestAskPrice : null, marketKind === 'option' ? 6 : 2)}</strong></div>
                 </div>
+                <VanTradeChart instrument={marketInstrument}
+                  ticks={tape?.instrument === marketInstrument ? tape.trades : []} />
                 <div className="panel-foot"><Clock3 size={14}/> Рыночные данные: 8 сек · HTTP · без выставления ордеров
                   {quote && <span>{new Date(quote.timestampUtc).toLocaleTimeString('ru-RU')}</span>}
                 </div>
@@ -867,7 +878,7 @@ export default function DeribitTerminal() {
                 <div><span>Защита</span><strong>Reject if crossing</strong></div>
               </div>
               <button className={side === 'buy' ? 'buy-button' : 'sell-button'}
-                disabled={!status.tradingEnabled || !status.credentialsConfigured || loading ||
+                disabled={status.environment === 'mainnet' || !status.tradingEnabled || !status.credentialsConfigured || loading ||
                   Number(contracts) <= 0 || Number(price) <= 0}
                 onClick={() => void previewOrder()}>
                 {status.tradingEnabled ? 'Проверить заявку' : 'Исполнение заблокировано'} <ArrowUpRight size={18}/>
@@ -1050,6 +1061,12 @@ export default function DeribitTerminal() {
             </section>
           </section>
 
+          </div>
+          <section className="van-bottom-dock" aria-label="Deribit account workspace">
+            <VanBottomTabs selected={accountTab} onSelect={setAccountTab}
+              positionsCount={snapshotCount(positionsSnapshot)}
+              ordersCount={snapshotCount(ordersSnapshot)} />
+            <div className="van-dock-pane" hidden={accountTab !== 'positions'}>
           <section className="panel data-panel">
             <div className="panel-header">
               <div><span className="eyebrow">EXCHANGE STATE</span><h2>Открытые позиции</h2></div>
@@ -1090,7 +1107,8 @@ export default function DeribitTerminal() {
                 </tr>) : <tr><td colSpan={6} className="empty-cell">Нет позиций или данные счёта не загружены.</td></tr>}</tbody></table>
             </div>
           </section>
-
+            </div>
+            <div className="van-dock-pane" hidden={accountTab !== 'orders'}>
           <section className="panel data-panel">
             <div className="panel-header"><div><span className="eyebrow">ORDER MANAGEMENT</span><h2>Активные ордера</h2></div><span className="count" aria-live="polite">{ordersSnapshot.state === 'ready'
                 ? orders.length + ' orders · ' + new Date(ordersSnapshot.sampledAtUnixMs!).toISOString().slice(11, 19) + ' UTC'
@@ -1104,9 +1122,11 @@ export default function DeribitTerminal() {
                 <td className={o.side === 'buy' ? 'success-text' : 'red-text'}>{o.side}</td>
                 <td className="right mono">{num(o.amount, 6)}</td><td className="right mono">{num(o.price)}</td>
                 <td><span className="state-pill">{o.state || '—'}</span></td>
-                <td className="right"><button className="cancel" disabled={!status.tradingEnabled || loading || refreshing || ordersSnapshot.state !== 'ready' || !o.orderId}
+                <td className="right"><button className="cancel" disabled={status.environment === 'mainnet' || !status.tradingEnabled || loading || refreshing || ordersSnapshot.state !== 'ready' || !o.orderId}
                   onClick={() => void cancelOrder(o.orderId)}>Cancel</button></td>
               </tr>) : <tr><td colSpan={7} className="empty-cell">Открытых ордеров нет или данные недоступны.</td></tr>}</tbody></table></div>
+          </section>
+            </div>
           </section>
 
           <details className="terminal-diagnostics">
@@ -1188,7 +1208,7 @@ export default function DeribitTerminal() {
           <div className="modal-actions">
             <button className="secondary" onClick={() => setPreview(null)}><X size={16}/> Отмена</button>
             <button className={preview.environment === 'mainnet' ? 'danger-button' : 'primary'}
-              disabled={loading} onClick={() => void confirmOrder()}>
+              disabled={loading || preview.environment === 'mainnet'} onClick={() => void confirmOrder()}>
               {preview.environment === 'mainnet' ? 'Разместить РЕАЛЬНЫЙ ордер' : 'Разместить тестовый ордер'}
             </button>
           </div>
