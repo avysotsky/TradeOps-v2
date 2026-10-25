@@ -1,6 +1,6 @@
 # B1-01 — OMS identity and lifecycle contract (v1)
 
-Status: **additive domain contract, not a production OMS migration**. Issue [#58](https://github.com/avysotsky/TradeOps-v2/issues/58), roadmap [PR #56](https://github.com/avysotsky/TradeOps-v2/pull/56). Source baseline: `main@c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`.
+Status: **additive domain contract v1 (`OmsContractSchema.Version = 1`), not a production OMS migration**. Issue [#58](https://github.com/avysotsky/TradeOps-v2/issues/58), roadmap [PR #56](https://github.com/avysotsky/TradeOps-v2/pull/56). Source baseline: `main@c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`.
 
 ## Scope and invariants
 
@@ -8,6 +8,7 @@ Status: **additive domain contract, not a production OMS migration**. Issue [#58
 - `OmsLocalOrderId` is internal OMS aggregate identity, never a broker identifier. `OrderIntentId` identifies immutable strategy/operator intent; `OmsCommandId` identifies an operation under that intent; `DispatchAttempt` is a monotonic attempt number; `OrderVersion` is local projection version; `OrderRevision` describes accepted/attempted cancel-replace revision and is distinct from version.
 - `ClientOrderLabel`, `ExchangeOrderKey`, `ExecutionKey` are mutually distinct opaque types. `ScopedClientOrderId`, `ScopedExchangeOrderId` and `ScopedExecutionId` add the full `AccountKey`; execution namespace is adapter-defined, and for FIX can include session/execution ID domain. Never reconcile an order by bare label or exchange order ID in a global multi-account store.
 - `FixClOrdId` (tag 11), `FixOrigClOrdId` (tag 41), FIX ExecID (tag 17, represented as adapter-namespaced `ExecutionKey`) and exchange OrderID (tag 37) must remain separate. Replace/cancel request IDs, original request IDs, acknowledgements and execution report IDs have venue-specific mapping. Deribit label is **not** guaranteed globally unique, nor interchangeable with FIX ClOrdID. Adapter verifies string length, allowed characters, uniqueness and field-specific scope; domain intentionally does not encode Deribit/Binance/CoinCall limits.
+- First verified remote order ID/label may bind to an existing local aggregate; a later conflicting binding is quarantined as `RequiresReconciliation` and cannot overwrite an existing correlation. No application-level registry/DB constraint is added in B1.
 - Exchange-originated orders may lack an `OrderIntentId` or client label. They require an exchange ID and a fresh locally assigned aggregate ID. Do not fabricate local placement/acknowledgement.
 - Original `OmsOrderTerms` lock instrument, side, type, decimal requested quantity and explicit unit (`Contracts`/`BaseAsset`/`QuoteAsset`/`Shares`/`Lots`). Contract multiplier, settlement currency, inverse contract amount and instrument version must be supplied by later B1 instrument rules/B7 venue qualification; unit conversion is **not** implicit. Replacing quantity/price means a separately recorded order revision and a new validated terms snapshot in B2; current B1 reducer keeps original total fixed.
 
