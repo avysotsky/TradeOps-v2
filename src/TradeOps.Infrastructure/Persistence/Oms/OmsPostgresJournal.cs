@@ -202,7 +202,9 @@ VALUES (@tenant,@venue,@environment,@account,@subaccount,@command)
     /// This method does NOT send. After this commit the outbox is no longer safely dispatchable.
     /// </summary>
     public async Task<OmsJournalAttemptResult> MarkDispatchStartedAsync(
-        AccountKey scope, OmsCommandId commandId, CancellationToken cancellationToken = default)
+        AccountKey scope, OmsCommandId commandId,
+        Func<OmsJournalFailPoint, Task>? fault = null,
+        CancellationToken cancellationToken = default)
     {
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(cancellationToken);
@@ -247,6 +249,7 @@ WHERE {ScopeWhere} AND command_id=@command AND state='NotSent'
             if (await outbox.ExecuteNonQueryAsync(cancellationToken) != 1)
                 throw new InvalidOperationException("Missing outbox row: refusing to advance attempt.");
         }
+        if (fault is not null) await fault(OmsJournalFailPoint.BeforeCommit);
         await tx.CommitAsync(cancellationToken);
         return OmsJournalAttemptResult.Started;
     }
