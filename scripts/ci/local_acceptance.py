@@ -654,6 +654,9 @@ class Runner:
                 result["status"] = "STALE_SHA"
                 raise
             out = self.result_root / f"pr-{number}" / source_sha
+            if gate == "b2":
+                # B2 evidence always lives under its own run identifier.
+                out = out / self.run_id
             out.mkdir(parents=True, exist_ok=True)
             if (out / "summary.json").exists():
                 out = out / self.run_id
