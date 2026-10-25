@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -218,7 +219,7 @@ class Runner:
              log_name: str, timeout: int = 900, cwd: Path | None = None) -> bool:
         begin = utc()
         cp = self.exec(args, out / log_name, timeout, cwd=cwd)
-        summary["steps"].append({"name": label, "command": label, "exit_code": cp.returncode,
+        summary["steps"].append({"name": label, "command": sanitized(shlex.join(args)), "exit_code": cp.returncode,
                                  "status": "PASS" if cp.returncode == 0 else "FAIL",
                                  "started_utc": begin, "completed_utc": utc(), "log": log_name})
         return cp.returncode == 0
@@ -350,12 +351,17 @@ class Runner:
             # Delete only uniquely named resources we created; never prune/stop external stacks.
             if made_api:
                 self.docker(["logs", api], out / "api-service.log", quiet=True)
-                self.docker(["rm", "-f", api], quiet=True)
+                if self.docker(["rm", "-f", api], out / "api-remove.log", quiet=True).returncode:
+                    summary["cleanup_complete"] = False
             if made_pg:
                 self.docker(["logs", pg], out / "postgres-service.log", quiet=True)
-                self.docker(["rm", "-f", pg], quiet=True)
+                if self.docker(["rm", "-f", pg], out / "postgres-remove.log", quiet=True).returncode:
+                    summary["cleanup_complete"] = False
             if made_net:
-                self.docker(["network", "rm", net], quiet=True)
+                if self.docker(["network", "rm", net], out / "network-remove.log", quiet=True).returncode:
+                    summary["cleanup_complete"] = False
+            if not summary["cleanup_complete"]:
+                summary["notes"].append("CI-01 resource cleanup failed; inspect only uniquely named ci01 resources")
 
     def frontend(self, gate: str, summary: dict, source: Path, temp: Path, out: Path):
         self.require_images(["node"], out)
@@ -395,6 +401,7 @@ class Runner:
                   "started_utc": started, "completed_utc": None, "status": "NOT_RUN",
                   "steps": [], "tool_versions": {}, "images": {}, "test_counts": None,
                   "postgres_mock_smoke": "NOT_RUN" if gate == "backend" else "NOT_APPLICABLE",
+                  "cleanup_complete": True,
                   "notes": [], "safety": {"exchange_provider": "Mock", "mainnet_execution_enabled": False,
                                            "published_ports": False, "global_docker_cleanup": False}}
         source_sha = "unresolved-" + self.run_id
@@ -439,6 +446,8 @@ class Runner:
             result["test_counts"] = parse_counts(out, gate)
             if not result["steps"] or any(step["status"] == "FAIL" for step in result["steps"]):
                 result["status"] = "FAIL"
+            elif not result.get("cleanup_complete", True):
+                result["status"] = "FAIL"
             elif gate == "backend" and result["postgres_mock_smoke"] != "PASS":
                 result["status"] = "FAIL"
             elif gate == "backend" and not result["test_counts"]["available"]:
@@ -447,7 +456,7 @@ class Runner:
             elif gate != "backend" and not result["test_counts"]["available"]:
                 result["status"] = "FAIL"
                 result["notes"].append("TAP totals unavailable")
-            elif result["test_counts"]["total"] <= 0 or result["test_counts"]["failed"] != 0:
+            elif result["test_counts"]["total"] <= 0 or result["test_counts"]["passed"] <= 0 or result["test_counts"]["failed"] != 0:
                 result["status"] = "FAIL"
                 result["notes"].append("Missing tests or nonzero failures in recorded TRX/TAP totals")
             elif gate == "deribit" and result["test_counts"]["suites"] != 2:
