@@ -49,7 +49,7 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
         var (json, digest) = OmsJournalCanonical.EncodeCommand(request);
 
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await db.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         await using (var seed = Command("""
 INSERT INTO oms_aggregates(tenant_id,venue_id,environment,account_id,subaccount_id,aggregate_id)
@@ -179,7 +179,7 @@ VALUES (@tenant,@venue,@environment,@account,@subaccount,@command)
         AccountKey scope, OmsCommandId commandId, CancellationToken cancellationToken = default)
     {
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await db.BeginTransactionAsync(cancellationToken);
+        await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(cancellationToken);
         int affected;
         await using (var update = Command($"""
 UPDATE oms_commands SET dispatch_phase='DispatchStarted',updated_at=clock_timestamp()
@@ -232,7 +232,7 @@ WHERE {ScopeWhere} AND command_id=@command AND state='NotSent'
         if (!Enum.IsDefined(outcome)) throw new ArgumentOutOfRangeException(nameof(outcome));
         var phase = outcome.ToString();
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await db.BeginTransactionAsync(cancellationToken);
+        await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(cancellationToken);
         await using (var update = Command($"""
 UPDATE oms_commands SET dispatch_phase=@phase,updated_at=clock_timestamp()
 WHERE {ScopeWhere} AND command_id=@command AND dispatch_phase IN ('DispatchStarted','Ambiguous')
@@ -277,7 +277,7 @@ WHERE {ScopeWhere} AND command_id=@command
     {
         var (json, digest) = OmsJournalCanonical.EncodeInbox(item);
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await db.BeginTransactionAsync(cancellationToken);
+        await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(cancellationToken);
         int inserted;
         await using (var insert = Command("""
 INSERT INTO oms_inbox
