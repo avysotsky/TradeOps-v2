@@ -53,6 +53,19 @@ type OrderBook = {
   timestamp: number | null;
   receivedAtUtc: string;
 };
+type OwnOrderLevel = {
+  direction: 'buy' | 'sell';
+  price: number;
+  amount: number;
+  orders: number;
+};
+type OwnOrders = {
+  instrument: string;
+  state: 'loading' | 'ready' | 'unavailable' | 'resyncing' | 'disconnected';
+  levels: OwnOrderLevel[];
+  openOrders: number;
+  snapshotUtcMs: number;
+};
 type PublicTrade = {
   tradeId: string | null;
   direction: string | null;
@@ -154,6 +167,7 @@ export default function DeribitTerminal() {
   const [contractSpecError, setContractSpecError] = useState('');
   const [universeCount, setUniverseCount] = useState(0);
   const [book, setBook] = useState<OrderBook | null>(null);
+  const [ownOrders, setOwnOrders] = useState<OwnOrders | null>(null);
 
   const [tape, setTape] = useState<TradeTape | null>(null);
   const [marketError, setMarketError] = useState('');
@@ -228,6 +242,15 @@ export default function DeribitTerminal() {
   }, [marketInstrument]);
 
   const [streamState, setStreamState] = useState('connecting');
+  const ownLevels = useMemo(() => {
+    const map = new Map<string, OwnOrderLevel>();
+    if (streamState === 'synced' && ownOrders?.instrument === marketInstrument &&
+        ownOrders.state === 'ready') {
+      for (const level of ownOrders.levels)
+        map.set(level.direction + ':' + level.price, level);
+    }
+    return map;
+  }, [marketInstrument, ownOrders, streamState]);
   const dom = useMemo(
     () => toPriceLadder(streamState === 'synced' && book?.instrument === marketInstrument ? book : null),
     [book, marketInstrument, streamState]
@@ -292,10 +315,12 @@ export default function DeribitTerminal() {
       state?: string;
       lag?: number | null;
       sequence?: number;
+      ownOrders?: OwnOrders;
     } = {};
     setBook(null);
     setTape(null);
     setQuote(null);
+    setOwnOrders(null);
     setStreamState('connecting');
     setExchangeAgeMs(null);
 
@@ -308,14 +333,17 @@ export default function DeribitTerminal() {
           setBook(null);
           setTape(null);
           setQuote(null);
+          setOwnOrders(null);
         }
       }
       if (updates.book) setBook(updates.book);
+      if (updates.ownOrders) setOwnOrders(updates.ownOrders);
       if (updates.ticker) setQuote(updates.ticker);
       if (updates.trades) setTape(updates.trades);
       if (updates.lag !== undefined) setExchangeAgeMs(updates.lag);
       if (updates.sequence !== undefined) setStreamMessages(updates.sequence);
       updates.book = undefined;
+      updates.ownOrders = undefined;
       updates.ticker = undefined;
       updates.trades = undefined;
       updates.state = undefined;
@@ -345,6 +373,7 @@ export default function DeribitTerminal() {
           // Drop older queued prices as soon as stream is not synced.
           if (payload.state !== 'synced') {
             updates.book = undefined;
+            updates.ownOrders = undefined;
             updates.ticker = undefined;
             updates.trades = undefined;
           }
@@ -367,9 +396,13 @@ export default function DeribitTerminal() {
             receivedAtUtc: new Date(b.localReceivedAtUnixMs).toISOString()
           };
           updates.state = 'synced';
+          if (payload.ownOrders && payload.ownOrders.instrument === marketInstrument)
+            updates.ownOrders = payload.ownOrders as OwnOrders;
           updates.lag = typeof payload.exchangeAgeMs === 'number' ?
             payload.exchangeAgeMs : null;
           updates.sequence = Number(payload.messages) || 0;
+        } else if (payload.type === 'own_orders' && payload.orders) {
+          updates.ownOrders = payload.orders as OwnOrders;
         } else if (payload.type === 'ticker') {
           updates.ticker = payload as Quote;
         } else if (payload.type === 'trades') {
@@ -381,6 +414,7 @@ export default function DeribitTerminal() {
         if (!active) return;
         updates.state = 'disconnected';
         updates.book = undefined;
+        updates.ownOrders = undefined;
         updates.ticker = undefined;
         updates.trades = undefined;
         queueRender();
@@ -671,18 +705,40 @@ export default function DeribitTerminal() {
                   <span>{marketInstrument}</span>
                 </div>
               </div>
+              <div className="dom-own-status" aria-live="polite">
+                <span>Мои лимитные заявки:</span>
+                <strong className={ownOrders?.state === 'ready' && streamState === 'synced'
+                  ? 'success-text' : 'muted'}>
+                  {ownOrders?.state === 'ready' && streamState === 'synced'
+                    ? ownOrders.openOrders
+                    : ownOrders?.state === 'unavailable' ? 'нет доступа'
+                    : 'синхронизация'}
+                </strong>
+                {ownOrders?.state === 'ready' && <span>● на уровне — мой объём (наведи курсор)</span>}
+              </div>
               <div className="dom-ladder" aria-label={'Вертикальный стакан ' + marketInstrument}>
                 <div className="dom-head">
                   <span>Цена</span><span>Объём</span><span>Совокупный</span>
                 </div>
                 <div className="dom-half dom-asks" aria-label="Asks — продавцы сверху">
                   {dom.asks.map(level => (
-                    <div className={'dom-row ask' + (level.best ? ' best' : '')}
+                    <div className={'dom-row ask' + (level.best ? ' best' : '') +
+                      (ownLevels.has('sell:' + level.price) ? ' own-order-level' : '')}
                       key={'ask-' + level.price}
+                      title={ownLevels.has('sell:' + level.price)
+                        ? 'Мои Sell: ' + num(ownLevels.get('sell:' + level.price)?.amount, 6) +
+                          ', ордеров: ' + ownLevels.get('sell:' + level.price)?.orders
+                        : undefined}
                       aria-label={'Ask ' + level.price + ', объём ' + level.amount +
-                        ', накоплено ' + level.cumulative}>
+                        ', накоплено ' + level.cumulative +
+                        (ownLevels.has('sell:' + level.price)
+                          ? ', мой объём ' + ownLevels.get('sell:' + level.price)?.amount : '')}>
                       <span className="dom-bar ask-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
-                      <strong className="dom-price">{formatDomPrice(level.price, priceDecimals)}</strong>
+                      <strong className="dom-price">
+                        {ownLevels.has('sell:' + level.price) &&
+                          <span className="dom-own-marker" aria-label="Мой SELL ордер">●</span>}
+                        {formatDomPrice(level.price, priceDecimals)}
+                      </strong>
                       <span className="dom-size">{num(level.amount, 6)}</span>
                       <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
                     </div>
@@ -723,12 +779,23 @@ export default function DeribitTerminal() {
                 </div>
                 <div className="dom-half dom-bids" aria-label="Bids — покупатели снизу">
                   {dom.bids.map(level => (
-                    <div className={'dom-row bid' + (level.best ? ' best' : '')}
+                    <div className={'dom-row bid' + (level.best ? ' best' : '') +
+                      (ownLevels.has('buy:' + level.price) ? ' own-order-level' : '')}
                       key={'bid-' + level.price}
+                      title={ownLevels.has('buy:' + level.price)
+                        ? 'Мои Buy: ' + num(ownLevels.get('buy:' + level.price)?.amount, 6) +
+                          ', ордеров: ' + ownLevels.get('buy:' + level.price)?.orders
+                        : undefined}
                       aria-label={'Bid ' + level.price + ', объём ' + level.amount +
-                        ', накоплено ' + level.cumulative}>
+                        ', накоплено ' + level.cumulative +
+                        (ownLevels.has('buy:' + level.price)
+                          ? ', мой объём ' + ownLevels.get('buy:' + level.price)?.amount : '')}>
                       <span className="dom-bar bid-bar" style={{ width: level.percent + '%' }} aria-hidden="true" />
-                      <strong className="dom-price">{formatDomPrice(level.price, priceDecimals)}</strong>
+                      <strong className="dom-price">
+                        {ownLevels.has('buy:' + level.price) &&
+                          <span className="dom-own-marker" aria-label="Мой BUY ордер">●</span>}
+                        {formatDomPrice(level.price, priceDecimals)}
+                      </strong>
                       <span className="dom-size">{num(level.amount, 6)}</span>
                       <span className="dom-cumulative">{num(level.cumulative, 6)}</span>
                     </div>
@@ -812,6 +879,8 @@ export default function DeribitTerminal() {
               <span>Статус: {streamState}</span>
               <span>Change ID: {book?.changeId ?? '—'}</span>
               <span>Сообщений RAW L2: {streamMessages}</span>
+              <span>Приватные ордера: {ownOrders?.state ?? 'нет данных'}</span>
+              <span>Открытых собственных ордеров: {ownOrders?.state === 'ready' ? ownOrders.openOrders : '—'}</span>
               <span>Δ exchange → local: {exchangeAgeMs === null ? '—' : exchangeAgeMs + ' ms'}</span>
               <span>Ценовой шаг: {contractSpec?.name === marketInstrument ? contractSpec.tickSize : '—'}</span>
               <span>Дополнительных правил шага: {contractSpec?.tickSizeSteps.length ?? '—'}</span>
