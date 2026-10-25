@@ -27,6 +27,7 @@ SPECS = {
     62: ("TradeOps/b1-01-oms-domain-identity-contracts", "backend"),
     63: ("TradeOps/f1-01-deribit-react-van-parity", "deribit"),
     64: ("TradeOps/f2-01-coincall-react-workstation", "coincall"),
+    70: ("TradeOps/b2-01-durable-command-journal", "b2"),
 }
 # The .NET image is manifest-digest pinned. Other official images use version tags;
 # their observed immutable IDs and registry digests are recorded in evidence.
@@ -79,25 +80,52 @@ def sanitized(raw: str) -> str:
     return LOG_REDACT.sub(lambda match: (match.group(1) or match.group(2) + "=") + "[REDACTED]", raw)
 
 
+def trx_totals(directory: Path) -> dict:
+    """Read only TRX files under this suite; fail closed on missing/corrupt reports."""
+    total = passed = failed = skipped = 0
+    found = 0
+    issues = []
+    for path in sorted(directory.rglob("*.trx")) if directory.exists() else []:
+        try:
+            root = ET.parse(path).getroot()
+            counters = next((e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "Counters"), None)
+            if counters is None:
+                raise ValueError("TRX contains no Counters")
+            n = int(counters.attrib["total"])
+            p = int(counters.attrib["passed"])
+            f = int(counters.attrib["failed"])
+            no = int(counters.attrib.get("notExecuted", "0"))
+            if n <= 0 or min(p, f, no) < 0 or p + f + no > n:
+                raise ValueError("Inconsistent TRX test counters")
+            total += n
+            passed += p
+            failed += f
+            skipped += no
+            found += 1
+        except (OSError, ValueError, KeyError, ET.ParseError) as exc:
+            issues.append(f"{path.name}: {type(exc).__name__}")
+    return {"total": total, "passed": passed, "failed": failed, "skipped": skipped,
+            "suites": found, "source": "TRX", "available": found > 0 and not issues,
+            "parse_errors": issues}
+
+
+def b2_qualified(suites: dict) -> bool:
+    """No xUnit filter may quietly skip PostgreSQL cases or contract cases."""
+    expected = {"postgres": 19, "contracts": 5, "full": 24}
+    for name, minimum in expected.items():
+        counts = suites.get(name)
+        if not counts or not counts.get("available"):
+            return False
+        if (counts.get("total", 0) < minimum or counts.get("passed", 0) < minimum
+                or counts.get("failed", -1) != 0 or counts.get("skipped", -1) != 0
+                or counts["total"] != counts["passed"]):
+            return False
+    return True
+
+
 def parse_counts(folder: Path, gate: str) -> dict:
-    if gate == "backend":
-        total = passed = failed = skipped = 0
-        found = 0
-        for path in (folder / "trx").rglob("*.trx") if (folder / "trx").exists() else []:
-            try:
-                root = ET.parse(path).getroot()
-                counters = next((e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "Counters"), None)
-                if counters is None:
-                    continue
-                total += int(counters.attrib.get("total", "0"))
-                passed += int(counters.attrib.get("passed", "0"))
-                failed += int(counters.attrib.get("failed", "0"))
-                skipped += int(counters.attrib.get("notExecuted", "0"))
-                found += 1
-            except (OSError, ValueError, ET.ParseError):
-                continue
-        return {"total": total, "passed": passed, "failed": failed, "skipped": skipped,
-                "suites": found, "source": "TRX", "available": found > 0}
+    if gate in ("backend", "b2"):
+        return trx_totals(folder / "trx")
     suites = ["npm-test.log", "van-layout.log"] if gate == "deribit" else ["npm-test.log"]
     total = passed = failed = skipped = 0
     found = 0
