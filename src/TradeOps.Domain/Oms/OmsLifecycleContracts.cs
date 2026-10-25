@@ -53,7 +53,9 @@ public sealed record OmsLifecycleObservation(
     decimal? LeavesQuantity,
     OrderRevision Revision,
     OmsObservationKind Kind,
-    OmsEventCursor? Cursor = null);
+    OmsEventCursor? Cursor = null,
+    ExchangeOrderKey? ExchangeId = null,
+    ClientOrderLabel? ClientLabel = null);
 
 public sealed record OmsOrderState
 {
@@ -129,6 +131,20 @@ public static class OmsLifecycleContract
 
         if (update.Scope != current.Identity.Scope || update.LocalOrderId != current.Identity.LocalId)
             throw new InvalidOperationException("Order event scope or local identity does not match.");
+        if (update.ExchangeId.HasValue &&
+            (string.IsNullOrWhiteSpace(update.ExchangeId.Value.Value) ||
+             (current.Identity.ExchangeId.HasValue &&
+              update.ExchangeId != current.Identity.ExchangeId)))
+            return Reconcile(current, "Conflicting exchange order ID within the account scope.");
+        if (update.ClientLabel.HasValue &&
+            (string.IsNullOrWhiteSpace(update.ClientLabel.Value.Value) ||
+             (current.Identity.ClientLabel.HasValue &&
+              update.ClientLabel != current.Identity.ClientLabel)))
+            return Reconcile(current, "Conflicting client label within the account scope.");
+        if (update.Kind == OmsObservationKind.LocalCommand &&
+            (update.ExchangeId.HasValue && !current.Identity.ExchangeId.HasValue ||
+             update.ClientLabel.HasValue && !current.Identity.ClientLabel.HasValue))
+            return Reconcile(current, "Local command cannot bind an unverified remote identity.");
         if (!Enum.IsDefined(update.Phase) || !Enum.IsDefined(update.Kind))
             return Reconcile(current, "Unrecognized phase or observation kind.");
         if (update.CumulativeFilled < 0m || update.CumulativeFilled > current.Terms.RequestedQuantity)
@@ -218,14 +234,21 @@ public static class OmsLifecycleContract
         if (update.LeavesQuantity.HasValue && update.LeavesQuantity.Value != leaves)
             return Reconcile(current, "Reported leaves and cumulative quantity disagree.");
 
+        var identityChanged = (!current.Identity.ExchangeId.HasValue && update.ExchangeId.HasValue) ||
+            (!current.Identity.ClientLabel.HasValue && update.ClientLabel.HasValue);
         if (update.Phase == current.Phase &&
             update.CumulativeFilled == current.CumulativeFilled &&
             leaves == current.LeavesQuantity &&
             update.Revision == current.Revision &&
-            update.Cursor is null)
+            update.Cursor is null && !identityChanged)
             return new OmsTransitionDecision(OmsTransitionOutcome.Duplicate, current, "Repeated state.");
 
-        var next = new OmsOrderState(current.Identity, current.Terms,
+        var identity = identityChanged
+            ? new OmsOrderIdentity(current.Identity.Scope, current.Identity.LocalId,
+                current.Identity.IntentId, update.ClientLabel ?? current.Identity.ClientLabel,
+                update.ExchangeId ?? current.Identity.ExchangeId)
+            : current.Identity;
+        var next = new OmsOrderState(identity, current.Terms,
             update.Phase, update.CumulativeFilled, leaves,
             new OrderVersion(checked(current.Version.Value + 1)), update.Revision,
             update.Cursor ?? current.LastCursor);
@@ -279,9 +302,28 @@ public enum OmsCommandDispatchPhase
     Ambiguous = 6
 }
 
-public sealed record OmsCommandCorrelation(
-    AccountKey Scope, OrderIntentId Intent, OmsCommandId Command,
-    DispatchAttempt Attempt, OmsCommandDispatchPhase DispatchPhase);
+public sealed record OmsCommandCorrelation
+{
+    public AccountKey Scope { get; }
+    public OrderIntentId Intent { get; }
+    public OmsCommandId Command { get; }
+    public DispatchAttempt Attempt { get; }
+    public OmsCommandDispatchPhase DispatchPhase { get; }
+
+    public OmsCommandCorrelation(AccountKey scope, OrderIntentId intent, OmsCommandId command,
+        DispatchAttempt attempt, OmsCommandDispatchPhase dispatchPhase)
+    {
+        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        OmsGuard.NonEmpty(intent.Value, nameof(intent));
+        OmsGuard.NonEmpty(command.Value, nameof(command));
+        if (attempt.Value <= 0) throw new ArgumentOutOfRangeException(nameof(attempt));
+        if (!Enum.IsDefined(dispatchPhase)) throw new ArgumentOutOfRangeException(nameof(dispatchPhase));
+        Intent = intent;
+        Command = command;
+        Attempt = attempt;
+        DispatchPhase = dispatchPhase;
+    }
+}
 
 public static class OmsDispatchSafety
 {
