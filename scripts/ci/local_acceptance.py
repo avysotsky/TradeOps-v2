@@ -345,6 +345,152 @@ class Runner:
         summary["postgres_mock_smoke"] = "NOT_RUN"
         self.smoke(summary, source, temp, out)
 
+    def b2_backend(self, summary: dict, source: Path, temp: Path, out: Path):
+        """PR #70: .NET 10, real PG17 migrations/concurrency and full backend suite."""
+        summary["b2_postgres"] = "NOT_RUN"
+        summary["b2_suites"] = {}
+        summary["b2_expected"] = {"postgres": 19, "contracts": 5}
+        self.require_images(["dotnet", "postgres"], out)
+
+        testproject = "tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj"
+        for needed in (testproject, "tests/TradeOps.UnitTests/OmsJournalPostgresTests.cs",
+                       "tests/TradeOps.UnitTests/OmsJournalContractTests.cs", "TradeOps.sln",
+                       "global.json"):
+            if not (source / needed).is_file():
+                raise RuntimeError(f"Required B2 acceptance source is missing: {needed}")
+        expected = json.loads((source / "global.json").read_text())["sdk"]["version"]
+        summary["sdk_expected"] = expected
+
+        sdk = lambda command, network="none", env=None: self.container_cmd(
+            "dotnet", source, temp, command, network, env)
+        if not self.step(summary, "B2 dotnet version", sdk(["dotnet", "--version"]),
+                         out, "b2-dotnet-version.log", 120):
+            return
+        observed = (out / "b2-dotnet-version.log").read_text().strip()
+        summary["tool_versions"]["dotnet"] = observed
+        if observed != expected or not observed.startswith("10."):
+            raise EnvironmentErrorCI(f"B2 requires global.json .NET 10 ({expected}); got {observed}")
+        if not self.step(summary, "B2 dotnet info", sdk(["dotnet", "--info"]),
+                         out, "b2-dotnet-info.log", 120):
+            return
+        if not self.step(summary, "B2 restore", sdk(["dotnet", "restore", "TradeOps.sln"], "bridge"),
+                         out, "b2-restore.log", 1800):
+            return
+        if not self.step(summary, "B2 Release build",
+                         sdk(["dotnet", "build", "TradeOps.sln", "-c", "Release", "--no-restore"]),
+                         out, "b2-build.log", 1800):
+            return
+
+        ident = "ci01-b2-" + secrets.token_hex(6)
+        network, postgres = ident + "-net", ident + "-pg"
+        password = secrets.token_urlsafe(32)
+        made_network = made_pg = False
+        try:
+            if not self.step(summary, "B2 create private Docker network",
+                             ["docker", "network", "create", "--internal", "--label",
+                              "tradeops.ci01=temporary", network],
+                             out, "b2-network-create.log", 120):
+                raise EnvironmentErrorCI("Cannot create B2 private Docker network")
+            made_network = True
+            pg_args = ["docker", "run", "-d", "--rm", "--name", postgres,
+                       "--network", network, "--label", "tradeops.ci01=temporary",
+                       "--tmpfs", "/var/lib/postgresql/data:rw,size=1073741824",
+                       "-e", "POSTGRES_DB=postgres", "-e", "POSTGRES_USER=postgres",
+                       "-e", f"POSTGRES_PASSWORD={password}", self.images["postgres"]]
+            if not self.step(summary, "B2 start disposable PostgreSQL17", pg_args,
+                             out, "b2-postgres-start.log", 180):
+                raise EnvironmentErrorCI("Disposable B2 PostgreSQL17 failed to start")
+            made_pg = True
+            # Probe only the uniquely created PG container, not any other Postgres service.
+            ready_cmd = ["docker", "exec", postgres, "pg_isready", "-U", "postgres", "-d", "postgres"]
+            ready = False
+            for attempt in range(60):
+                status = self.exec(ready_cmd, out / "b2-pg-ready.log", quiet=True, timeout=15)
+                if status.returncode == 0:
+                    ready = True
+                    break
+                time.sleep(2)
+            summary["steps"].append({
+                "name": "B2 PostgreSQL readiness", "command": shlex.join(ready_cmd),
+                "exit_code": 0 if ready else status.returncode,
+                "status": "PASS" if ready else "FAIL", "attempts": attempt + 1,
+                "log": "b2-pg-ready.log", "completed_utc": utc()})
+            if not ready:
+                raise EnvironmentErrorCI("Disposable B2 PostgreSQL failed pg_isready")
+
+            check_version = ["docker", "exec", postgres, "psql", "-X", "-A", "-t", "-q",
+                             "-U", "postgres", "-d", "postgres",
+                             "-c", "SHOW server_version_num"]
+            if not self.step(summary, "B2 real PostgreSQL server version", check_version,
+                             out, "b2-postgres-version.log", 120):
+                return
+            try:
+                version = int((out / "b2-postgres-version.log").read_text().strip())
+            except ValueError as exc:
+                raise EnvironmentErrorCI("Cannot parse B2 server_version_num") from exc
+            summary["tool_versions"]["postgres_server_version_num"] = version
+            if not 170000 <= version < 180000:
+                raise EnvironmentErrorCI(f"B2 real PostgreSQL17 required; found server_version_num={version}")
+
+            admin_dsn = (f"Host={postgres};Port=5432;Database=postgres;"
+                         f"Username=postgres;Password={password};Pooling=false")
+            env = {"TRADEOPS_B2_POSTGRES": admin_dsn,
+                   "Exchange__Provider": "Mock",
+                   "DeribitTerminal__ExecutionEnabled": "false",
+                   "DeribitTerminal__MainnetExecutionEnabled": "false"}
+            # B2 xUnit fixtures migrate isolated per-test DBs on this one PG17 service.
+            # No other Docker containers are addressable: private --internal network.
+            plan = [
+                ("postgres", "B2 real PostgreSQL19", testproject,
+                 "FullyQualifiedName~OmsJournalPostgresTests", 2400),
+                ("contracts", "B2 5 OMS contracts", testproject,
+                 "FullyQualifiedName~OmsJournalContractTests", 600),
+                ("full", "B2 full existing backend test suite", "TradeOps.sln", None, 2400),
+            ]
+            for suite, label, project, testfilter, limit in plan:
+                args = ["dotnet", "test", project, "-c", "Release",
+                        "--no-build", "--no-restore", "--logger",
+                        f"trx;LogFileName={suite}.trx",
+                        "--results-directory", f"/scratch/trx/{suite}"]
+                if testfilter is not None:
+                    args += ["--filter", testfilter]
+                passed = self.step(summary, label, sdk(args, network, env),
+                                   out, f"b2-{suite}-test.log", limit)
+                # Retain TRX even if the command failed. Fail-closed for zero/skipped.
+                trxdir = temp / "trx" / suite
+                evidence_dir = out / "trx" / suite
+                evidence_dir.mkdir(parents=True, exist_ok=True)
+                for artifact in trxdir.rglob("*.trx") if trxdir.exists() else []:
+                    target = evidence_dir / artifact.relative_to(trxdir)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(artifact, target)
+                counts = trx_totals(evidence_dir)
+                summary["b2_suites"][suite] = counts
+                minimum = 19 if suite == "postgres" else 5 if suite == "contracts" else 24
+                if (not passed or not counts["available"] or counts["passed"] < minimum
+                        or counts["failed"] != 0 or counts["skipped"] != 0
+                        or counts["passed"] != counts["total"]):
+                    summary["b2_postgres"] = "FAIL"
+                    summary["notes"].append(
+                        f"B2 {suite}: required >= {minimum} actually passed, zero failed/skipped, "
+                        f"valid TRX; observed {counts}")
+                    return
+            summary["b2_postgres"] = "PASS" if b2_qualified(summary["b2_suites"]) else "FAIL"
+            if summary["b2_postgres"] != "PASS":
+                summary["notes"].append("B2 suite qualification failed after all test runs")
+        finally:
+            # Scope cleanup strictly to names created by this B2 run. No global cleanup.
+            if made_pg:
+                self.docker(["logs", postgres], out / "b2-postgres-service.log", quiet=True)
+                if self.docker(["rm", "-f", postgres], out / "b2-postgres-remove.log", quiet=True).returncode:
+                    summary["cleanup_complete"] = False
+            if made_network:
+                if self.docker(["network", "rm", network],
+                               out / "b2-network-remove.log", quiet=True).returncode:
+                    summary["cleanup_complete"] = False
+            if not summary["cleanup_complete"]:
+                summary["notes"].append("B2 scoped Docker cleanup incomplete; only inspect ci01-b2-* resources")
+
     def smoke(self, summary: dict, source: Path, temp: Path, out: Path):
         ident = "ci01-" + secrets.token_hex(6)
         net, pg, api = ident + "-net", ident + "-pg", ident + "-api"
