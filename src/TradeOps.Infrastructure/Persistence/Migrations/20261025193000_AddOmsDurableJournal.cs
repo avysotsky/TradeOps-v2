@@ -160,12 +160,107 @@ CREATE TABLE oms_account_leases (
  CONSTRAINT pk_oms_account_leases PRIMARY KEY
    (tenant_id,venue_id,environment,account_id,subaccount_id)
 );
+
+-- Ledger rows are immutable for the application database role.
+CREATE FUNCTION oms_deny_row_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+ RAISE EXCEPTION 'OMS journal evidence is append-only';
+END; $;
+CREATE TRIGGER tr_oms_intents_immutable BEFORE UPDATE OR DELETE ON oms_intents
+ FOR EACH ROW EXECUTE FUNCTION oms_deny_row_mutation();
+CREATE TRIGGER tr_oms_inbox_immutable BEFORE UPDATE OR DELETE ON oms_inbox
+ FOR EACH ROW EXECUTE FUNCTION oms_deny_row_mutation();
+CREATE TRIGGER tr_oms_incidents_immutable BEFORE UPDATE OR DELETE ON oms_integrity_incidents
+ FOR EACH ROW EXECUTE FUNCTION oms_deny_row_mutation();
+
+CREATE FUNCTION oms_guard_command_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+ IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'OMS command cannot be deleted'; END IF;
+ IF ROW(NEW.tenant_id,NEW.venue_id,NEW.environment,NEW.account_id,NEW.subaccount_id,
+        NEW.command_id,NEW.intent_id,NEW.aggregate_id,NEW.expected_version,
+        NEW.aggregate_version,NEW.schema_version,NEW.command_kind,
+        NEW.payload_sha256,NEW.request_json,NEW.created_at)
+    IS DISTINCT FROM
+    ROW(OLD.tenant_id,OLD.venue_id,OLD.environment,OLD.account_id,OLD.subaccount_id,
+        OLD.command_id,OLD.intent_id,OLD.aggregate_id,OLD.expected_version,
+        OLD.aggregate_version,OLD.schema_version,OLD.command_kind,
+        OLD.payload_sha256,OLD.request_json,OLD.created_at)
+ THEN RAISE EXCEPTION 'OMS immutable command payload mutation'; END IF;
+ IF NOT (
+    NEW.dispatch_phase = OLD.dispatch_phase OR
+    (OLD.dispatch_phase='PersistedNotSent' AND NEW.dispatch_phase='DispatchStarted') OR
+    (OLD.dispatch_phase IN ('DispatchStarted','Ambiguous') AND
+     NEW.dispatch_phase IN ('Acknowledged','Rejected','Ambiguous'))
+ ) THEN RAISE EXCEPTION 'OMS invalid dispatch phase regression'; END IF;
+ RETURN NEW;
+END; $;
+CREATE TRIGGER tr_oms_commands_guard BEFORE UPDATE OR DELETE ON oms_commands
+ FOR EACH ROW EXECUTE FUNCTION oms_guard_command_mutation();
+
+CREATE FUNCTION oms_guard_outbox_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'OMS outbox cannot be deleted'; END IF;
+ IF ROW(NEW.tenant_id,NEW.venue_id,NEW.environment,NEW.account_id,NEW.subaccount_id,
+        NEW.command_id,NEW.created_at) IS DISTINCT FROM
+    ROW(OLD.tenant_id,OLD.venue_id,OLD.environment,OLD.account_id,OLD.subaccount_id,
+        OLD.command_id,OLD.created_at)
+ THEN RAISE EXCEPTION 'OMS outbox identity mutation'; END IF;
+ IF NOT (NEW.state = OLD.state OR
+        (OLD.state='NotSent' AND NEW.state='NeedsRecovery') OR
+        (OLD.state='NeedsRecovery' AND NEW.state='Resolved'))
+ THEN RAISE EXCEPTION 'OMS outbox cannot be rearmed'; END IF;
+ RETURN NEW;
+END; $;
+CREATE TRIGGER tr_oms_outbox_guard BEFORE UPDATE OR DELETE ON oms_outbox
+ FOR EACH ROW EXECUTE FUNCTION oms_guard_outbox_mutation();
+
+CREATE FUNCTION oms_guard_attempt_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'OMS attempt cannot be deleted'; END IF;
+ IF ROW(NEW.tenant_id,NEW.venue_id,NEW.environment,NEW.account_id,NEW.subaccount_id,
+        NEW.command_id,NEW.attempt_number,NEW.started_at) IS DISTINCT FROM
+    ROW(OLD.tenant_id,OLD.venue_id,OLD.environment,OLD.account_id,OLD.subaccount_id,
+        OLD.command_id,OLD.attempt_number,OLD.started_at)
+ THEN RAISE EXCEPTION 'OMS attempt identity mutation'; END IF;
+ IF NOT (NEW.dispatch_phase = OLD.dispatch_phase OR
+        (OLD.dispatch_phase='DispatchStarted' AND
+         NEW.dispatch_phase IN ('Acknowledged','Rejected','Ambiguous')) OR
+        (OLD.dispatch_phase='Ambiguous' AND
+         NEW.dispatch_phase IN ('Acknowledged','Rejected')))
+ THEN RAISE EXCEPTION 'OMS attempt phase regression'; END IF;
+ RETURN NEW;
+END; $;
+CREATE TRIGGER tr_oms_attempts_guard BEFORE UPDATE OR DELETE ON oms_attempts
+ FOR EACH ROW EXECUTE FUNCTION oms_guard_attempt_mutation();
+
+CREATE FUNCTION oms_guard_aggregate_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'OMS aggregate cannot be deleted'; END IF;
+ IF ROW(NEW.tenant_id,NEW.venue_id,NEW.environment,NEW.account_id,NEW.subaccount_id,
+        NEW.aggregate_id,NEW.created_at) IS DISTINCT FROM
+    ROW(OLD.tenant_id,OLD.venue_id,OLD.environment,OLD.account_id,OLD.subaccount_id,
+        OLD.aggregate_id,OLD.created_at)
+ THEN RAISE EXCEPTION 'OMS aggregate identity mutation'; END IF;
+ IF NEW.version <> OLD.version+1 THEN
+  RAISE EXCEPTION 'OMS aggregate version must increment exactly once'; END IF;
+ RETURN NEW;
+END; $;
+CREATE TRIGGER tr_oms_aggregates_guard BEFORE UPDATE OR DELETE ON oms_aggregates
+ FOR EACH ROW EXECUTE FUNCTION oms_guard_aggregate_mutation();
+
 """);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("""
+DO $
+BEGIN
+ IF EXISTS (SELECT 1 FROM oms_commands) OR EXISTS (SELECT 1 FROM oms_inbox)
+    OR EXISTS (SELECT 1 FROM oms_integrity_incidents)
+ THEN RAISE EXCEPTION 'Refusing destructive OMS journal rollback: export and verify empty tables first';
+ END IF;
+END; $;
 DROP TABLE oms_account_leases;
 DROP TABLE oms_integrity_incidents;
 DROP TABLE oms_inbox;
@@ -174,6 +269,11 @@ DROP TABLE oms_outbox;
 DROP TABLE oms_commands;
 DROP TABLE oms_intents;
 DROP TABLE oms_aggregates;
+DROP FUNCTION oms_guard_aggregate_mutation();
+DROP FUNCTION oms_guard_attempt_mutation();
+DROP FUNCTION oms_guard_outbox_mutation();
+DROP FUNCTION oms_guard_command_mutation();
+DROP FUNCTION oms_deny_row_mutation();
 """);
     }
 }
