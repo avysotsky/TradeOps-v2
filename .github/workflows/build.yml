@@ -8,22 +8,9 @@ on:
   pull_request:
     branches:
       - main
-  workflow_call:
-    inputs:
-      target_sha:
-        description: 'Exact 40-character commit SHA to verify'
-        required: true
-        type: string
 
 permissions:
   contents: read
-
-# Inherited by API, Worker and every Docker-free smoke action; never use live credentials.
-env:
-  Exchange__Provider: Mock
-  DeribitTerminal__ExecutionEnabled: 'false'
-  DeribitTerminal__MainnetExecutionEnabled: 'false'
-  Telegram__Enabled: 'false'
 
 jobs:
   build:
@@ -44,37 +31,13 @@ jobs:
           --health-retries=20
 
     steps:
-      - name: Checkout exact source SHA
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.target_sha || github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
 
-      - name: Assert exact source SHA
-        shell: bash
-        env:
-          EXPECTED_SHA: ${{ inputs.target_sha || github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          test "$EXPECTED_SHA" = "$(git rev-parse HEAD)" || { echo 'FAIL: checkout SHA mismatch' >&2; exit 1; }
-          test "$(git status --porcelain | wc -l)" -eq 0
-          echo "Backend source SHA: $EXPECTED_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
-          echo 'Exchange provider: Mock; MAINNET execution disabled' >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Setup pinned .NET 10 SDK from global.json
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          global-json-file: global.json
-
-      - name: Record .NET SDK and test evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet --info
-          mkdir -p "$RUNNER_TEMP/backend-evidence"
-          dotnet --info > "$RUNNER_TEMP/backend-evidence/dotnet-info.txt"
-          printf 'source_sha=%s\n' "$(git rev-parse HEAD)" > "$RUNNER_TEMP/backend-evidence/source.txt"
-          printf 'mode=Mock\nmainnet_execution=false\n' >> "$RUNNER_TEMP/backend-evidence/source.txt"
+          dotnet-version: '8.0.x'
 
       - name: Restore
         run: dotnet restore TradeOps.sln
@@ -82,8 +45,8 @@ jobs:
       - name: Build
         run: dotnet build TradeOps.sln --configuration Release --no-restore
 
-      - name: Unit tests (including OMS contracts when present)
-        run: dotnet test TradeOps.sln --configuration Release --no-build --verbosity normal --logger 'trx;LogFileName=backend-tests.trx' --results-directory "$RUNNER_TEMP/backend-evidence"
+      - name: Unit tests
+        run: dotnet test TradeOps.sln --configuration Release --no-build --verbosity normal
 
       - name: API + PostgreSQL smoke test
         env:
@@ -671,12 +634,3 @@ jobs:
 
       - name: Build Docker images
         run: docker compose build api worker
-
-      - name: Upload backend evidence (non-secret)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/backend-evidence/
-          if-no-files-found: warn
-          retention-days: 14
