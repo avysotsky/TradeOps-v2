@@ -216,6 +216,41 @@ public sealed class OmsJournalPostgresTests
     }
 
     [Fact]
+    public async Task ExistingIntentCannotBeReboundToDifferentAggregate()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var journal = new OmsPostgresJournal(ds);
+            Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(Request()));
+            var differentAggregate = Request(
+                aggregateId: Guid.Parse("10000000-0000-4000-8000-000000000009"),
+                commandId: Guid.Parse("30000000-0000-4000-8000-000000000009"));
+            Assert.Equal(OmsJournalWriteResult.Collision,
+                await journal.PersistAsync(differentAggregate));
+            Assert.Equal(1, await Count(cs, "oms_commands"));
+            Assert.Equal(1, await Count(cs, "oms_outbox"));
+            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+        });
+    }
+
+    [Fact]
+    public async Task ImmutableDatabaseTrigger_PreventsPostCommitPayloadTampering()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var request = Request();
+            await new OmsPostgresJournal(ds).PersistAsync(request);
+            await using var db = new NpgsqlConnection(cs);
+            await db.OpenAsync();
+            await using var tamper = new NpgsqlCommand(
+                "UPDATE oms_commands SET request_json='{}'::jsonb", db);
+            await Assert.ThrowsAsync<PostgresException>(() => tamper.ExecuteNonQueryAsync());
+            Assert.Equal(1, await Count(cs, "oms_commands"));
+            Assert.Equal(1, await Count(cs, "oms_outbox"));
+        });
+    }
+
+    [Fact]
     public async Task MetadataLease_HasSingleOwnerAndMonotonicGeneration_NotPhysicalFencing()
     {
         await WithPostgres(async (ds, cs) =>
