@@ -154,7 +154,7 @@ public sealed class DeribitRawBook
     {
         LastFailure = null;
         view = View("invalid");
-        if (depth != 10 ||
+        if (depth is not (1 or 10 or 20) ||
             update.ValueKind != JsonValueKind.Object ||
             !update.TryGetProperty("instrument_name", out var instrument) ||
             instrument.ValueKind != JsonValueKind.String ||
