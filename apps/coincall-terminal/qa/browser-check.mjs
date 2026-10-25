@@ -83,6 +83,17 @@ try {
       const futuresAssets=await page.getByRole('combobox',{name:'Instrument asset'}).locator('option').allTextContents();
       assert.deepEqual(futuresAssets,['BTC','ETH']);
     });
+    await check(width + ' futures contract selector updates book and resets local ticket',async()=>{
+      await page.getByRole('navigation',{name:'Trading products'}).getByRole('button',{name:'Futures'}).click();
+      const contracts=page.getByRole('group',{name:'Futures contracts'});
+      assert.ok(await contracts.getByRole('button').count()>=3);
+      await contracts.getByRole('button',{name:'BTC-30OCT26'}).click();
+      assert.match(await page.locator('.cc-pair').innerText(),/BTC-30OCT26/);
+      assert.equal(Number(await page.getByRole('spinbutton',{name:'Order price'}).inputValue()),68224.6);
+      await contracts.getByRole('button',{name:'BTC-06NOV26'}).click();
+      assert.equal(Number(await page.getByRole('spinbutton',{name:'Order price'}).inputValue()),68292.6);
+      assert.equal(await page.locator('.cc-ticket .cc-actions button:disabled').count(),2);
+    });
     await check(width + ' responsive spread matrix confines horizontal scrolling',async()=>{
       await page.getByRole('navigation',{name:'Trading products'}).getByRole('button',{name:'Spreads'}).click();
       const geometry=await page.evaluate(()=>{
