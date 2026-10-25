@@ -73,6 +73,26 @@ public static class MarketStreamEndpoints
                 catch (WebSocketException) { }
             }
         });
+        // Operator-only public clock probe. No exchange key or private API
+        // is transmitted; errors remain sanitized and never affect RAW L2.
+        app.MapGet("/api/deribit-terminal/market/clock", async (
+            HttpContext ctx, DeribitClockProbe probe, IConfiguration cfg) =>
+        {
+            if (!Authorized(ctx, cfg))
+                return Results.Unauthorized();
+
+            var reading = await probe.ReadAsync(ctx.RequestAborted);
+            if (reading is null)
+                return Results.Json(new { status = "unavailable" },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            return Results.Ok(new {
+                status = "ok",
+                clockOffsetMs = reading.ClockOffsetMs,
+                rttMs = reading.RttMs,
+                sampleUnixMs = reading.SampleUnixMs
+            });
+        });
         return app;
     }
 
