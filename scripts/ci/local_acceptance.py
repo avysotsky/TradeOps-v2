@@ -176,7 +176,7 @@ class Runner:
     def git_error(cp: subprocess.CompletedProcess) -> str:
         # Surfaced in summary.json, never include URLs containing embedded credentials.
         detail = sanitized((cp.stderr or cp.stdout or "").strip())
-        detail = re.sub(r"https?://[^/\\s@]+@", "https://[REDACTED]@", detail)
+        detail = re.sub(r"https?://[^/\s@]+@", "https://[REDACTED]@", detail)
         return (" ".join(detail.split())[:480] or "no error detail")
 
     def remote_sha(self, number: int) -> str:
