@@ -10,8 +10,8 @@ test('VAN three-column desktop and single-column mobile layout', () => {
  assert.match(ui, /<div className="van-workstation">/);
  assert.match(ui, /<VanNavigation instrument=\{marketInstrument\} environment=\{status.environment\}/);
  assert.match(ui, /<VanTradeChart instrument=\{marketInstrument\}/);
- assert.match(css, /grid-template-areas:"market book ticket" "tape book ticket"/);
- assert.match(css, /grid-template-areas:"market" "book" "ticket" "tape"/);
+ assert.match(css, /grid-template-areas:"market book ticket"/);
+ assert.match(css, /grid-template-areas:"market" "book" "ticket"/);
  assert.match(main, /import '\.\/van-parity\.css';/);
 });
 test('VAN positions/orders dock has controlled tabs and disabled absent APIs', () => {
@@ -88,6 +88,6 @@ test('VAN 1280px reference shell constrains desktop, preserving complete RAW col
  assert.match(css, /@media \(min-width: 1161px\)/);
  assert.match(css, /width: min\(100%, 1280px\)/);
  assert.match(css, /grid-template-columns: minmax\(420px,1fr\) 355px 300px;/);
- assert.match(css, /grid-template-areas: "market book ticket" "tape book ticket"/);
+ assert.match(css, /grid-template-areas: "market book ticket"/);
  assert.match(css, /\.van-workstation \.dom-ladder \{ max-width: 100%; \}/);
 });
