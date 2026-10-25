@@ -54,6 +54,10 @@ try {
       const trade = page.getByRole('navigation',{name:'Trading products'});
       await trade.getByRole('button',{name:'Spot'}).click();
       assert.equal(await page.locator('.cc-ticket .cc-actions button:disabled').count(),2);
+      const bookRow = page.locator('.cc-bookrow.cc-buy').first();
+      const selected = Number((await bookRow.locator('span').first().innerText()).replaceAll(',',''));
+      await bookRow.click();
+      assert.equal(Number(await page.getByRole('spinbutton',{name:'Order price'}).inputValue()),selected);
       await trade.getByRole('button',{name:'Futures'}).click();
       assert.equal(await page.locator('.cc-ticket .cc-actions button:disabled').count(),2);
     });
