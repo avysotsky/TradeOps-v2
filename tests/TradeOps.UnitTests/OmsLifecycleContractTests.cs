@@ -94,7 +94,7 @@ public sealed class OmsLifecycleContractTests
         state = Step(state, OmsOrderPhase.PartiallyFilled, 3m);
         state = Step(state, OmsOrderPhase.CancelPending, 3m, 7m,
             OmsObservationKind.LocalCommand);
-        Assert.True(OmsLifecycleContract.IsRiskUnresolved(state.Phase));
+        Assert.True(OmsLifecycleContract.HasPendingOrUncertainOutcome(state.Phase));
 
         state = Step(state, OmsOrderPhase.PartiallyFilled, 5m, 5m,
             OmsObservationKind.ExecutionFill);
@@ -185,6 +185,21 @@ public sealed class OmsLifecycleContractTests
         var stale = OmsLifecycleContract.Apply(state,
             Event(state, OmsOrderPhase.Accepted, revision: 0));
         Assert.Equal(OmsTransitionOutcome.Stale, stale.Outcome);
+    }
+
+    [Fact]
+    public void OldRevisionWithAdditionalFill_NeedsReplayInsteadOfSilentStaleDrop()
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.Accepted);
+        state = Step(state, OmsOrderPhase.ReplacePending,
+            kind: OmsObservationKind.LocalCommand);
+        state = Step(state, OmsOrderPhase.Accepted, revision: 1);
+
+        var delayedOldRevisionFill = Event(state, OmsOrderPhase.PartiallyFilled,
+            cumulative: 3m, revision: 0, kind: OmsObservationKind.ExecutionFill);
+        var result = OmsLifecycleContract.Apply(state, delayedOldRevisionFill);
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, result.Outcome);
+        Assert.Same(state, result.State);
     }
 
     [Fact]
