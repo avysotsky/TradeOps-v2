@@ -730,7 +730,7 @@ export default function DeribitTerminal() {
                 </div>
               </div>
               <div className="dom-depth-toolbar">
-                <label htmlFor="dom-depth">Глубина / сторона</label>
+                <label htmlFor="dom-depth">Depth</label>
                 <select id="dom-depth" aria-label="Видимых уровней на сторону"
                   value={domDepth}
                   onChange={e => setDomDepth(Number(e.target.value) as DomDepth)}>
@@ -738,7 +738,12 @@ export default function DeribitTerminal() {
                   <option value={25}>25</option>
                   <option value={50}>50</option>
                 </select>
-                <span title="Все уровни берутся из единого RAW потока">RAW L2</span>
+                <span className="dom-depth-source"
+                  title="Все уровни берутся из единого RAW потока">RAW L2</span>
+                <span className="dom-stream-lag" title="Разность времени Deribit и локальных часов Windows; зависит от синхронизации часов">
+                  Δ exchange → local: {streamState === 'synced' && exchangeAgeMs !== null
+                    ? exchangeAgeMs + ' ms' : '—'}
+                </span>
               </div>
               <div className="dom-own-status" aria-live="polite">
                 <span>Мои лимитные заявки:</span>
