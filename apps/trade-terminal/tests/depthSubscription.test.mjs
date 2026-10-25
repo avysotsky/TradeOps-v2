@@ -28,7 +28,7 @@ test('backend does not accept silent fallback depths', () => {
 });
 
 test('depth scopes single upstream feed and validates every book against its subscribed mode', () => {
-  assert.match(hub, /var key = instrument \+ "\\|" \+ depth/);
+  assert.ok(hub.includes('var key = instrument + "|" + depth;'));
   assert.match(hub, /new InstrumentFeed\(instrument, depth, key, configuration, Release\)/);
   assert.match(hub, /channels = new\[\] \{[\s\S]*?_bookChannel/);
   assert.match(hub, /if \(name == _bookChannel\)/);
