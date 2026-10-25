@@ -43,8 +43,7 @@ public static class MarketStreamEndpoints
                 return;
             }
             var depthValue = ctx.Request.Query["depth"].ToString();
-            if (!int.TryParse(depthValue, out var depth) ||
-                !DeribitBookSubscription.ValidDepth(depth))
+            if (!DeribitBookSubscription.TryParseMode(depthValue, out var depth))
             {
                 ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
