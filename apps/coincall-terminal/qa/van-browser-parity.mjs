@@ -131,14 +131,17 @@ try{
       assert.equal(await vanPage.locator('#ccSpreadsTradeModal').isVisible(),true);
     });
     await snapshot(vanPage,'van-spread-legs-'+v+'.png','VAN modal original HTML/CSS shell',width,{state:'synthetic two-leg modal content, scripts disabled'});
+    const vanModalGeometry=await vanPage.locator('#ccSpreadsTradeModal .okx-nitro-modal').evaluate(rect);
     await vanPage.locator('#ccSpreadsTradeModal').evaluate(el=>{el.hidden=true;el.style.display='none'});
 
     await reactPage.locator('.cc-spread-modal').scrollIntoViewIfNeeded();
     await snapshot(reactPage,'react-spreads-legs-'+v+'.png','React compiled Vite',width,{state:'selected spread legs'});
+    const reactModalGeometry=await reactPage.locator('.cc-spread-modal').evaluate(rect);
+    const reactLegBooks=await reactPage.locator('.cc-modal-book').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)}}));
     await reactPage.getByRole('button',{name:'Close spread dialog'}).click();
     await reactPage.locator('.cc-grid-scroll').scrollIntoViewIfNeeded();
     await snapshot(reactPage,'react-spreads-grid-'+v+'.png','React compiled Vite',width,{state:'unselected spread matrix'});
-    const geo={viewport:v,van:{},react:{}};
+    const geo={viewport:v,van:{spreadModal:vanModalGeometry},react:{spreadModal:reactModalGeometry,independentLegBooks:reactLegBooks}};
     geo.van.matrix=await vanPage.locator('#coincallSpreadsGridHost').evaluate(rect);
     geo.react.matrix=await reactPage.locator('.cc-grid-scroll').evaluate(rect);
     for(const mode of ['spot','futures','portfolio','accounts']){
