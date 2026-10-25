@@ -114,8 +114,9 @@ public static class OmsLifecycleContract
         OmsOrderPhase.Filled or OmsOrderPhase.Cancelled or
         OmsOrderPhase.Rejected or OmsOrderPhase.Expired;
 
-    public static bool IsRiskUnresolved(OmsOrderPhase status) =>
-        status is OmsOrderPhase.Unknown or OmsOrderPhase.CancelPending or OmsOrderPhase.ReplacePending;
+    public static bool HasPendingOrUncertainOutcome(OmsOrderPhase status) =>
+        status is OmsOrderPhase.DispatchPending or OmsOrderPhase.Submitted
+            or OmsOrderPhase.Unknown or OmsOrderPhase.CancelPending or OmsOrderPhase.ReplacePending;
 
     /// <summary>Absence in a list of OPEN orders never proves cancellation or rejection.</summary>
     public static OmsTransitionDecision MissingFromOpenOrderSnapshot(OmsOrderState current)
@@ -152,7 +153,9 @@ public static class OmsLifecycleContract
         if (update.LeavesQuantity is < 0m || update.LeavesQuantity > current.Terms.RequestedQuantity)
             return Reconcile(current, "Invalid leaves quantity.");
         if (update.Revision.Value < current.Revision.Value)
-            return new OmsTransitionDecision(OmsTransitionOutcome.Stale, current, "Old order revision.");
+            return update.CumulativeFilled > current.CumulativeFilled
+                ? Reconcile(current, "Late fill on old revision requires execution replay.")
+                : new OmsTransitionDecision(OmsTransitionOutcome.Stale, current, "Old order revision.");
         if (update.Revision.Value > current.Revision.Value + 1)
             return Reconcile(current, "Skipped order revision.");
         if (update.Revision.Value > current.Revision.Value &&
@@ -168,6 +171,9 @@ public static class OmsLifecycleContract
                 return new OmsTransitionDecision(OmsTransitionOutcome.Stale, current, "Out-of-order event.");
             if (update.Cursor.Sequence == current.LastCursor.Sequence)
             {
+                if ((!current.Identity.ExchangeId.HasValue && update.ExchangeId.HasValue) ||
+                    (!current.Identity.ClientLabel.HasValue && update.ClientLabel.HasValue))
+                    return Reconcile(current, "Identity binding changed on repeated sequence.");
                 return update.Phase == current.Phase &&
                        update.CumulativeFilled == current.CumulativeFilled &&
                        (update.LeavesQuantity is null || update.LeavesQuantity == current.LeavesQuantity) &&
