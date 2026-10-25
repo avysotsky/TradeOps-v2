@@ -1,0 +1,3 @@
+# Keep WSL/Bash entrypoints Linux-native even when Windows Git core.autocrlf=true.
+*.sh text eol=lf
+*.py text eol=lf
