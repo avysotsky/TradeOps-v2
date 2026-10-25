@@ -34,7 +34,7 @@ The pinned local script `qa/accept-local.sh <PR_SHA>` must produce `$HOME/TradeO
 
 - `identity.log`, `worktree.log`, `build-tests.log`, `browser.log`, `browser-check.json`, `status.txt`, `van-fetch.log`, `van-parity.log`, `van-parity-status.txt`.
 - `ui/coincall-react-1440x900.png`, `ui/coincall-react-768x900.png` from compiled React basic smoke.
-- `van-ui/van-spreads-1440x900.png`, `van-ui/van-spreads-768x900.png`; and similarly `van-spot`, `van-futures`, `van-portfolio`, `van-accounts`.
+- `van-ui/van-spreads-1440x900.png`, `van-ui/van-spreads-768x900.png`, plus `van-spread-legs-<viewport>.png` (original VAN modal HTML/CSS shell with **injected disabled synthetic legs**, not a live VAN ticket); and similarly `van-spot`, `van-futures`, `van-portfolio`, `van-accounts`.
 - `van-ui/react-spreads-grid-...`, `react-spreads-legs-...`, `react-spot-...`, `react-futures-...`, `react-portfolio-...`, `react-accounts-...`, `react-orders-account-beta-...`.
 - `van-ui/parity-manifest.json`, `van-ui/geometry-1440x900.json`, `van-ui/geometry-768x900.json` with exact SHA provenance, viewport and PASS/FAIL for DOM smoke.
 
@@ -49,3 +49,10 @@ A browser PASS means screenshots were **captured and UI smoke assertions passed*
 5. Full VAN portfolio analytics, options Greeks/historical PnL and authenticated runtime are absent. Never substitute fictional data for them without explicit approval.
 
 **Current verdict:** implemented significant structure corrections; **visual acceptance NOT RUN** until real screenshot artifacts from exact HEAD and pinned VAN source are captured and reviewed. GitHub Actions forbidden. MAINNET READ-ONLY; no merge.
+
+## Gate counts
+
+- Node24 TAP suite: **9 test declarations** (model, calendar sorting, SOL spot, account isolation, source safety); NOT RUN for this HEAD.
+- React Chromium smoke: **18 checks**, 9 per viewport; NOT RUN.
+- VAN HTML/CSS versus React capture: source-pinned separate Chromium contexts, mode-specific captures, geometry and JSON manifest; NOT RUN.
+- Visual approval requires a human/orchestrator to review actual PNGs; no pixel-equivalence claim is made from static source inspection.
