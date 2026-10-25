@@ -251,6 +251,61 @@ public sealed class OmsJournalPostgresTests
     }
 
     [Fact]
+    public async Task OutboxGuard_RefusesRearmAfterCommittedDispatchBoundary()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var request = Request();
+            var journal = new OmsPostgresJournal(ds);
+            await journal.PersistAsync(request);
+            await journal.MarkDispatchStartedAsync(request.Scope, request.CommandId);
+            await using var db = new NpgsqlConnection(cs);
+            await db.OpenAsync();
+            await using var rearm = new NpgsqlCommand(
+                "UPDATE oms_outbox SET state='NotSent'", db);
+            await Assert.ThrowsAsync<PostgresException>(() => rearm.ExecuteNonQueryAsync());
+            Assert.Equal("NeedsRecovery", await ScalarString(cs,
+                "SELECT state FROM oms_outbox"));
+        });
+    }
+
+    [Fact]
+    public async Task EmptyJournalMigration_CanBeRolledBackWithoutTouchingLegacyTables()
+    {
+        await WithPostgres(async (_, cs) =>
+        {
+            var options = new DbContextOptionsBuilder<TradeOpsDbContext>()
+                .UseNpgsql(cs).Options;
+            await using var db = new TradeOpsDbContext(options);
+            await db.Database.MigrateAsync("20261004190000_AddTradingViewDeliveryHealthState");
+            await using var connection = new NpgsqlConnection(cs);
+            await connection.OpenAsync();
+            await using var check = new NpgsqlCommand(
+                "SELECT to_regclass('public.oms_commands')", connection);
+            Assert.Null(await check.ExecuteScalarAsync());
+            await using var legacy = new NpgsqlCommand(
+                "SELECT to_regclass('public.\\\"Orders\\\"')", connection);
+            Assert.NotNull(await legacy.ExecuteScalarAsync());
+        });
+    }
+
+    [Fact]
+    public async Task NonemptyJournalMigration_RefusesDestructiveRollback()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            await new OmsPostgresJournal(ds).PersistAsync(Request());
+            var options = new DbContextOptionsBuilder<TradeOpsDbContext>()
+                .UseNpgsql(cs).Options;
+            await using var db = new TradeOpsDbContext(options);
+            await Assert.ThrowsAnyAsync<Exception>(() =>
+                db.Database.MigrateAsync("20261004190000_AddTradingViewDeliveryHealthState"));
+            Assert.Equal(1, await Count(cs, "oms_commands"));
+            Assert.Equal(1, await Count(cs, "oms_outbox"));
+        });
+    }
+
+    [Fact]
     public async Task MetadataLease_HasSingleOwnerAndMonotonicGeneration_NotPhysicalFencing()
     {
         await WithPostgres(async (ds, cs) =>
