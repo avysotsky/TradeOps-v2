@@ -51,7 +51,7 @@ Where PowerShell execution policy forbids `.ps1` (as on the owner's machine), in
 wsl.exe --exec python3 /mnt/d/Projects/TradeOps-v2/scripts/ci/local_acceptance.py all /mnt/d/Projects/TradeOps-v2
 ```
 
-For another checkout path, pass `-Repository 'D:\your\path\TradeOps-v2'` to the launcher. In Ubuntu, use `python3 scripts/ci/local_acceptance.py all /mnt/d/Projects/TradeOps-v2`. Individual checks accept `62`, `63` or `64` instead of `all`. **Do not switch any active TradeOps/ResidentChat branch to run this tool**; use a separate checkout containing the CI-01 scripts. The Python driver requires host WSL `git`, `python3`, Docker daemon access and working GitHub Git credentials. It **never requires .NET or Node installed in host Ubuntu**.
+For another checkout path, pass `-Repository 'D:\your\path\TradeOps-v2'` to the launcher. In Ubuntu, use `python3 scripts/ci/local_acceptance.py all /mnt/d/Projects/TradeOps-v2`. Individual checks accept `62`, `63`, `64`, or `70` instead of `all`; `frontends` runs 63/64. The legacy `all` mode remains 62/63/64. **Do not switch any active TradeOps/ResidentChat branch to run this tool**; use a separate checkout containing the CI-01 scripts. The Python driver requires host WSL `git`, `python3`, Docker daemon access and working GitHub Git credentials. It **never requires .NET or Node installed in host Ubuntu**.
 
 The repository also includes `scripts/ci/.gitattributes` forcing LF for `.sh` and `.py` files, including with Windows Git `core.autocrlf=true`. For the immediate operator recovery, direct Python is the more robust path.
 
@@ -76,6 +76,25 @@ For each run, the driver calls `git ls-remote origin` against **both** the actua
 Source SHA snapshots from the initial issue (never automatically assumed as current): B1 #62 `814f7ea5c470f01e87719a75b778a1b5226a7d69`; F1 #63 `246bd259a87958338ab56f9dc705224b0ed2b074`; F2 #64 `4322c8aaed09d76c3b3a95d3784d2676613139de`.
 
 **F1 #63 is stacked onto #55.** A passing F1 test validates its entire checked-out source tree; it does not approve or merge any unmerged ancestor.
+
+## Issue #71 — B2 durable OMS real PostgreSQL 17 acceptance (PR #70)
+
+Target **`70`** is part of the existing `scripts/ci/local_acceptance.py` runner. It validates live GitHub `refs/pull/70/head` against `refs/heads/TradeOps/b2-01-durable-command-journal`, fetches the exact SHA and tests in a temporary detached Linux worktree, then rechecks the remote SHA. The supplied B2 handoff SHA `2a96c52b1ec0e5ef425bd87a575f457b794864ab` is a snapshot, **not an enforced stale target**. B2 is stacked on B1 #62. Legacy `all` remains 62/63/64 and `frontends` remains 63/64.
+
+**Owner launcher:** use the same temporary-worktree PowerShell block as above but run `& wsl.exe --exec python3 $wslScript 70 $wslRepo` instead of `all`. The ChatGPT handoff contains the full copy/paste block; it does not execute `.ps1` or `.sh` from Windows.
+
+### B2-specific fail-closed gate
+
+- Docker .NET SDK **10.0.401**, restore (`dotnet restore TradeOps.sln`) with dependency network, followed by Release build (`dotnet build TradeOps.sln -c Release --no-restore`) without a network. SDK version must equal source `global.json`.
+- Creates only a uniquely named `ci01-b2-*` **internal** Docker network and temporary `postgres:17.6-bookworm` server on **tmpfs**, with no host ports, shared databases or persistent volumes; checks `pg_isready` and actual PostgreSQL `server_version_num` (170000..179999).
+- Injects `TRADEOPS_B2_POSTGRES` only into the disposable .NET test containers, using a randomly generated PostgreSQL admin password. The PostgreSQL test fixture creates and destroys its own uniquely named test databases; no ResidentChat/JobRadar or persistent TradeOps DB changes.
+- Runs `dotnet test tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj --filter FullyQualifiedName~OmsJournalPostgresTests` (requires **>=19 real passes**), the `OmsJournalContractTests` filter (requires **>=5 real passes**), then full `dotnet test TradeOps.sln` (requires **>=24 passes**). The same PG17 environment is available throughout, so missing env does not silently bypass integration cases.
+- Dedicated TRX per suite, with fail-closed parsing. Each must have valid parsed counters, `total == passed`, `failed=0`, `skipped=0`, and pass minimums. Migration Up, guarded Down, empty Down, CAS, races, collision and crash-boundary behaviour are covered by the existing B2 tests. This does **not** claim an actual SIGKILL harness.
+- Forces `Exchange__Provider=Mock`, `DeribitTerminal__ExecutionEnabled=false` and `DeribitTerminal__MainnetExecutionEnabled=false`; test containers connect solely to the internal Docker network, not an exchange. Cleanup removes **only** the B2-created PG container and network; failures prevent PASS.
+
+Evidence: `~/tradeops-acceptance-results/pr-70/<exact-sha>/<run-id>/summary.json`, `b2-restore.log`, `b2-build.log`, `b2-postgres-version.log`, `b2-postgres-test.log`, `b2-contracts-test.log`, `b2-full-test.log`, `trx/postgres/*.trx`, `trx/contracts/*.trx`, `trx/full/*.trx`, private postgres service/cleanup logs and a dated aggregate JSON. `b2_suites.postgres`, `.contracts` and `.full` contain individual counts and statuses. Overall `test_counts.total` aggregates the 3 invocations (targeted cases appear again in the full test suite).
+
+**B2 runtime status: NOT RUN until owner's Windows/WSL2 command is executed and its evidence returned.** Existing B1/F1/F2 results are retained and not rerun by target 70.
 
 ## Docker matrix
 
