@@ -6,5 +6,5 @@ export interface BookLevel {price:number;amount:number;total:number}
 export interface Book {instrument:string;bids:readonly BookLevel[];asks:readonly BookLevel[];epoch:'fixture';asOf:string}
 export interface MockOrder {accountId:string;orderId:string;instrument:string;side:Side;type:'Limit'|'Market';price:number;amount:number;filled:number;status:'NEW'|'PARTIALLY_FILLED'|'FILLED'|'CANCELED';createdAt:string}
 export interface Position {accountId:string;symbol:string;side:'Long'|'Short';size:number;entry:number;mark:number;pnl:number;initialMargin:number;delta:number}
-export interface SpreadQuote {id:string;asset:Asset;longSymbol:string;shortSymbol:string;tenor:string;bidUsd:number;askUsd:number;bidPercent:number;askPercent:number;fundingPercent:number;markSpreadUsd:number}
+export interface SpreadQuote {id:string;asset:Asset;longSymbol:string;shortSymbol:string;tenor:string;expiryGroup:'Daily'|'Weekly'|'Monthly'|'Quarterly'|'Perpetual';bidUsd:number;askUsd:number;bidPercent:number;askPercent:number;fundingPercent:number;markSpreadUsd:number}
 export interface ChartPoint {label:string;value:number}
