@@ -214,6 +214,43 @@ public sealed class OmsLifecycleContractTests
     }
 
     [Fact]
+    public void FirstAuthoritativeRemoteId_BindsOnce_AndConflictingRebindIsQuarantined()
+    {
+        var state = NewOrder();
+        var first = Event(state, OmsOrderPhase.Accepted) with
+        {
+            ExchangeId = new ExchangeOrderKey("ex-101"),
+            ClientLabel = new ClientOrderLabel("intent-1")
+        };
+        var bound = OmsLifecycleContract.Apply(state, first);
+        Assert.Equal(OmsTransitionOutcome.Applied, bound.Outcome);
+        state = bound.State;
+        Assert.Equal("ex-101", state.Identity.ExchangeId!.Value.Value);
+
+        var conflict = Event(state, OmsOrderPhase.PartiallyFilled, 3m) with
+        {
+            ExchangeId = new ExchangeOrderKey("ex-102")
+        };
+        var result = OmsLifecycleContract.Apply(state, conflict);
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, result.Outcome);
+        Assert.Same(state, result.State);
+        Assert.Equal("ex-101", result.State.Identity.ExchangeId!.Value.Value);
+    }
+
+    [Fact]
+    public void LocalCommandCannotBindExchangeOrderId()
+    {
+        var state = NewOrder();
+        var command = Event(state, OmsOrderPhase.DispatchPending,
+            kind: OmsObservationKind.LocalCommand) with
+        {
+            ExchangeId = new ExchangeOrderKey("invented-id")
+        };
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation,
+            OmsLifecycleContract.Apply(state, command).Outcome);
+    }
+
+    [Fact]
     public void CursorEpochChange_NeedsExplicitRecoveryGate()
     {
         var state = Step(NewOrder(), OmsOrderPhase.Accepted, sequence: 100);
