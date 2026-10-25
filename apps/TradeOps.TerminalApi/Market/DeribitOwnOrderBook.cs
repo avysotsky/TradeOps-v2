@@ -95,7 +95,7 @@ public sealed class DeribitOwnOrderBook(string instrument)
         id = "";
         revision = default!;
         if (item.ValueKind != JsonValueKind.Object ||
-            !String(item, "instrument_name").Equals(instrument, StringComparison.Ordinal))
+            String(item, "instrument_name") != instrument)
             return false;
         var orderId = String(item, "order_id");
         var state = String(item, "order_state");
