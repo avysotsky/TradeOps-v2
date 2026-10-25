@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $Repo -PathType Container)) {
     throw 'TRADEOPS_REPOSITORY_NOT_FOUND'
 }
 
-$branch = 'TradeOps/to-v2-48-dom-lag-compact-portfolio-tables'
+$branch = 'TradeOps/to-v2-49-raw-l2-failure-isolation'
 $vaultDir = Join-Path $env:LOCALAPPDATA 'TradeOps\Credentials'
 $vault = Join-Path $vaultDir 'Deribit.Mainnet.ReadOnly.dpapi.json'
 $dotnetFound = Get-Command dotnet.exe -ErrorAction SilentlyContinue
@@ -77,6 +77,11 @@ try {
     $project = Join-Path $stage 'apps\TradeOps.TerminalApi\TradeOps.TerminalApi.csproj'
     & $dotnet build $project -c Release
     if ($LASTEXITCODE -ne 0) { throw 'TRADEOPS_REACT_TERMINAL_DOTNET_BUILD_FAILED' }
+
+    # Deterministic RAW-book regressions before decrypting the private vault.
+    $testProject = Join-Path $stage 'tests\TradeOps.UnitTests\TradeOps.UnitTests.csproj'
+    & $dotnet test $testProject -c Release --filter 'FullyQualifiedName~DeribitRawBookTests'
+    if ($LASTEXITCODE -ne 0) { throw 'TRADEOPS_RAW_L2_REGRESSIONS_FAILED' }
 
     # Compile React before opening ANY broker credentials.
     $frontendRoot = Join-Path $stage 'apps\trade-terminal'
