@@ -281,7 +281,7 @@ export default function DeribitTerminal() {
   );
   // Center best bid/ask around Last/Mark/Index on depth switches or first
   // valid snapshot. Do not re-center on each live RAW book update: that would
-  // fight operator scrolling in 25/50-level mode.
+  // fight operator scrolling when the selected depth or RAW mode is tall.
   const ladderReady = streamState === 'synced' &&
     dom.asks.length > 0 && dom.bids.length > 0;
   useEffect(() => {
