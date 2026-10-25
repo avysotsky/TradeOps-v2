@@ -1,5 +1,7 @@
 # Institutional platform workstream registry — 2026-10-25
 
+**MANDATORY OPERATING POLICY (owner confirmed 2026-10-25): GitHub Actions is FORBIDDEN for TradeOps.** GitHub serves only as Git source, Issues, reviews and Draft PR transport. All acceptance must run locally on the owner's WSL2 Ubuntu / Docker environment at a verified immutable HEAD SHA. The absence of hosted GitHub Checks/Actions must NEVER be treated as a reason to activate Actions or as a permanent acceptance blocker. Actual local tests may still be NOT_RUN until executed and evidenced.
+
 **Owner / orchestrator chat:** orchestrator only; no feature/production code here. The GitHub issues are the authoritative executable worker assignments. **No worker is running solely because an issue or branch exists.** Each worker must be started by the user in a separate new ChatGPT chat.
 
 Master roadmap: [TO-v2-56 Draft PR #56](https://github.com/avysotsky/TradeOps-v2/pull/56) and `INSTITUTIONAL_PLATFORM_MASTER_ROADMAP_2026-10-25.md`.
@@ -17,15 +19,15 @@ Existing stacked PRs: #54 clock diagnostics (base TO-v2-50), #55 browser private
 | F1-01 | [#59](https://github.com/avysotsky/TradeOps-v2/issues/59), [PR #63](https://github.com/avysotsky/TradeOps-v2/pull/63) | `TradeOps/f1-01-deribit-react-van-parity` @ `246bd259` | #55 HEAD @ `e4a067c` | `apps/trade-terminal/src/**` UI composition/CSS and UI-only tests/docs | REVIEWED; React build and screenshots REQUIRED; Draft, no merge |
 | F2-01 | [#60](https://github.com/avysotsky/TradeOps-v2/issues/60), [PR #64](https://github.com/avysotsky/TradeOps-v2/pull/64) | `TradeOps/f2-01-coincall-react-workstation` @ `4322c8aa` | main @ `c7a0d2` | NEW `apps/coincall-terminal/**` and CoinCall design docs | REVIEWED; 4/4 local Node tests self-reported, Vite build and screenshot evidence REQUIRED; Draft, no merge |
 
-| CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `c7a0d2` (reserved) | main @ `c7a0d2` | `.github/workflows/**`, NEW `scripts/ci/**` and `docs/ci/**` only | ASSIGNED; NOT STARTED; .NET 10 / React exact-SHA gate |
+| CI-01 | [#65](https://github.com/avysotsky/TradeOps-v2/issues/65), [PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66) | `TradeOps/ci-01-exact-sha-dotnet10-react-gates` @ `140f7af1` (pre-correction) | main @ `c7a0d2` | `scripts/ci/**` and `docs/ci/**` only; revert all `.github/workflows/**` changes | CHANGES REQUESTED: replace GitHub Actions design with local WSL2/Docker runner |
 
 ## 2026-10-25 orchestration check
 
-All four assigned workers submitted separate Draft PRs, each with correct base and no out-of-scope paths. `main` remains `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`. The GitHub status/check and PR-triggered workflow APIs returned **no exact-HEAD CI** for #61–#64. Orchestrator posted reviews on all four Draft PRs: G0 report accepted as a *documentation audit only*, keeping its institutional execution NO-GO; B1 contract code awaits actual .NET 10 compilation and tests; F1 awaits Node build/tests and exact browser comparison; F2 awaits Vite TypeScript build and actual browser comparison (self-reported pure test 4/4 is not CI). **0 merges authorized.** Next prerequisite: repair .NET 8 vs net10 CI toolchain and run pinned exact-HEAD acceptance.
+All four assigned workers submitted separate Draft PRs, each with correct base and no out-of-scope paths. `main` remains `c7a0d29028d7cf4958a26aa4879b99b3e39f7b14`. The GitHub status/check and PR-triggered workflow APIs returned **no exact-HEAD CI** for #61–#64. Orchestrator posted reviews on all four Draft PRs: G0 report accepted as a *documentation audit only*, keeping its institutional execution NO-GO; B1 contract code awaits actual .NET 10 compilation and tests; F1 awaits Node build/tests and exact browser comparison; F2 awaits Vite TypeScript build and actual browser comparison (self-reported pure test 4/4 is not CI). **0 merges authorized.** Next prerequisite: implement local Docker .NET10/Node24 exact-SHA acceptance and capture execution evidence without GitHub Actions.
 
 
-### New CI-01 lane, 2026-10-25
-CI-01 [Issue #65](https://github.com/avysotsky/TradeOps-v2/issues/65) reserves the dedicated branch from main for repairing .NET 8 SDK vs net10 targets and producing independent exact-HEAD React/.NET acceptance gates. Workflow code is NOT implemented yet; a separate worker chat must be started explicitly. Last observable GitHub Actions run is dated 2026-10-09; repository Actions availability/permissions remains UNVERIFIED. CI-01 owns no `src/`, no `apps/` and no trading API changes. B1/F1/F2 stay draft until their exact SHA receives actual build/test evidence. F1’s large unmerged parent stack requires explicit inherited base verification.
+### CI-01 correction / no GitHub Actions, 2026-10-25
+CI-01 [Issue #65](https://github.com/avysotsky/TradeOps-v2/issues/65) and [Draft PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66) were initially written incorrectly around hosted GitHub Actions; owner explicitly **prohibits GitHub Actions**. Orchestrator has overridden Issue #65 and requested rework of PR #66: **remove all workflow changes** and deliver primary local WSL2/Docker acceptance runner with source SHA pinning, isolation, independent .NET 10 + Node 24, optional disposable PG17 Mock smoke and durable local evidence. No worker has permission to enable Actions or require hosted checks. The existing workflow in main is legacy code, not an authorized execution facility. B1/F1/F2 remain Draft until real LOCAL test/build evidence and required browser visual parity are obtained. No merge authorized.
 
 ## Dependency and noncollision protocol
 - G0 is the *first acceptance gate* for B1 merge, frontend integration and subsequent B2/B3/FIX. B1 may prepare purely additive contracts while G0 runs; no risk-affecting behavior until G0 accepted.
@@ -39,7 +41,7 @@ CI-01 [Issue #65](https://github.com/avysotsky/TradeOps-v2/issues/65) reserves t
 ## Orchestrator review checklist
 1. Verify referenced Issue scope, exact branch/base SHA and diff paths; detect collisions and inherited PR stack.
 2. Read all changed code and tests; enforce strong typing, account+venue scoped identifiers, no unsafe shortcuts or external secrets.
-3. Verify test and build commands, actual CI conclusion with commit SHA, negative/failure case coverage. Lack of CI means NOT VERIFIED.
+3. Verify exact-HEAD **LOCAL WSL2/Docker** build/test logs and artifact summaries, test counts/exit codes, negative/failure case coverage. GitHub Actions is prohibited and irrelevant. Missing real local evidence means NOT_RUN / NOT VERIFIED, not a reason to re-enable Actions.
 4. Inspect trading safety invariants, mainnet flags, no write endpoints added/activated, no missing audit, no bad failover behavior.
 5. Require deterministic acceptance evidence: fixture outputs/screenshots for UI and failure-injection trace for OMS, no unverified production claims.
 6. Return `ACCEPT`, `CHANGES REQUESTED` with concrete file-specific comments, or `BLOCKED`; only then ask owner for merge authorization. Do not silently merge.
