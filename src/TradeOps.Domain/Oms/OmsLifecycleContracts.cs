@@ -168,7 +168,9 @@ public static class OmsLifecycleContract
                 current.LastCursor.Epoch != update.Cursor.Epoch)
                 return Reconcile(current, "Cursor streams/epochs are not comparable; recover first.");
             if (update.Cursor.Sequence < current.LastCursor.Sequence)
-                return new OmsTransitionDecision(OmsTransitionOutcome.Stale, current, "Out-of-order event.");
+                return update.CumulativeFilled > current.CumulativeFilled
+                    ? Reconcile(current, "Out-of-order higher cumulative fill requires execution replay.")
+                    : new OmsTransitionDecision(OmsTransitionOutcome.Stale, current, "Out-of-order event.");
             if (update.Cursor.Sequence == current.LastCursor.Sequence)
             {
                 if ((!current.Identity.ExchangeId.HasValue && update.ExchangeId.HasValue) ||
@@ -191,16 +193,20 @@ public static class OmsLifecycleContract
             if (update.Phase is not (OmsOrderPhase.DispatchPending or OmsOrderPhase.Submitted
                 or OmsOrderPhase.CancelPending or OmsOrderPhase.ReplacePending or OmsOrderPhase.Unknown))
                 return Reconcile(current, "A local command cannot assert an exchange outcome.");
+            if (update.CumulativeFilled != current.CumulativeFilled)
+                return Reconcile(current, "A local command cannot invent or adjust executed quantity.");
         }
         else if (update.Kind == OmsObservationKind.OpenOrdersPresence)
         {
             if (update.Phase is not (OmsOrderPhase.Accepted or OmsOrderPhase.PartiallyFilled))
                 return Reconcile(current, "Open-order listing cannot attest a terminal order.");
         }
-        else if (update.Kind == OmsObservationKind.ExecutionFill &&
-                 update.Phase is not (OmsOrderPhase.PartiallyFilled or OmsOrderPhase.Filled or OmsOrderPhase.Cancelled))
+        else if (update.Kind == OmsObservationKind.ExecutionFill)
         {
-            return Reconcile(current, "Execution evidence cannot establish this order phase.");
+            if (update.Phase is not (OmsOrderPhase.PartiallyFilled or OmsOrderPhase.Filled or OmsOrderPhase.Cancelled))
+                return Reconcile(current, "Execution evidence cannot establish this order phase.");
+            if (update.Phase == OmsOrderPhase.Cancelled && current.Phase != OmsOrderPhase.Cancelled)
+                return Reconcile(current, "An execution fill cannot confirm exchange cancellation.");
         }
 
         if (current.Phase == OmsOrderPhase.Unknown &&
