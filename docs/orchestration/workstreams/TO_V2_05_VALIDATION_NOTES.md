@@ -116,3 +116,32 @@ As of the worker's final GitHub recheck, DocFlow-v2 origin/main is **ced3bd5fd98
 ## Owner Windows attempt and test-runner correction (2026-10-11)
 
 Owner fetched current branches and executed TO-V2-05 validator at c70f5a7a066d2e71c5690c4ac70df4e80424e527; result: **exit 2**, `The script failed due to call depth overflow`. Downstream archive hash, NuGet restore, build and seven synthetic cases: **NOT RUN**. Root cause: PowerShell case-insensitive command binding made helper `Git` recursively invoke itself via `& git`. Renamed helper and all call sites to `Invoke-GitChecked`; no application, candidate, SDK or dependency change. Fixed-script Windows execution **NOT RUN**. An additional independent blocker remains: assigned pinned DocFlow main 62fa3c3c77134cf923233e51fcba7c4f08eb2ef7 differs from actual ced3bd5fd985634345b764e02ebb45d14f8341a6 (DF-V2-10 merge); current validator deliberately returns exit 2 for source-pin drift until orchestrator explicitly authorizes a new baseline. Never bypass that preflight or change candidate provenance SHA 927eddee08d084e7759eef1b0a67404711d2b3b1.
+
+## Owner Windows exact-SHA acceptance — 2026-10-11
+
+- Owner independently executed exact binary/test-source HEAD e69157c21e81334d9c31b3545a4544d541d141a0 on Windows with SDK 10.0.401.
+- Verified Git source pins: TradeOps main 0b2a5216c5528cb49d41eb9f5a43870e935da3ef; read-only DocFlow main ced3bd5fd985634345b764e02ebb45d14f8341a6; original immutable DF-V2-07 NuGet candidate source 927eddee08d084e7759eef1b0a67404711d2b3b1.
+- Six original retained .nupkg/.snupkg archives: **6/6 ARCHIVE VERIFIED** with actual SHA-256 and exact NuSpec source/dependencies. Isolated source-mapped candidate NuGet restore **PASS**; two expected TradeOps source references have lock type Project; negative tampered lock **REJECTED / PASS**; exact locked restore **PASS**; all three extracted candidate DLL hashes match original ZIP payloads **PASS**.
+- Real TradeOps.Domain / TradeOps.Application / temporary package consumer net10.0 warnings-as-errors Release build **PASS**.
+- Seven real synthetic ABI scenarios **7 passed, 0 failed, 58 assertions**: assembly/port ABI, native normalization/identity/UTF-8, owned JSON lifetime, cancellation, forbidden selectors, invalid schema/raw source, invalid structured data. Real package binaries used, no DocFlow ProjectReference.
+- Validator **exit 3** was observed, meaning **LOCAL CANDIDATE ABI/CONTRACT PASS / PUBLISH BLOCKED / IN-PROCESS PRODUCTION INTEGRATION BLOCKED**. This is not actual private-registry access/ACL, license or security release authorization.
+- Earlier NOT RUN tables and old DocFlow main pins reflect the worker's pre-merge handoff and are superseded by this owner evidence. No actual test run was performed on later documentation-only commits; compare source changes against tested SHA before integration.
+- GitHub Actions OFF; NuGet PUBLISH BLOCKED; LICENSE APPROVAL BLOCKED; DocFlow.Api public host BLOCKED; no production adapter, live providers, operational DB, public listener, broker or trading.
+
+### Retained candidate archive digests (owner Windows)
+
+| Archive | SHA-256 |
+| --- | --- |
+| `DocFlow.Normalization.2.0.0-preview.1.nupkg` | `395f65d4ce9b86145e43dc775820aa9ad547629ca50010e770a83d53328bf4a4` |
+| `DocFlow.Normalization.2.0.0-preview.1.snupkg` | `9c7ec6d83de412b275bb95c1982f6f1b423df5713e6e3994789be47d8662db73` |
+| `DocFlow.SchemaExtraction.2.0.0-preview.1.nupkg` | `02438c1073bb18885f1b44c1262e509a2841d7d4936d87f98cdf7fc2cdce569a` |
+| `DocFlow.SchemaExtraction.2.0.0-preview.1.snupkg` | `ac0d66c55f70d9c643d30880b8450f1c3369589ad96537405c59637dbc69a81d` |
+| `DocFlow.Extraction.Application.2.0.0-preview.1.nupkg` | `2fd2d70977f330fd5c05fc8134a6bf3c91ad1f2b35f8282fcaec633396ce1f91` |
+| `DocFlow.Extraction.Application.2.0.0-preview.1.snupkg` | `d220907e8f9c2844b19f0f2d152b80c0b89763a6f3a4dbb46880cbad00d4ceef` |
+
+### Extracted DLL hashes (owner Windows)
+
+- Normalization DLL: `998c907a64363184a2cf58a14ce18e859a10c5775527d103401015a40d120d39`
+- SchemaExtraction DLL: `8cfa384b14567a0cfff1216046159949f9e322b8f278f711405c854fe0f9b780`
+- Extraction.Application DLL: `5b628318ba6ce62d458cc2dcc85e47685e945909253f5698f65e972158280584`
+
