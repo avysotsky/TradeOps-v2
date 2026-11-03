@@ -1,8 +1,15 @@
 # TradeOps-v2 — Institutional Trading Platform Master Roadmap
-**Status:** proposed architecture and delivery roadmap; docs-only Draft PR; no execution enablement.
+> **Актуальное решение владельца, 2026-11-03:** TradeOps V2 поддерживает только **Deribit**.
+> **Deribit FIX 4.4 через QuickFIX/n обязателен в V2**; историческое обозначение B6 как optional ниже этим решением заменено.
+> CoinCall и остальные venue-направления отложены до V3; полное VAN parity отложено.
+> Приоритет: B1/B2 → Deribit private events и recovery → reconciliation/risk/fencing → FIX qualification и controlled release.
+> Multi-venue разделы ниже сохраняются как долгосрочный план, а не текущий scope V2.
+> Состояние интеграции и backlog: [обновление 2026-11-03](BACKLOG_CLEANUP_AND_B1_FIX_2026-11-03.md).
+
+**Status:** architecture and delivery roadmap integrated into main; the Deribit-only V2 scope above is current; no execution enablement.
 **Date:** 2026-10-25.
 **Owner reference:** [ZentoEra Senior Quant Developer](https://www.zentoera.com/careers/quant-developer); [TradeOps-v2 issue #40, Deribit FIX 4.4](https://github.com/avysotsky/TradeOps-v2/issues/40).
-**Canonical repositories:** private `avysotsky/TradeOps-v2` is the implementation; public, sanitized `avysotsky/alexvysotsky.com` is a **UI/UX and integration-behavior reference only**, NOT a backend to transplant.
+**Canonical repositories:** public `avysotsky/TradeOps-v2` is the implementation; public, sanitized `avysotsky/alexvysotsky.com` is a **UI/UX and integration-behavior reference only**, NOT a backend to transplant.
 **Tech decision:** .NET 10 / C# owns trading domain, executions, reconciliation, risk and platform APIs; React + TypeScript for the UI; PostgreSQL for transactional truth and event/audit ledgers; ClickHouse for historical market data / analytical replay; Python research adapters where valuable; C++/SBE only after measured need. ZentoEra's role explicitly calls for Python and C++; TradeOps targets its *functionality*, not an identical technology stack.
 
 ## Platform acceptance infrastructure policy (owner decision, 2026-10-25)
