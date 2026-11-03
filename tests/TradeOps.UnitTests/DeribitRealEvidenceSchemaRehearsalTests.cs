@@ -41,7 +41,7 @@ public sealed class DeribitRealEvidenceSchemaRehearsalTests
         var script = File.ReadAllText(Path.Combine(Root(), "deploy",
             "deribit-evidence", "rehearse-evidence-schema.pg17.sh"));
         Assert.Contains("tradeops-deribit-evidence-pg17-data", script);
-        Assert.Contains("SOURCE_SCHEMA_ALREADY_EXISTS", script);
+        Assert.Contains("[[ \"$identity\" == 'tradeops_evidence|17|0' ]] || fail SOURCE_HAS_SCHEMA", script);
         Assert.Contains("sha256sum --check --status", script);
         Assert.Contains("--network none", script);
         Assert.Contains("--tmpfs /var/lib/postgresql/data", script);

@@ -42,12 +42,12 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
         Assert.True(File.Exists(launcher),
             "PowerShell launcher for WSL acceptance is missing.");
 
-        var code = File.ReadAllText(launcher);
+        var code = File.ReadAllText(launcher).ReplaceLineEndings("\n");
         Assert.Contains("[string] $Branch,", code, StringComparison.Ordinal);
         Assert.Contains(
-            "[Parameter(Mandatory = $true)]" + Environment.NewLine +
+            "[Parameter(Mandatory = $true)]\n" +
             "    [ValidatePattern('^TradeOps/to-v2-[0-9]{2}-[a-z0-9-]+$')]" +
-            Environment.NewLine + "    [string] $Branch,",
+            "\n    [string] $Branch,",
             code, StringComparison.Ordinal);
         Assert.DoesNotContain("[string] $Branch =", code, StringComparison.Ordinal);
         Assert.Contains("fetch origin $Branch", code, StringComparison.Ordinal);
@@ -132,9 +132,9 @@ public sealed class TradeOpsRealPostgresAcceptanceScriptTests
             }
 
             """;
-        var script = before + "\nsimulated_still_running=" +
+        var script = (before + "\nsimulated_still_running=" +
             (containerStillExists ? "true" : "false") +
-            "\n" + function + "\nstop_api\nprintf 'STOP_API_DONE\\n'\n";
+            "\n" + function + "\nstop_api\nprintf 'STOP_API_DONE\\n'\n").ReplaceLineEndings("\n");
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
