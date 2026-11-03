@@ -1,0 +1,199 @@
+# TradeOps-v2 — Institutional Trading Platform Master Roadmap
+**Status:** proposed architecture and delivery roadmap; docs-only Draft PR; no execution enablement.
+**Date:** 2026-10-25.
+**Owner reference:** [ZentoEra Senior Quant Developer](https://www.zentoera.com/careers/quant-developer); [TradeOps-v2 issue #40, Deribit FIX 4.4](https://github.com/avysotsky/TradeOps-v2/issues/40).
+**Canonical repositories:** private `avysotsky/TradeOps-v2` is the implementation; public, sanitized `avysotsky/alexvysotsky.com` is a **UI/UX and integration-behavior reference only**, NOT a backend to transplant.
+**Tech decision:** .NET 10 / C# owns trading domain, executions, reconciliation, risk and platform APIs; React + TypeScript for the UI; PostgreSQL for transactional truth and event/audit ledgers; ClickHouse for historical market data / analytical replay; Python research adapters where valuable; C++/SBE only after measured need. ZentoEra's role explicitly calls for Python and C++; TradeOps targets its *functionality*, not an identical technology stack.
+
+## Platform acceptance infrastructure policy (owner decision, 2026-10-25)
+
+**GitHub Actions is PROHIBITED for TradeOps-v2.** Treat GitHub only as Git/Issues/Draft PR/review transport; never request Actions permissions, enable runs, or gate work on hosted checks. Build and test each exact current PR HEAD in the owner's isolated **local WSL2 Ubuntu + Docker** environment. Use .NET 10, Node 24 and disposable PostgreSQL 17; verify source SHA before/after; preserve separate worktrees, time-stamped logs, exit codes and test totals. The absence of GitHub Actions is not an incident or a blocker. A test without real local execution is still NOT_RUN. [Corrected CI-01 specification #65](https://github.com/avysotsky/TradeOps-v2/issues/65) / [Draft PR #66](https://github.com/avysotsky/TradeOps-v2/pull/66).
+
+## 0. Non-negotiable invariants
+1. MAINNET STRICT READ-ONLY remains in force. ExecutionEnabled=false AND MainnetExecutionEnabled=false; no mainnet order actions without a separately approved, auditable release gate. All exchange-mutating test work starts in controlled testnet and only after owner approval.
+2. A **single active execution owner per venue/account/environment**. DB leases/fencing alone cannot prevent a paused old process from sending to an exchange: all outbound commands MUST pass through a sole credential-owning execution gateway that validates a current fencing token immediately before physical send, drains/stops stale workers, and fails closed across failover. Use deterministic account-scoped order identity. No local OrderId, venue OrderId, ClientOrderId/label, execution ID, or FIX ID reused across accounts/venues.
+3. OMS is sole authority for commands and persisted local state; exchange is external source of observed facts. UI and strategies only submit intents to OMS; neither may infer success from HTTP 200 or WS RPC response alone.
+4. Persist validated command intent and order identity *before sending*; write command state / audit atomically with the journal. A timeout/disconnect after possible transmission is AMBIGUOUS/UNKNOWN and MUST NOT blindly retry. Reconcile via order ID, label, fills, histories; no-result lookup by itself is not proof of non-execution.
+5. Recovery is mandatory after all session loss, restart, account switch, failover and sequence gaps: block risk-increasing orders, re-subscribe, obtain coherent REST/RPC snapshots and fills covering the gap, deduplicate/replay buffered events, compare, clear gates only on verified consistency. Never equate missing open orders with canceled orders.
+6. Cross-venue transactions cannot be atomically rolled back after fills; use an explicit, risk-budgeted multi-leg **saga** with compensate/unwind/hedge policy and recorded residual exposure.
+7. No secrets in Git, public logs, browser, telemetry or test fixtures; segregate credentials by environment and role, redact all FIX/WS auth and sensitive account fields. All positions, orders, PnL and margin scoped to actual account.
+8. Versioned contracts, contract tests, deterministic replay/fault injection, immutable audit, metrics and rollback plans are part of each stage, not deferred hardening.
+
+## 1. Existing baseline (verified from published source, not a production audit)
+- TradeOps-v2 has `OrderManager`, `OrderStateMachine`, `OrderReconciliationService`, `PositionReconciliationService`, persistent `Order` and lifecycle records, `IExchangeClient`, `IExchangeEventStream`, and adapters for Deribit, Binance, Bybit, OKX, Hyperliquid, IBKR, etc., with *different readiness levels*. An adapter existing is NOT proof of production support.
+- `DeribitTestnetExchangeClient` uses HTTP JSON-RPC for trading, with `label` and ambiguous timeout recovery; `DeribitPrivateWebSocketStream` consumes private order/trade notifications in testnet. Neither constitutes complete OMS / exchange recovery by itself.
+- Draft PR #54 is clock diagnostics stacked on RAW order book work; Draft PR #55 is browser-side private REST snapshot freshness, temporarily polled every 8 s. #55 is **not** intended as the long-term authoritative OMS event state. Don't merge or change active branches without CI/owner gates.
+- VAN UI reference: `frontend/dist/deribit.html`, `frontend/dist/coincall.html`, `frontend/dist/coincall-spreads.html`, `frontend/dist/assets/deribit-*.js`, `frontend/dist/assets/coincall-spreads-full.js`, and tests. Two `*-spread-workstation.html` entries in sanitized snapshot are empty placeholders; do not claim working markup in them. VAN backend is a reference only. Preserve its proven compact desktop trading layout and workflows, but reimplement in React with typed contracts and accessible responsive behavior.
+- Deribit guidance (updated Sep 2026) recommends persistent JSON-RPC WS; provides HTTP and legacy FIX. Dedicated FIX internet endpoints `fix-test.deribit.com:9883` and `fix.deribit.com:9883` (TLS). FIX remains an optional adapter; Starbase SBE/Drop Copy is distinct and requires eligible connectivity. Deribit connection/session limits must be accounted for.
+
+## 2. Target system boundaries
+```text
+React Trading Workstations (Deribit / CoinCall / Multi-venue / Risk / Analytics)
+         | typed REST commands + SignalR/WebSocket read models
+API Gateway/BFF, auth, RBAC, operator audit
+         |
+         +--> Strategy Runtime / External Signals --> Pre-trade Risk ----+
+         |                                                               |
+         +--> OMS Command Ingress --> durable intent/outbox --> Executor --+--> Exchange Adapters
+         |                                    |                             (WS JSON-RPC / FIX 4.4 /
+         |                                    v                              REST recovery / IBKR native)
+         |                           Order + Execution Ledger                 |
+         |                                    ^                                v
+         +<-- materialized read models <--- Ingest/Dedup <--- Private WS / FIX ExecutionReport
+                                               ^
+                                      Recovery / Reconciliation
+                  PostgreSQL (authoritative state, ledger, outbox, account leases)
+                  ClickHouse (tick/L2/funding/basis analytical market data, replay)
+                  Metrics/Tracing/Alerts, disaster-recovery and change control
+```
+Order state and exchange execution truth never originate in React. Market L2 and private account streams have separate QoS, reconnect and recovery rules. Never use ClickHouse as the authoritative order store.
+
+## 3. Delivery sequence (implementation waves; two coordinated tracks)
+Every gate requires a named PR, repeatable tests, acceptance report and owner sign-off; parallel tracks must not silently merge into one another.
+
+### G0 — Baseline and release-control inventory (blocking, docs/test changes only)
+- Pin and audit current main + PR #53/#54/#55 ancestry and test status; do not mistake Draft for merged.
+- Build capability/readiness matrix per venue/protocol/environment; enumerate `ExecutionEnabled` and safety gates. Document process topology, secret custody, UI pages and REST/WS contracts.
+- Inventory VAN screenshots/page DOM, desktop dimensions, tabs, order ticket, account selector, order book, positions, orders, history, funding, spread/basis, portfolio. Preserve behavior and styling via screenshot baselines; do not copy its backend.
+- **Exit:** source/feature inventory, dependency graph, contract risk ledger, signed baseline and invariant tests.
+
+### B1 — Canonical identifiers, domain contracts and OMS lifecycle
+- Define `AccountKey(tenant,venue,environment,account/subaccount)`; local intent ID (immutable), command ID, client order ID (venue-constrained), exchange order ID, order version, execution/trade ID, FIX ClOrdID/OrigClOrdID/ExecID with venue-specific mappings.
+- Distinguish intent -> command dispatch -> exchange acknowledged -> partially filled -> filled/canceled/rejected; Unknown/CancelPending/ReplacePending and exchange-only orders. Immutable creation terms; decimal + units/currency/instrument metadata.
+- Define typed ports: `IOrderEntryTransport`, `IPrivateExecutionStream`, `IExchangeRecoveryQueries`, `IVenueCapabilities`, `IInstrumentRules`. Do not force unsupported broker semantics into a fictional common denominator.
+- **Exit:** full state transition table and unit tests for duplicate IDs, out-of-order fills, cancel/fill race, terminal-state invariants, account isolation.
+
+### B2 — Durable command journal, deduplication and single writer
+- PostgreSQL tables: intents, commands/attempts/outbox, orders/current projection, raw normalized events/inbox, fills (unique account+venue+execution identity), reconciliation runs/issues, account leases/fencing, immutable audit.
+- Persist before dispatch; atomic transactional outbox; distinguish `not_sent`, `dispatch_started`, `acknowledged`, `ambiguous`. Stale-leader fencing and conservative unknown handling. Account-specific monotonic versions / event ordering.
+- **Exit:** kill process at every send/commit boundary; replay without duplicate local intents, no blind resend after possible transmission, no cross-account collision. Prove old gateway cannot send after new owner takes over (including in-flight/stalled packets); where exchange cannot honor a remote fencing token, avoid overlapping connectivity/credential ownership and explicitly classify remaining failure uncertainty. PostgreSQL rollback/recovery evidence.
+
+### B3 — Deribit primary private WebSocket order execution (testnet first)
+- Long-lived dedicated authenticated command WS + independent private events WS; JSON-RPC ID correlation and timeout; bounded buffers, heartbeat, scope/refresh, reconnect/backoff and connection limits. Market public RAW remains isolated.
+- Native placement/edit/cancel only behind OMS+Risk; normalize server reports and `user.orders` / `user.changes` / trades; support all required instruments with tick, min amount, contract units and fee precision.
+- REST/RPC retained for snapshot/history lookups. Existing browser polling is replaced by backend-owned read model events, not eliminated as a recovery option.
+- **Exit:** mock transport tests including dropped ACK and network partition; separately approved TESTNET buy/cancel/partial-fill evidence. No MAINNET mutations.
+
+### B4 — Exchange/OMS Reconciliation Engine
+- Reconnect gate: `DISCONNECTED -> RECOVERING -> RECONCILING -> READY`; suppress new risk-increasing orders until coherent baseline.
+- Capture subscription epoch and buffer events; fetch comprehensive open orders + history + trade fills + positions + balances for all relevant symbols/currencies and entire outage interval with overlap/safety margin. Compare both directions (local->exchange, exchange->local). Confirm closed via history/fills, not empty open-order snapshot.
+- Deduplicate fills by exchange identity, handle revision/partial fill, unknown external orders, canceled-but-filled races, unavailable history and inconsistent cumulative quantities. Persist issues and operator overrides (audited).
+- **Exit:** deterministic replay of outage at every transition, 0 double-counted fills, no fabricated cancellations, fail-closed on unresolved gap, alerts.
+
+### B5 — Pre-trade and runtime Risk Engine / kill switch
+- Every order command checks instrument constraints, allowed-account policy, per-order notional, position delta, portfolio exposure, leverage/margin, reduce-only, cumulative pending risk, loss and concentration controls.
+- Account/venue/global circuit breakers, human override RBAC, immutable audit; kill switch blocks new orders and triggers documented cancellation/flatten policy with unknown-state recovery (cancel acknowledgements are not proof of completed cancel).
+- **Exit:** risk denial can never be bypassed by UI/strategy/direct adapter; stochastic partial-fill and sudden-gap tests, operator drill for kill switch.
+
+### B6 — Deribit FIX 4.4 adapter (existing issue #40)
+- Separate persistent FIX session + dictionary and encoded message store, sequence/resend/gap fills, logon/heartbeat/test request/logout; QuickFIX/n evaluation/maintenance, dictionary/Deribit custom tags, TLS and certificate verification.
+- Normalize NewOrderSingle, CancelReplace, Cancel, ExecutionReport; map venue-specific ClOrdID fields without assumptions. Feed same OMS command/event contracts. FIX recoveries still require B4 account/fill reconciliation.
+- **Exit:** offline FIX replay including duplicated ExecID, gaps, reset/sequence recovery; separate operator-authorized TESTNET login/order/cancel report. Fix feature flag OFF in production by default. Not a prerequisite for WS-based first credible OMS.
+
+### B7 — Multi-venue adapter qualification
+- Start with Deribit and CoinCall, then Binance/Bybit/OKX/Hyperliquid, then expand to 10–20 *qualified* venues by independent capability certifications. Leverage existing adapters with readiness reviews; implement native broker API paths for IBKR where permitted.
+- For each: instrument mapping, qty units, client IDs, order types, reduce-only, margin mode, websocket liveness, recoverability, pagination, scopes, rate limits, cancels and execution IDs. No blanket claim that all venues support FIX.
+- **Exit:** per-venue contract suite + mock fault injection + sandbox evidence + documented unsupported features; multi-account isolation.
+
+### B8 — Multi-leg EMS and hedge recovery
+- Explicit execution plan/group ID, simultaneous (as feasible) independent sends, leg deadlines, partial-fill ratio, residual delta, target hedge, maximum unhedged risk, risk-weighted routing.
+- Saga states `PLANNED/SUBMITTING/PARTIAL/EXPOSED/HEDGING/COMPENSATING/COMPLETE/FAILED_MANUAL` with bounded retries only after known outcomes. No real atomic rollback between exchanges.
+- **Exit:** simulation of one-leg fill + other-leg rejection, both unknown, disconnect during hedge; position exposure and max-unhedged-duration SLO enforced with risk shutdown, no duplicate hedge.
+
+### B9 — Market data normalization and analytics
+- Per-venue public WS book/trade/funding/mark/index streams, L2 sequence + snapshot validation and time sync, contracts, fees and borrow/funding currency normalization.
+- Reliable async ingestion to ClickHouse: raw+normalized ticks, funding, basis, bars, book checkpoints; defined retention/partitioning, idempotent replay, late/out-of-order handling. Keep hot in-memory book and risk path independent from ClickHouse lag.
+- **Exit:** reproducible replay identical to normalized source events, fault and throughput benchmarks, documented loss/gap detection.
+
+### B10 — Funding/basis/arbitrage scanners and research APIs
+- Opportunity ranking after **maker/taker fees, expected slippage, depth, transfer/borrowing/funding, expected execution risk and capital/margin costs**. No rankings by raw funding alone.
+- Cross-venue contract and hedge compatibility; scan staleness flags, reference pricing and units. Strategies never call exchange adapters directly.
+- **Exit:** deterministic fixtures with negative net opportunities suppressed, costs explained, UI scanner available read-only.
+
+### B11 — Historical backtesting / replay and strategy runtime
+- Event-time reproducible playback, tick/L2/funding/mark and fill simulator (queue/partial fills/cancel latency/rate limits/slippage/fees/funding, uncertainty ranges); no peeking into future data.
+- Deployment modes backtest -> paper -> sandbox -> gated live, same risk and command contracts, deterministic run version/data/config.
+- **Exit:** seeded replay reproducibility, benchmarks and comparison paper-vs-replay with limitations reported; pluggable strategies.
+
+### B12 — Operations / observability / security / HA
+- Structured events, P50/P95/P99 command-to-ACK/fill delay, disconnection windows, quote age, reconciliation time, unresolved commands, risk trips, loss/recovery metrics. NTP/clock offset alerting.
+- Tenant isolation, RBAC, environment-specific key storage and credential rotation, immutable audit chain, DB backup/restore, ClickHouse data recovery, disaster drills, schema migrations, capacity/rate-limit tests, CI supply chain scans.
+- **Exit:** demonstrable recovery from crash, failover with fencing, DB restore + reconciliation, no credential leaks, external review and operational runbooks.
+
+### F1 — VAN Deribit React UI fidelity (starts after G0; can run parallel to B1–B6)
+- Build component inventory from `deribit.html` and `assets/deribit-*.js`. Replace DOM/global-function orchestration with typed React state/hooks, scoped CSS/design tokens and a versioned UI contract.
+- Retain existing professional desktop layout: compact multi-row header, instrument selector, RAW order book+precision/depth, public trades, chart, order ticket, order/position table, account, history, fees/funding, spread workstations, responsive modal/docking flows. Do **not** regress verified RAW L2 behavior.
+- **Exit:** screenshot/golden at defined viewport sizes, keyboard/navigation/e2e interaction parity; all previews read-only with mock data before B4/B5 readiness.
+
+### F2 — VAN CoinCall React UI fidelity and venue features
+- Inventory `coincall.html`, `coincall-spreads.html`, `assets/coincall-spreads-full.js`; build separate CoinCall workstation and shared cross-venue component package.
+- Spot/futures/options if present/qualified, spread and two-leg panels, filters, depths, bid/ask visualizations, account balances/orders/positions/history/funding; CoinCall-specific order ticket and precision rules stay explicit and typed.
+- **Exit:** screenshots/e2e parity, synthetic CoinCall adapter data, isolated account contexts and no accidental use of Deribit backend semantics.
+
+### F3 — Shared institutional React workstations
+- Compose exchange-agnostic OMS read models via authenticated gateway + SignalR/WebSocket updates: true exchange state, reconciling/unknown/partial, last confirmed times and discrepancy alerts. Avoid browser as an independent order-state cache.
+- Portfolio, positions, open/closed orders, fills, exposure and risk, multi-leg hedge dashboard, funding/basis scanner, and replay UI. Commands require role, risk verdict and fresh readiness gate.
+- **Exit:** two simultaneous account views without contamination; reload/reconnect display persisted OMS truth; screenshots and browser automation pass.
+
+### R1 — Controlled institutional release/certification
+- Complete B2–B5 before *any* high-risk real-money operation; B6 FIX may then be qualified as an additional transport. B7–B12 and F1–F3 deliver functional parity with ZentoEra's platform requirements.
+- Feature gates: `mock` default, `sandbox` individually approved, `mainnet-readonly` default; mainnet trading separate security/operational authorization.
+- Progressive canary, operator approval, rollback/disable plans and acceptance evidence. Never treat backlog closure as proof of institutional readiness.
+- **Exit:** signed release manifest listing qualified venues, exact protocol/permissions/limits, latency and recovery SLO achieved, data provenance and incident runbooks.
+
+## 4. Dependency / delivery priority
+- **Critical execution path:** G0 -> B1 -> B2 -> B3 -> B4 -> B5 -> B8 -> R1.
+- FIX path: B1+B2 -> B6; integrate B4; existing #40 covers the venue adapter. It is independent of initial WS execution.
+- Multi-venue: B1+B2+B4 -> B7 -> B8; 10–20 venues follow capability qualification rather than a fixed large simultaneous release.
+- Data/research: G0 -> B9 -> B10 -> B11.
+- Frontend: G0 -> F1 and F2 in parallel; connect real private OMS only once B4/B5 read models and gates are ready -> F3.
+- SRE/security B12 is continuous; its certification is a gate for R1, not a final cosmetic phase.
+
+## 5. Suggested initial GitHub work packages (one Draft PR per coherent change)
+1. **G0-01**: PR-stack audit, VAN UI inventory, test/screenshot fixtures, capabilities matrix; no change to execution.
+2. **B1-01**: order/execution/FX-/venue-specific identity and state contract tests.
+3. **F1-01**: React Deribit layout shell and screenshot parity, synthetic data and existing RAW book preserved.
+4. **B2-01**: durable outbound command journal + outbox + crash-point tests.
+5. **F2-01**: React CoinCall terminal shell and regression fixture extraction.
+6. **B3-01**: Deribit dedicated private WS read-only events + durable ingress (MAINNET READ-ONLY).
+7. **B4-01**: reconciling-state gate and incomplete snapshot/unknown outcome recovery tests.
+8. **B5-01**: mandatory risk enforcement, circuit breakers and kill-switch simulation.
+9. **B3-02/B6-01**: separately authorized Deribit TESTNET execution and FIX session adapter; no mainnet trading.
+10. **B7/B8/B9+**: CoinCall venue qualification, multi-leg EMS, scanners/ClickHouse, replay, remaining qualified adapters and release evidence.
+No blind merges from PR #55; front-end REST freshness from #55 is explicitly a transitional read-only UI state before B4/F3 replaces it.
+
+## 6. Acceptance scenarios to automate across PRs
+- Lost WS RPC ACK after actual accepted/filled order; user repeats click; process restarts: **one intent; no unqualified retransmission; actual fills discovered**.
+- Private event gaps, out-of-order duplicates; snapshot arrives older than an execution: **no status regression or double-booked fills**.
+- Cancel during fill, cancel response lost, replace collision: **no claimed cancel without exchange evidence**.
+- 2 venues / 2 accounts with colliding local client labels/exchange IDs: **strict account/venue identity isolation**.
+- One-leg execution, second venue offline; hedging cannot execute: **bounded residual-exposure alarm + saga recovery**, no fictional rollback.
+- Leader failover during dispatch: **new leader cannot race old leader; stale fencing rejected**.
+- Kill switch during rapid strategy orders, network partition, bad prices, insufficient collateral: **zero fresh risk-increasing sends after gate**.
+- ClickHouse unreachable: **OMS/risk/execution remain functional**, market recorder alarms and buffers with backpressure, never lie about complete history.
+- Browsers close/reopen during exchange sessions: **server continues private event capture and reconciliation; UI resumes from authoritative projections**.
+- Validate 10–20 qualified venue integrations with exact documented capabilities, not a single passing mock test.
+
+## 7. Requirements traceability against ZentoEra
+| ZentoEra requirement | Planned proof |
+| --- | --- |
+| 10–20+ venue integration, REST/WS/FIX | B6+B7 venue capability ledger and independent contract fixtures |
+| Institutional multi-account OMS | B1+B2+B4 durable ledger and full account reconcile |
+| Simultaneous cross-exchange arbitrage / rollback | B8 saga + bounded hedge/compensating orders, no fictitious atomic undo |
+| Order state, partial fills, audit | B1–B5 + replay and recovery scenarios |
+| Funding/basis, depth scanners | B9+B10 normalized market data, net economics and staleness |
+| ClickHouse market data pipeline | B9 + B12 performance/data completeness checks |
+| Risk Engine, kill switch | B5 + B12 end-to-end no-bypass evidence |
+| Historical realistic backtesting | B11 historical replay / simulated execution fixtures |
+| Independent strategies / REST APIs | B11 + B12 and versioned OMS BFF contracts |
+| Python/C++ stack wording | Intentional nonliteral match: core .NET, optional Python/C++ specialized modules |
+| VAN Deribit React UI parity | F1 screenshot + behavior + RAW/clock parity |
+| VAN CoinCall React UI parity | F2 screenshot + behavior + venue-specific trading previews |
+
+## 8. Sources
+- ZentoEra current posting: https://www.zentoera.com/careers/quant-developer
+- Deribit API guidance: https://support.deribit.com/hc/en-us/articles/38507223482781-API-guidance
+- Deribit connection best practices: https://support.deribit.com/hc/en-us/articles/25944603459613-Connection-Management
+- Deribit FIX hosts: https://support.deribit.com/hc/en-us/articles/25944617582877-Server-Infrastructure
+- TradeOps FIX issue #40: https://github.com/avysotsky/TradeOps-v2/issues/40
+- VAN sources: https://github.com/avysotsky/alexvysotsky.com
