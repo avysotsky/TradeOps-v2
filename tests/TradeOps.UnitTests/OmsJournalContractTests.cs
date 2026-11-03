@@ -107,9 +107,9 @@ public sealed class OmsJournalContractTests
     }
 
     [Fact]
-    public void B1AcceptedWithNonZeroCumulativeAfterCancelPending_StillRequiresReconciliation()
+    public void B1CancelReject_PreservesPartialFillWithoutChangingJournalPayload()
     {
-        // B1 review item from Issue #67: do NOT adjust the parent B1 reducer in B2.
+        // Integration regression for the B1 review item in Issue #67.
         var terms = new OmsOrderTerms("BTC-PERPETUAL", OrderSide.Buy, OrderType.Limit,
             10m, OmsQuantityUnit.Contracts);
         var identity = new OmsOrderIdentity(Account, Request().LocalOrderId,
@@ -127,7 +127,11 @@ public sealed class OmsJournalContractTests
         var result = OmsLifecycleContract.Apply(state, new OmsLifecycleObservation(
             Account, identity.LocalId, OmsOrderPhase.Accepted, 3m, 7m,
             new OrderRevision(0), OmsObservationKind.OrderHistory));
-        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, result.Outcome);
-        Assert.Same(state, result.State);
+        Assert.Equal(OmsTransitionOutcome.Applied, result.Outcome);
+        Assert.Equal(OmsOrderPhase.PartiallyFilled, result.State.Phase);
+        Assert.Equal(3m, result.State.CumulativeFilled);
+        Assert.Equal(7m, result.State.LeavesQuantity);
+        Assert.Equal(state.Revision, result.State.Revision);
+        Assert.Equal(state.Identity, result.State.Identity);
     }
 }

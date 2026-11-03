@@ -112,6 +112,115 @@ public sealed class OmsLifecycleContractTests
     }
 
     [Fact]
+    public void CancelReject_PreservesThreeOfTenFilledAndReturnsToPartiallyFilled()
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.Accepted);
+        state = Step(state, OmsOrderPhase.PartiallyFilled, 3m, 7m);
+        state = Step(state, OmsOrderPhase.CancelPending, 3m, 7m,
+            OmsObservationKind.LocalCommand);
+
+        var decision = OmsLifecycleContract.Apply(state,
+            Event(state, OmsOrderPhase.Accepted, 3m, 7m));
+
+        Assert.Equal(OmsTransitionOutcome.Applied, decision.Outcome);
+        Assert.Equal(OmsOrderPhase.PartiallyFilled, decision.State.Phase);
+        Assert.Equal(3m, decision.State.CumulativeFilled);
+        Assert.Equal(7m, decision.State.LeavesQuantity);
+        Assert.Equal(state.Version.Value + 1, decision.State.Version.Value);
+        Assert.Equal(state.Revision, decision.State.Revision);
+        Assert.Equal(state.Identity, decision.State.Identity);
+    }
+
+    [Fact]
+    public void CancelReject_WithoutFillsReturnsToAccepted()
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.Accepted);
+        state = Step(state, OmsOrderPhase.CancelPending,
+            kind: OmsObservationKind.LocalCommand);
+        state = Step(state, OmsOrderPhase.Accepted, leaves: 10m);
+        Assert.Equal(0m, state.CumulativeFilled);
+        Assert.Equal(10m, state.LeavesQuantity);
+    }
+
+    [Theory]
+    [InlineData(OmsObservationKind.PrivateOrderReport)]
+    [InlineData(OmsObservationKind.OrderLookup)]
+    [InlineData(OmsObservationKind.OrderHistory)]
+    public void CancelReject_AuthoritativeEvidencePreservesFillsAcrossFurtherCancelRace(
+        OmsObservationKind kind)
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.PartiallyFilled, 3m, 7m);
+        state = Step(state, OmsOrderPhase.CancelPending, 3m, 7m,
+            OmsObservationKind.LocalCommand);
+        state = Step(state, OmsOrderPhase.Accepted, 3m, 7m, kind);
+        Assert.Equal(OmsOrderPhase.PartiallyFilled, state.Phase);
+
+        state = Step(state, OmsOrderPhase.PartiallyFilled, 5m, 5m,
+            OmsObservationKind.ExecutionFill);
+        state = Step(state, OmsOrderPhase.CancelPending, 5m, 5m,
+            OmsObservationKind.LocalCommand);
+        state = Step(state, OmsOrderPhase.Cancelled, 5m, 0m);
+        state = Step(state, OmsOrderPhase.Cancelled, 6m, 0m,
+            OmsObservationKind.ExecutionFill);
+        Assert.Equal(OmsOrderPhase.Cancelled, state.Phase);
+        Assert.Equal(6m, state.CumulativeFilled);
+        Assert.Equal(0m, state.LeavesQuantity);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(5)]
+    [InlineData(10)]
+    public void CancelReject_CannotResetOrInventCumulativeFills(int reportedFill)
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.PartiallyFilled, 3m, 7m);
+        state = Step(state, OmsOrderPhase.CancelPending, 3m, 7m,
+            OmsObservationKind.LocalCommand);
+        var result = OmsLifecycleContract.Apply(state,
+            Event(state, OmsOrderPhase.Accepted, reportedFill, 10m - reportedFill));
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, result.Outcome);
+        Assert.Same(state, result.State);
+        Assert.Equal(3m, result.State.CumulativeFilled);
+        Assert.Equal(7m, result.State.LeavesQuantity);
+    }
+
+    [Theory]
+    [InlineData(OmsObservationKind.LocalCommand)]
+    [InlineData(OmsObservationKind.OpenOrdersPresence)]
+    [InlineData(OmsObservationKind.ExecutionFill)]
+    public void CancelReject_CannotBeInferredFromNonAuthoritativeEvidence(
+        OmsObservationKind kind)
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.PartiallyFilled, 3m, 7m);
+        state = Step(state, OmsOrderPhase.CancelPending, 3m, 7m,
+            OmsObservationKind.LocalCommand);
+        var result = OmsLifecycleContract.Apply(state,
+            Event(state, OmsOrderPhase.Accepted, 3m, 7m, kind));
+        Assert.Equal(OmsTransitionOutcome.RequiresReconciliation, result.Outcome);
+        Assert.Same(state, result.State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CancelReject_ReplayIsIdempotentAfterPartialFillNormalization(bool sequenced)
+    {
+        var state = Step(NewOrder(), OmsOrderPhase.PartiallyFilled, 3m, 7m,
+            sequence: sequenced ? 10 : null);
+        state = Step(state, OmsOrderPhase.CancelPending, 3m, 7m,
+            OmsObservationKind.LocalCommand);
+        var observation = Event(state, OmsOrderPhase.Accepted, 3m, 7m,
+            sequence: sequenced ? 11 : null);
+        var applied = OmsLifecycleContract.Apply(state, observation);
+        Assert.Equal(OmsTransitionOutcome.Applied, applied.Outcome);
+        Assert.Equal(OmsOrderPhase.PartiallyFilled, applied.State.Phase);
+        var replay = OmsLifecycleContract.Apply(applied.State, observation);
+        Assert.Equal(OmsTransitionOutcome.Duplicate, replay.Outcome);
+        Assert.Same(applied.State, replay.State);
+    }
+
+    [Fact]
     public void FilledThenCancelledRace_IsNotAnIllegalTerminalRewrite()
     {
         var state = Step(NewOrder(), OmsOrderPhase.Accepted);

@@ -162,6 +162,19 @@ public static class OmsLifecycleContract
             current.Phase != OmsOrderPhase.ReplacePending)
             return Reconcile(current, "Revision advance requires a pending replace.");
 
+        // A rejected cancel can report the order as working/accepted while its
+        // already confirmed fills remain. Keep the projection partially filled;
+        // neither a cancel rejection nor its replay creates execution evidence.
+        if (update.Phase == OmsOrderPhase.Accepted &&
+            current.Phase is OmsOrderPhase.CancelPending or OmsOrderPhase.PartiallyFilled &&
+            current.CumulativeFilled > 0m &&
+            current.CumulativeFilled < current.Terms.RequestedQuantity &&
+            update.CumulativeFilled == current.CumulativeFilled &&
+            update.Revision == current.Revision &&
+            update.Kind is OmsObservationKind.PrivateOrderReport or
+                OmsObservationKind.OrderLookup or OmsObservationKind.OrderHistory)
+            update = update with { Phase = OmsOrderPhase.PartiallyFilled };
+
         if (current.LastCursor is not null && update.Cursor is not null)
         {
             if (current.LastCursor.Stream != update.Cursor.Stream ||
