@@ -1,0 +1,45 @@
+# Isolated persistent Deribit read-only evidence PostgreSQL 17.
+# PROPOSAL ONLY: do not start before explicit owner approval of instance and
+# approval of its local secrets file path. No migrations or data import here.
+#
+# Example dry-run:
+# docker compose -p tradeops-deribit-evidence -f deploy/deribit-evidence/docker-compose.pg17.yml config --quiet
+#
+# NO `down -v`, `volume rm`, `prune` or automatic database init scripts.
+services:
+  postgres:
+    image: postgres:17-bookworm
+    container_name: tradeops-deribit-evidence-pg17
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_DB: tradeops_evidence
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/evidence_pg_bootstrap_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "127.0.0.1:54329:5432"
+    secrets:
+      - evidence_pg_bootstrap_password
+    volumes:
+      - evidence_pg17_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d tradeops_evidence"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    labels:
+      com.tradeops.project: "TradeOps-v2"
+      com.tradeops.component: "deribit-readonly-evidence"
+      com.tradeops.persistent: "true"
+
+secrets:
+  evidence_pg_bootstrap_password:
+    # Absolute WSL2 Linux path OUTSIDE Git repository, owner supplied.
+    file: ${TRADEOPS_EVIDENCE_PG_BOOTSTRAP_PASSWORD_FILE:?Set a private absolute WSL2 path to the PostgreSQL bootstrap password file}
+
+volumes:
+  evidence_pg17_data:
+    name: tradeops-deribit-evidence-pg17-data
+    driver: local

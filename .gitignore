@@ -28,3 +28,8 @@ deploy/tradingview-gateway/tls/
 
 # Local TradeOps runtime snapshots/cache
 .tradeops/
+
+# React local operator terminal generated artifacts
+node_modules/
+dist/
+*.tsbuildinfo

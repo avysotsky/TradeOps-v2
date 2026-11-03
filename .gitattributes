@@ -1,0 +1,4 @@
+# Windows Git checkouts must not convert WSL executable scripts to CRLF.
+# Bash interprets the trailing CR as part of `set -o pipefail`.
+/scripts/ibkr/*.sh text eol=lf
+/scripts/ibkr/*.py text eol=lf

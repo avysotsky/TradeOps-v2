@@ -8,6 +8,9 @@ public sealed class TradeOpsDbContext(DbContextOptions<TradeOpsDbContext> option
 {
     public DbSet<Order> Orders => Set<Order>();
 
+    // Additive explicit broker scope; historical orders remain unscoped.
+    public DbSet<BrokerOrderIdentity> BrokerOrderIdentities => Set<BrokerOrderIdentity>();
+
     public DbSet<OrderLifecycleEvent> OrderLifecycleEvents => Set<OrderLifecycleEvent>();
 
     public DbSet<OperationalRunStatus> OperationalRunStatuses => Set<OperationalRunStatus>();
@@ -40,6 +43,11 @@ public sealed class TradeOpsDbContext(DbContextOptions<TradeOpsDbContext> option
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(TradeOpsDbContext).Assembly);
+        // The scoped reservation ledger has a SEPARATE DbContext and migrations.
+        // Never add synthetic reservation tables to the live trading model.
+        modelBuilder.ApplyConfigurationsFromAssembly(
+            typeof(TradeOpsDbContext).Assembly,
+            type => type != typeof(Configurations.SyntheticScopedOrderReservationConfiguration)
+                && type != typeof(Configurations.SyntheticScopedExecutionReservationConfiguration));
     }
 }

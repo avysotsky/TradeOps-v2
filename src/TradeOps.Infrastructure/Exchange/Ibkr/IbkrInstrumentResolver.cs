@@ -53,7 +53,10 @@ public sealed class IbkrInstrumentResolver
 
         var symbol = instrument.Symbol.Trim().ToUpperInvariant();
         var search = await GetJsonAsync(
-            $"/iserver/secdef/search?symbol={Uri.EscapeDataString(symbol)}&secType=STK",
+            // The secType query parameter was deprecated and removed from
+            // the IBKR Web API contract on 2026-09-09. Resolve the result
+            // as STK using the returned contract info, never a query hint.
+            $"/iserver/secdef/search?symbol={Uri.EscapeDataString(symbol)}",
             cancellationToken);
 
         if (search.ValueKind != JsonValueKind.Array)

@@ -175,42 +175,47 @@ public sealed class IbkrPaperExchangeClient
     {
         if (string.IsNullOrWhiteSpace(exchangeOrderId))
         {
-            return null;
+            throw new ArgumentException(
+                "An IBKR broker order ID is required for a trustworthy lookup.",
+                nameof(exchangeOrderId));
         }
 
         var accountId = await EnsurePaperSessionAsync(
             cancellationToken);
 
-        try
+        // The IBKR status endpoint is limited to active/cached orders.
+        // Per IBKR documentation even HTTP 503 can mean a switched account
+        // or a filled/cancelled order no longer cached by this session.
+        // Neither 404 nor 503 establishes broker absence: propagate the
+        // original HTTP status to the caller and fail the reconciliation run
+        // instead of giving the legacy nullable API a misleading null.
+        var root = await SendJsonAsync(
+            HttpMethod.Get,
+            $"/iserver/account/order/status/{Uri.EscapeDataString(exchangeOrderId)}",
+            body: null,
+            cancellationToken);
+
+        var returnedAccount = ReadString(root, "account");
+        if (string.IsNullOrWhiteSpace(returnedAccount)
+            || !string.Equals(
+                returnedAccount,
+                accountId,
+                StringComparison.OrdinalIgnoreCase))
         {
-            var root = await SendJsonAsync(
-                HttpMethod.Get,
-                $"/iserver/account/order/status/{Uri.EscapeDataString(exchangeOrderId)}",
-                body: null,
-                cancellationToken);
-
-            var returnedAccount = ReadString(
-                root,
-                "account");
-
-            if (!string.IsNullOrWhiteSpace(returnedAccount)
-                && !string.Equals(
-                    returnedAccount,
-                    accountId,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    "IBKR order status returned a different paper account.");
-            }
-
-            return MapOrder(root);
+            _isConnected = false;
+            throw new InvalidOperationException(
+                "IBKR order status lacks the selected Paper account identity.");
         }
-        catch (HttpRequestException exception)
-            when (exception.StatusCode is HttpStatusCode.NotFound
-                or HttpStatusCode.ServiceUnavailable)
+
+        var returnedId = ReadFirstString(root, "orderId", "order_id");
+        if (!string.Equals(returnedId, exchangeOrderId, StringComparison.Ordinal))
         {
-            return null;
+            _isConnected = false;
+            throw new InvalidOperationException(
+                "IBKR order status does not match the requested broker order ID.");
         }
+
+        return MapOrder(root);
     }
 
     public Task<Order?> GetOrderAsync(
@@ -230,13 +235,15 @@ public sealed class IbkrPaperExchangeClient
     {
         if (string.IsNullOrWhiteSpace(clientOrderId))
         {
-            return null;
+            throw new ArgumentException(
+                "An IBKR client order ID is required for a trustworthy lookup.",
+                nameof(clientOrderId));
         }
 
         var accountId = await EnsurePaperSessionAsync(
             cancellationToken);
 
-        return (await GetOrderSnapshotAsync(
+        var visibleOrder = (await GetOrderSnapshotAsync(
                 accountId,
                 cancellationToken))
             .FirstOrDefault(order =>
@@ -244,6 +251,11 @@ public sealed class IbkrPaperExchangeClient
                     order.ClientOrderId,
                     clientOrderId,
                     StringComparison.Ordinal));
+
+        // Live orders are a limited, session-scoped view, not the complete
+        // history. An absent cOID is unresolved, never proof to resubmit.
+        return visibleOrder ?? throw new InvalidOperationException(
+            "IBKR live-order snapshot cannot prove absence of a client order ID.");
     }
 
     public Task<Order?> GetOrderByClientOrderIdAsync(
@@ -267,12 +279,12 @@ public sealed class IbkrPaperExchangeClient
             body: null,
             cancellationToken);
 
-        if (!root.TryGetProperty(
-                "orders",
-                out var orders)
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("orders", out var orders)
             || orders.ValueKind != JsonValueKind.Array)
         {
-            return Array.Empty<Order>();
+            throw new InvalidOperationException(
+                "IBKR live-order response is missing a valid orders array; snapshot is incomplete.");
         }
 
         return orders
@@ -302,7 +314,23 @@ public sealed class IbkrPaperExchangeClient
             .ToArray();
     }
 
+    // Any session/preflight failure invalidates readiness. Do not
+    // automatically reauthenticate, switch to Live, or issue broker writes.
     private async Task<string> EnsurePaperSessionAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadPaperSessionAsync(cancellationToken);
+        }
+        catch
+        {
+            _isConnected = false;
+            throw;
+        }
+    }
+
+    private async Task<string> ReadPaperSessionAsync(
         CancellationToken cancellationToken)
     {
         var root = await SendJsonAsync(
@@ -691,6 +719,9 @@ public sealed class IbkrPaperExchangeClient
                 "localhost",
                 StringComparison.OrdinalIgnoreCase)
             || uri.Port != 5000
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment)
             || !string.Equals(
                 uri.AbsolutePath.TrimEnd('/'),
                 "/v1/api",

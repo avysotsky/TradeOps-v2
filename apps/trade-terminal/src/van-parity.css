@@ -1,0 +1,175 @@
+/* F1-01 VAN-inspired CSS: additive layout only; RAW depth styles unchanged. */
+.terminal { background:#020617; }
+.topbar { height:50px; padding-inline:20px; background:#020617; border-color:#1e293b; }
+.brand-logo { width:32px; height:32px; border-radius:6px; }
+.branding strong { font-size:15px; letter-spacing:0; }
+.content { max-width:1920px; padding:8px 14px 35px; }
+.van-navigation { border:1px solid #1e293b; background:#050d1c; margin-bottom:8px; }
+.van-primary-tabs,.van-trade-tabs,.van-contract-strip { display:flex; flex-wrap:wrap; align-items:center; gap:2px; padding:3px 7px; min-height:30px; }
+.van-primary-tabs,.van-trade-tabs { border-bottom:1px solid #1e293b; }
+.van-navigation button,.van-bottom-tabs button { background:transparent; color:#94a3b8; border-radius:3px; padding:6px 12px; font-size:11px; font-weight:600; min-height:27px; }
+.van-navigation button.active,.van-bottom-tabs button.active { color:#e2e8f0; background:#17263b; box-shadow:inset 0 -2px #45c4a5; }
+.van-navigation button:disabled,.van-bottom-tabs button:disabled { opacity:.55; }
+.van-nav-safe { margin-left:auto; color:#eaa3a9; font:600 10px/1.2 'JetBrains Mono',monospace; letter-spacing:.06em; }
+.van-contract-strip { gap:6px; }
+.van-contract-strip button { border:1px solid #334155; font-family:'JetBrains Mono',monospace; }
+.van-contract-strip button.active { border-color:#45c4a5; }
+.van-contract-strip > span { color:#7f92ac; font-size:10px; margin-left:auto; }
+.headline { margin:4px 0 8px; }
+.headline h1 { font-size:18px; margin:2px 0; letter-spacing:-.02em; }
+.headline p { font-size:11px; }
+.headline .eyebrow { font-size:9px; }
+.headline .refresh { padding:6px 9px; }
+.summary { grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; margin-bottom:8px; }
+.stat { padding:7px 10px; min-height:58px; border-radius:3px; background:#0b1423; }
+.stat > span { margin-bottom:2px; font-size:10px; }
+.stat > strong { font-size:16px; letter-spacing:0; line-height:1.2; }
+.stat > small { margin-top:2px; font-size:9px; }
+.van-workstation { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(328px,355px) minmax(275px,.85fr);
+  grid-template-areas:"market book ticket"; gap:7px; align-items:start; margin-bottom:8px; }
+.van-workstation > .main-grid,.van-workstation > .market-feed-grid { display:contents; }
+.van-workstation .stack { grid-area:market; display:grid; gap:7px; min-width:0; }
+.van-workstation > .main-grid > .ticket { grid-area:ticket; }
+.van-workstation > .market-feed-grid > .market-feed:first-child { grid-area:book; }
+.van-workstation .panel,.van-dock-pane .panel { border:1px solid #263348; border-radius:3px; padding:9px; background:#0b1423; }
+.van-workstation .panel-header { margin-bottom:8px; gap:5px; }
+.van-workstation .panel-header h2 { font-size:14px; margin-top:1px; }
+.van-workstation .eyebrow { font-size:9px; letter-spacing:.09em; }
+.van-workstation .panel-header select { padding:5px 7px; font-size:11px; }
+.van-workstation .market-filters { margin:0; padding-bottom:6px; gap:5px; }
+.van-workstation .market-filters label { font-size:10px; gap:3px; }
+.van-workstation .market-filters select,.van-workstation .market-filters input,
+.van-workstation .ticket select.ticket-value { font-size:11px; min-height:27px; padding:4px 7px; border-radius:3px; }
+.van-workstation .instrument-meta { margin-bottom:7px; font-size:10px; }
+.van-workstation .price-hero { padding-bottom:7px; }
+.van-workstation .price-hero strong { font-size:26px; margin-top:2px; }
+.van-workstation .bid-ask { padding-top:7px; gap:5px; }
+.van-workstation .bid-ask > div { padding:7px 9px; border-radius:3px; }
+.van-workstation .bid-ask strong { font-size:15px; margin-top:4px; }
+.van-workstation .panel-foot { margin-top:8px; }
+.van-workstation .account-grid { gap:5px; }
+.van-workstation .account-card { padding:8px; border-radius:3px; }
+.van-workstation .account-card > strong { font-size:18px; margin:4px 0 8px; }
+.van-workstation .account-card > div { margin-top:5px; padding-top:5px; }
+.van-workstation .currency { margin-bottom:4px; }
+.van-workstation .ticket label { margin:9px 0 4px; font-size:11px; }
+.van-workstation .ticket input { padding:6px 8px; border-radius:3px; font-size:12px; }
+.van-workstation .side-selector { margin-bottom:8px; gap:4px; }
+.van-workstation .side-selector button { padding:8px 5px; border-radius:3px; }
+.van-workstation .execution-details { margin-top:9px; padding-top:6px; }
+.van-workstation .execution-details > div { margin:6px 0; }
+.van-workstation .ticket .buy-button,.van-workstation .ticket .sell-button { margin-top:8px; padding:10px; border-radius:3px; }
+.van-workstation .ticket-warning { margin-top:9px; line-height:1.45; }
+.van-workstation .market-feed .panel-header { margin-bottom:6px; }
+.van-workstation .market-feed .stream-status { gap:3px; font-size:10px; }
+.van-workstation .market-feed .stream-status strong { padding:3px; font-size:10px; }
+.van-workstation .tape-row { min-height:20px; }
+.van-tick-chart { margin-top:8px; background:#090f1b; border:1px solid #263449; border-radius:3px; overflow:hidden; }
+.van-chart-head { display:flex; justify-content:space-between; gap:8px; padding:6px 9px 1px; }
+.van-chart-head strong { font-size:11px; }
+.van-chart-head span { color:#8ba2bd; font:9px 'JetBrains Mono',monospace; }
+.van-tick-chart svg { display:block; width:100%; height:150px; background:#090f1b; }
+.van-tick-chart svg line { stroke:#283549; stroke-width:.7; }
+.van-chart-unavailable { display:grid; place-items:center; height:150px; text-align:center; padding:16px; color:#95a9c1; font-size:11px; }
+.van-chart-caption { margin:0; padding:3px 9px 7px; color:#7e91aa; font-size:10px; }
+.van-bottom-dock { border:1px solid #263348; background:#0b1423; margin-bottom:8px; }
+.van-bottom-tabs { display:flex; flex-wrap:wrap; align-items:center; gap:1px; border-bottom:1px solid #263348; padding:3px 5px; }
+.van-dock-pane[hidden] { display:none!important; }
+.van-dock-pane .data-panel { margin:0; border:0; }
+.van-dock-pane .data-panel .panel-header { margin-bottom:6px; }
+.van-dock-pane .data-panel h2 { font-size:14px; margin:0; }
+.van-dock-pane .data-panel .font-controls button { min-width:24px; min-height:23px; font-size:12px; }
+.van-dock-pane .data-panel .font-controls { padding:1px; }
+.van-dock-pane .data-panel .font-controls span { font-size:11px; }
+@media(max-width:1160px) {
+ .van-workstation { grid-template-columns:minmax(0,1fr) minmax(328px,355px);
+  grid-template-areas:"market book" "ticket book"; }
+}
+@media(max-width:760px) {
+ .content { padding:8px 8px 30px; }
+ .topbar { padding-inline:10px; }
+ .van-workstation { grid-template-columns:minmax(0,1fr); grid-template-areas:"market" "book" "ticket"; }
+ .summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .van-contract-strip > span { flex-basis:100%; margin-left:0; }
+ .van-nav-safe { margin-left:0; }
+ .van-workstation .stack,.van-workstation .ticket { width:100%; }
+ .van-workstation > .market-feed-grid > .market-feed:first-child { overflow-x:auto; }
+ .van-bottom-tabs { flex-wrap:nowrap; overflow-x:auto; }
+ .van-bottom-tabs button { flex:0 0 auto; }
+}
+
+/* VAN chart: time-window buttons and a plot similar in vertical scale to the
+   original desktop workstation, with data labels outside the SVG. */
+.van-chart-head { align-items:center; flex-wrap:wrap; }
+.van-chart-head > span { margin-right:auto; }
+.van-chart-range { display:flex; gap:3px; margin-left:auto; }
+.van-chart-range button { background:#101b2c; color:#94a3b8; border:1px solid #34445b;
+  border-radius:3px; padding:3px 7px; font:600 10px/1.2 'JetBrains Mono',monospace; }
+.van-chart-range button.active { background:#1d3b35; color:#80e4c6; border-color:#3a9079; }
+.van-chart-plot { position:relative; background:#090f1b; }
+.van-tick-chart svg,.van-chart-unavailable { height:268px; }
+.van-chart-price-labels { position:absolute; inset:8px 6px 8px auto; display:flex;
+  pointer-events:none; flex-direction:column; justify-content:space-between;
+  font:10px 'JetBrains Mono',monospace; color:#b5c7de; text-shadow:0 1px 3px #000; }
+.van-tick-chart svg { padding-right:52px; }
+@media(max-width:760px) {
+  .van-tick-chart svg,.van-chart-unavailable { height:190px; }
+}
+
+/* F1-68: corrected against VAN deribit.html source 2026-10-25:
+   --okx-spot-content:1280px; futures shell 420+/280/300 with 8px gap.
+   RAW columns need 313px plus panel padding, borders and vertical scrollbar.
+   The 355px book includes that complete width budget; VAN uses 280px.
+   This deliberate width difference preserves native size/cumulative precision. */
+@media (min-width: 1161px) {
+  .content { max-width: 1320px; }
+  .van-workstation {
+    width: min(100%, 1280px);
+    margin: 0 auto 8px;
+    grid-template-columns: minmax(420px,1fr) 355px 300px;
+    grid-template-areas: "market book ticket";
+    gap: 8px;
+  }
+  .van-navigation, .headline, .summary, .van-bottom-dock {
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+@media(max-width:760px) {
+  .van-workstation .market-feed { min-width: 0; }
+  .van-workstation .dom-depth-toolbar { max-width: 100%; }
+  .van-workstation .dom-ladder { max-width: 100%; }
+}
+
+/* Owner PNG review: keep market tape bounded and all RAW columns readable. */
+.van-workstation .tape-list { max-height:108px; overflow:auto; overscroll-behavior:contain; }
+.van-workstation .dom-ladder { width:100%; }
+.van-workstation .dom-head,
+.van-workstation .dom-row,
+.van-workstation .dom-reference-prices { min-width:313px; }
+@media(min-width:1161px) {
+  .headline { margin-top:0; margin-bottom:4px; }
+  .headline .eyebrow { display:none; }
+  .headline h1 { font-size:14px; margin:0; }
+  .headline p { font-size:10px; }
+  .summary { gap:5px; margin-bottom:6px; }
+  .summary .stat { min-height:0; padding:4px 7px; display:flex; flex-wrap:wrap; align-items:center; gap:3px 7px; }
+  .summary .stat > span,.summary .stat > strong,.summary .stat > small { margin:0; }
+  .summary .stat > strong { font-size:13px; }
+  .van-workstation .van-tick-chart svg,.van-workstation .van-chart-unavailable { height:150px; }
+  .van-workstation .dom-ladder { max-height:360px; }
+}
+
+/* Account tables follow the primary workstation; auxiliary panels follow the dock. */
+.van-secondary-panels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-width:1280px; margin:0 auto 8px; }
+.van-secondary-panels > .panel { border:1px solid #263348; border-radius:3px; padding:9px; background:#0b1423; min-width:0; }
+.van-secondary-panels .panel-header { margin-bottom:8px; gap:5px; flex-wrap:wrap; }
+.van-secondary-panels .panel-header h2 { font-size:14px; margin:1px 0 0; }
+.van-secondary-panels .tape-list { max-height:108px; overflow:auto; overscroll-behavior:contain; }
+.van-secondary-panels .account-grid { gap:5px; }
+.van-secondary-panels .account-card { padding:8px; border-radius:3px; }
+.van-secondary-panels .account-card > strong { font-size:18px; margin:4px 0 8px; }
+.van-secondary-panels .account-card > div { margin-top:5px; padding-top:5px; }
+.van-secondary-panels .currency { margin-bottom:4px; }
+@media(max-width:760px) { .van-secondary-panels { grid-template-columns:minmax(0,1fr); } }
