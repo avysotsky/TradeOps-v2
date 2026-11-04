@@ -236,7 +236,31 @@ public sealed class DeribitOrderRecoveryProjectorTests
     [InlineData("filled", 4)] [InlineData("rejected", 4)]
     public void TerminalQuantityMustMatchNativeMeaning(string state, decimal filled)
     {
-        Has(Project([Report(state, filled), Fill(filled)]), DeribitOrderRecoveryProblem.InvalidTerminalQuantity);
+        Has(Project([Report(state, filled), Fill(filled)]), DeribitOrderRecoveryProblem.InvalidOrderQuantity);
+    }
+
+    [Fact]
+    public void UnknownOldCumulative_IsResolvedByExplicitCurrentEvidenceAndLedger()
+    {
+        var prior = Prior();
+        var result = Project([Report(filled: 4), Fill()],
+            [prior with { Facts = prior.Facts with { FilledNativeAmount = null } }]);
+        Assert.True(result.IsConsistent);
+        Assert.Equal(4, result.Orders[0].KnownFilledNativeAmount);
+    }
+
+    [Fact]
+    public void OpenOrderWithFullExecution_IsNotCoherent()
+    {
+        Has(Project([Report("open", 10), Fill(10)]), DeribitOrderRecoveryProblem.InvalidOrderQuantity);
+    }
+
+    [Fact]
+    public void ExplicitOpenLeavesMustReconcileWithTotalAndFills()
+    {
+        var report = Report("open", 4);
+        Has(Project([report with { Facts = report.Facts with { LeavesNativeAmount = 3 } }, Fill()]),
+            DeribitOrderRecoveryProblem.InvalidOrderQuantity);
     }
 
     [Fact]

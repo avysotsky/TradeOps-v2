@@ -34,8 +34,11 @@ Different reports at one venue timestamp are ambiguous, cumulative regression is
 blocked, and a terminal order cannot reopen. Changed terms/size require explicit
 revision recovery rather than an inferred replace. Terminal cancelled orders can
 retain partial fills. Filled/rejected quantities and the latest cumulative total
-must agree with the distinct execution ledger. Unknown cumulative values remain
-unknown; arithmetic overflow produces a blocking issue and null total.
+must agree with the distinct execution ledger. Open orders cannot already be fully
+executed, and supplied open leaves must reconcile with the total. Unknown current
+cumulative values remain unknown; an incomplete old report can be resolved by a
+complete current report and execution ledger. Arithmetic overflow produces a
+blocking issue and null total.
 
 Absence from open orders does not imply cancellation. Every previously known order
 needs current explicit order evidence; otherwise its projected state is null.
@@ -59,8 +62,8 @@ boundaries before supplying these inputs. Test-only SQL decoding is not register
 in a host.
 
 The `b4-order` acceptance suite combines the 144 B3 cases, 28 journal cases,
-28 private capture cases, 42 pure reducer cases and two PostgreSQL replay cases:
-244 total. It uses scripted venue messages and isolated test databases. No live
+28 private capture cases, 45 pure reducer cases and two PostgreSQL replay cases:
+247 total. It uses scripted venue messages and isolated test databases. No live
 credential or additional exchange order is used. PostgreSQL cases reopen physical
 connections, reconstruct committed observations, preserve quarantined alternatives
 and verify no legacy Orders/Fills writes.

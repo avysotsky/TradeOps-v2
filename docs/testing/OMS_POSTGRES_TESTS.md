@@ -54,8 +54,8 @@ Its exchange responses remain scripted; its injected PG databases are disposable
 test clones and never claim persistent retention. The separate
 [mainnet ETH qualification](../architecture/DERIBIT_MAINNET_ETH_QUALIFICATION.md)
 uses an independently marked persistent store and is not launched by this suite.
-`b4-order` runs 244 cases: those 144, 28 journal cases, 28 private capture cases,
-42 pure order-recovery cases and two committed PostgreSQL observation replay cases.
+`b4-order` runs 247 cases: those 144, 28 journal cases, 28 private capture cases,
+45 pure order-recovery cases and two committed PostgreSQL observation replay cases.
 It checks deduplication, missing evidence, collisions, stale epochs, account scope,
 partial-cancel/late-fill races and incomplete coverage. It performs no live exchange
 requests and never changes the retained mainnet qualification store. The

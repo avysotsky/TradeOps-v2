@@ -12,7 +12,7 @@ public enum DeribitOrderRecoveryProblem
 {
     IncompleteCoverage, ScopeMismatch, EpochMismatch, OutsideWindow, ExecutionCollision,
     ExternalOrder, MissingOrderEvidence, TermsChanged, ConflictingOrderReports,
-    CumulativeRegression, TerminalReopened, MissingCumulative, FillMismatch, InvalidTerminalQuantity,
+    CumulativeRegression, TerminalReopened, MissingCumulative, FillMismatch, InvalidOrderQuantity,
     QuantityOverflow
 }
 
@@ -116,7 +116,6 @@ public static class DeribitOrderRecoveryProjector
             var terminal = false;
             foreach (var report in reports)
             {
-                if (report.FilledNativeAmount is null) Add(DeribitOrderRecoveryProblem.MissingCumulative, key);
                 if (report.FilledNativeAmount < previousFilled) Add(DeribitOrderRecoveryProblem.CumulativeRegression, key);
                 if (terminal && !Terminal(report.OrderState)) Add(DeribitOrderRecoveryProblem.TerminalReopened, key);
                 previousFilled = report.FilledNativeAmount ?? previousFilled;
@@ -129,11 +128,14 @@ public static class DeribitOrderRecoveryProjector
             var latest = reports.LastOrDefault();
             if (latest is not null)
             {
+                if (latest.FilledNativeAmount is null) Add(DeribitOrderRecoveryProblem.MissingCumulative, key);
                 if (latest.FilledNativeAmount != filled) Add(DeribitOrderRecoveryProblem.FillMismatch, key);
                 if (filled > latest.NativeAmount ||
                     (latest.OrderState == "filled" && filled != latest.NativeAmount) ||
-                    (latest.OrderState == "rejected" && filled != 0))
-                    Add(DeribitOrderRecoveryProblem.InvalidTerminalQuantity, key);
+                    (latest.OrderState == "rejected" && filled != 0) ||
+                    (latest.OrderState == "open" && (filled == latest.NativeAmount ||
+                        (latest.LeavesNativeAmount.HasValue && latest.LeavesNativeAmount != latest.NativeAmount - filled))))
+                    Add(DeribitOrderRecoveryProblem.InvalidOrderQuantity, key);
             }
             // No report means unknown state/total, never a fabricated cancellation or order size.
             if (latest is not null)

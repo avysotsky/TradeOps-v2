@@ -26,8 +26,8 @@ ledger from committed capture plus a closed recovery batch.
 ## Validation
 
 Acceptance pending until actual build/TRX/cleanup/environment evidence is recorded.
-The `b4-order` suite selects 244 cases: previous B3 144, journal 28, private capture
-28, new reducer 42 and new PostgreSQL replay 2. Venue messages are scripted; no
+The `b4-order` suite selects 247 cases: previous B3 144, journal 28, private capture
+28, new reducer 45 and new PostgreSQL replay 2. Venue messages are scripted; no
 keys are unlocked and no real exchange operations are performed.
 
 ## Remaining scope
