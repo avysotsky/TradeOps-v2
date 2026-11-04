@@ -98,7 +98,7 @@ internal static class LiveInboxQualification
         return (long)(await query.ExecuteScalarAsync(ct))!;
     }
 
-    private sealed class CaptureRole : IAsyncDisposable
+    internal sealed class CaptureRole : IAsyncDisposable
     {
         private readonly OmsPostgresTestDatabase database;
         private readonly string name = "to_app_" + Guid.NewGuid().ToString("N");

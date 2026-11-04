@@ -15,5 +15,6 @@
                       LogicalName="TradeOps.TestSchema.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\scripts\testing\postgres-test-init.sql" LogicalName="TradeOps.TestSchema.postgres-test-init.sql" />
     <InternalsVisibleTo Include="TradeOps.UnitTests" />
+    <InternalsVisibleTo Include="TradeOps.DeribitTestnetOrderQualification" />
   </ItemGroup>
 </Project>

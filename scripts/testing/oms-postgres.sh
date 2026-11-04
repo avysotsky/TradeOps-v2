@@ -5,6 +5,7 @@ set -Eeuo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 suite=${1:-b2}
 live_inbox=false
+tool_project=TradeOps.DeribitLiveInboxQualification
 stream_filter='FullyQualifiedName~DeribitPrivateCaptureTests|FullyQualifiedName~DeribitPrivateCaptureParserTests|FullyQualifiedName~OmsPrivateCaptureCoordinatorTests|FullyQualifiedName~DeribitPrivateSocketTests|FullyQualifiedName~DeribitPrivateStreamPostgresTests|FullyQualifiedName~DeribitAdapterTests|FullyQualifiedName~DeribitWebSocketMessageParserTests|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_SelectsDeribitTestnetFromConfiguration|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_DeribitProductionBaseUrlIsRejectedOnResolution'
 case "$suite" in
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
@@ -14,6 +15,8 @@ case "$suite" in
   b3-session) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests"; expected=108 ;;
   b3-inbox) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests"; expected=117 ;;
   b3-live-inbox) live_inbox=true ;;
+  b3-testnet-order) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests"; expected=132 ;;
+  b3-live-testnet-order) live_inbox=true; tool_project=TradeOps.DeribitTestnetOrderQualification ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|fixture]'; exit 2 ;;
 esac
@@ -47,12 +50,13 @@ finish() {
     else
       : > "$out/database-after.txt"; result=1
     fi
-    python3 - "$out" "$result" <<'PY'
+    python3 - "$out" "$result" "$suite" <<'PY'
 import json,sys
 from pathlib import Path
-out=Path(sys.argv[1]); good=sys.argv[2]=='0'
+out=Path(sys.argv[1]); good=sys.argv[2]=='0'; testnet=sys.argv[3]=='b3-live-testnet-order'
 try: data=json.loads((out/'live-tool.log').read_text())
-except Exception: data=dict(Status='LIVE_INBOX_FAILED',Stage='GUARD_OR_TOOL_OUTPUT',DatabaseUsed=None,TradingReady=False,MutatingCalls=0)
+except Exception:
+    data=dict(Status='TESTNET_ORDER_FAILED_UNKNOWN' if testnet else 'LIVE_INBOX_FAILED',Stage='GUARD_OR_TOOL_OUTPUT',DatabaseUsed=None,TradingReady=False)
 try:
     db=(out/'database-after.txt').read_text().splitlines()
     clean=not any(x.startswith(('to_test_','to_app_')) for x in db) and sum(x.startswith('to_tpl_') for x in db)<=1 and db[-1]=='0'
@@ -60,10 +64,11 @@ except Exception: clean=False
 data['EnvironmentStatus']='PASS' if good else 'FAIL'; data['CleanupStatus']='PASS' if clean else 'FAIL'
 data['EvidenceRelativeDirectory']='.tradeops/postgres-reuse/'+out.name
 data['CaptureSourceCommit']=(out/'source-sha.txt').read_text().strip() if (out/'source-sha.txt').exists() else None
-ok=good and clean and data['Status'] in ['LIVE_INBOX_CONNECTED_NO_EVENTS','LIVE_INBOX_CAPTURE_PASS']
-if not ok: data['Status']='LIVE_INBOX_FAILED'
+ok=good and clean and data['Status'] in (['TESTNET_ORDER_CAPTURE_PASS'] if testnet else ['LIVE_INBOX_CONNECTED_NO_EVENTS','LIVE_INBOX_CAPTURE_PASS'])
+if not ok and not testnet: data['Status']='LIVE_INBOX_FAILED'
+if testnet and data['Status']=='TESTNET_ORDER_CAPTURE_PASS' and not ok: data['Status']='TESTNET_ORDER_CAPTURE_FAILED'
 (out/'summary.json').write_text(json.dumps(data,indent=2)+'\n')
-print('TRADEOPS_LIVE_INBOX_RESULT='+json.dumps(data,separators=(',',':')))
+print(('TRADEOPS_TESTNET_ORDER_RESULT=' if testnet else 'TRADEOPS_LIVE_INBOX_RESULT=')+json.dumps(data,separators=(',',':')))
 sys.exit(0 if ok else 1)
 PY
     exit "$?"
@@ -151,6 +156,8 @@ capture_paths=(
   src/TradeOps.Worker
   tools/TradeOps.DeribitPrivateSessionProbe
   tools/TradeOps.DeribitLiveInboxQualification
+  tools/TradeOps.DeribitTestnetOrderQualification
+  scripts/deribit/Deribit-TestnetOrderLocal.ps1
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
   src/TradeOps.Infrastructure/Exchange/ExchangeServiceRegistration.cs
@@ -171,7 +178,7 @@ manifest={p:hashlib.sha256((repo/p).read_bytes().replace(b'\r\n',b'\n')).hexdige
 (out/'source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 PY
 if [[ "$live_inbox" == true ]]; then
-  sha256sum "$repo/tools/TradeOps.DeribitLiveInboxQualification/bin/Release/net10.0/TradeOps.DeribitLiveInboxQualification.dll" > "$out/tool-assembly-sha256.txt"
+  sha256sum "$repo/tools/$tool_project/bin/Release/net10.0/$tool_project.dll" > "$out/tool-assembly-sha256.txt"
 else
   sha256sum "$repo/tests/TradeOps.UnitTests/bin/Release/net10.0/TradeOps.UnitTests.dll" > "$out/test-assembly-sha256.txt"
 fi
@@ -181,13 +188,14 @@ cd /tmp # use installed Ubuntu SDK outside global.json
 set +e
 if [[ "$live_inbox" == true ]]; then
   export TRADEOPS_B2_POSTGRES="$connection"
+  export TRADEOPS_TESTNET_ATTEMPT_DIRECTORY="$repo/.tradeops/b3-testnet-order/attempt"
   taskset -c "$cpu" runuser -u user -- env -u TRADEOPS_TEST_POSTGRES_ADMIN -u GITHUB_ACTIONS \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_PROCESSOR_COUNT=1 \
     DeribitTerminal__ExecutionEnabled=false DeribitTerminal__MainnetExecutionEnabled=false \
-    dotnet "$repo/tools/TradeOps.DeribitLiveInboxQualification/bin/Release/net10.0/TradeOps.DeribitLiveInboxQualification.dll" \
+    dotnet "$repo/tools/$tool_project/bin/Release/net10.0/$tool_project.dll" \
     > "$out/live-tool.log" 2>&1
   result=$?
-  unset TRADEOPS_B2_POSTGRES connection
+  unset TRADEOPS_B2_POSTGRES TRADEOPS_TESTNET_ATTEMPT_DIRECTORY connection
   exit "$result" # finish validates peer containers, guard, clone/role/session cleanup, then emits a redacted frame
 fi
 taskset -c "$cpu" runuser -u user -- env \
