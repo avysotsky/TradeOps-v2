@@ -84,4 +84,6 @@ flowchart TD
 
 Решение владельца 2026-11-04: вместо ожидания testnet выполнять [ограниченную ETH-PERPETUAL квалификацию на ранее сохранённом малом mainnet-счёте](DERIBIT_MAINNET_ETH_QUALIFICATION.md). Существующий ключ обновлён владельцем; account pin, торговое право и минимум 1 USD подтверждены API. Первый прогон ограничен одним post-only ордером 1 USD и адресной отменой, с постоянным журналом и проверкой сохранности существующей позиции. Обычные execution switches остаются false; отдельный qualification executable не регистрирует production sender и не квалифицирует B4/B5. Исторический [testnet harness](DERIBIT_TESTNET_ORDER_QUALIFICATION.md) сохраняется, ожидание testnet не блокирует текущую разработку.
 
+Первый B4 increment — [восстановление native order ledger из сохранённых и полученных заново фактов](DERIBIT_ORDER_RECOVERY_PROJECTION.md). Application reducer отделён от транспорта и БД: dedup исполнений, проверка сумм/статусов, scope/epoch/coverage, явные блокирующие расхождения. Это ещё не account recovery/READY: production reader, coherent collector, durable projection/checkpoint и позиции/балансы остаются следующими шагами.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.

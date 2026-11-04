@@ -11,6 +11,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-inbox
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-testnet-order
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-mainnet-eth
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -53,6 +54,13 @@ Its exchange responses remain scripted; its injected PG databases are disposable
 test clones and never claim persistent retention. The separate
 [mainnet ETH qualification](../architecture/DERIBIT_MAINNET_ETH_QUALIFICATION.md)
 uses an independently marked persistent store and is not launched by this suite.
+`b4-order` runs 244 cases: those 144, 28 journal cases, 28 private capture cases,
+42 pure order-recovery cases and two committed PostgreSQL observation replay cases.
+It checks deduplication, missing evidence, collisions, stale epochs, account scope,
+partial-cancel/late-fill races and incomplete coverage. It performs no live exchange
+requests and never changes the retained mainnet qualification store. The
+[order projection contract](../architecture/DERIBIT_ORDER_RECOVERY_PROJECTION.md)
+describes the boundary and remaining account recovery work.
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.
