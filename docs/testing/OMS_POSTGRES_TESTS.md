@@ -7,6 +7,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-stream
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-host
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-session
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -28,6 +29,10 @@ parser, coordinator, real loopback transport, PG pipeline and existing Deribit c
 host/ownership cases, 83 total. It uses scripted venue sockets. Its connection-loss
 case terminates only the owned backend of a generated application role inside its
 generated test clone; no container/server restart or persistent DB is used.
+`b3-session` checks those 83 plus nine protocol-only probe cases and 16 granted-scope
+policy cases, 108 total. All venue traffic in this suite remains scripted/loopback;
+it never unlocks a vault or performs live requests. The actual bounded Windows live
+probe has [separate evidence and limits](../architecture/DERIBIT_PRIVATE_SESSION_PROBE.md).
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.
