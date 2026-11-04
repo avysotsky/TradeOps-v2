@@ -1,22 +1,25 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using TradeOps.Domain.Oms;
 
 namespace TradeOps.DeribitTestnetOrderQualification;
 
 // This acceptance transport has no configurable destination, retries or production registration.
-internal sealed class TestnetRpc(HttpClient http)
+internal sealed class TestnetRpc(HttpClient http, OmsEnvironment environment = OmsEnvironment.Testnet)
 {
     private long id;
     internal string? Token { private get; set; }
     internal async Task<JsonElement> Call(string method, object parameters, CancellationToken ct)
     {
-        if (method is not ("public/auth" or "public/get_instrument" or "public/get_order_book" or
+        if (environment is not (OmsEnvironment.Testnet or OmsEnvironment.Mainnet)) throw new InvalidOperationException();
+        if (method is not ("public/auth" or "public/get_instrument" or "public/get_order_book" or "public/get_time" or
             "private/get_account_summary" or "private/get_open_orders_by_currency" or "private/get_positions" or
             "private/buy" or "private/cancel_by_label" or "private/get_order_state_by_label"))
             throw new InvalidOperationException("Unsupported acceptance method.");
         var requestId = Interlocked.Increment(ref id);
-        using var request = new HttpRequestMessage(HttpMethod.Post, "https://test.deribit.com/api/v2/" + method)
+        var host = environment == OmsEnvironment.Mainnet ? "www.deribit.com" : "test.deribit.com";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://" + host + "/api/v2/" + method)
         { Content = JsonContent.Create(new { jsonrpc = "2.0", id = requestId, method, @params = parameters }) };
         request.Headers.CacheControl = new CacheControlHeaderValue { NoStore = true };
         if (method.StartsWith("private/", StringComparison.Ordinal))

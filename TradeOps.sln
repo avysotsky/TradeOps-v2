@@ -52,6 +52,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitLiveInboxQu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitTestnetOrderQualification", "tools\TradeOps.DeribitTestnetOrderQualification\TradeOps.DeribitTestnetOrderQualification.csproj", "{5BBAFDE0-788F-4BBC-A9E3-1F4A4D0B4337}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitMainnetEthQualification", "tools\TradeOps.DeribitMainnetEthQualification\TradeOps.DeribitMainnetEthQualification.csproj", "{9BA37CA8-AE73-49BE-957F-C631FDE96521}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -160,5 +162,9 @@ Global
         {5BBAFDE0-788F-4BBC-A9E3-1F4A4D0B4337}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {5BBAFDE0-788F-4BBC-A9E3-1F4A4D0B4337}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {5BBAFDE0-788F-4BBC-A9E3-1F4A4D0B4337}.Release|Any CPU.Build.0 = Release|Any CPU
+        {9BA37CA8-AE73-49BE-957F-C631FDE96521}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {9BA37CA8-AE73-49BE-957F-C631FDE96521}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {9BA37CA8-AE73-49BE-957F-C631FDE96521}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {9BA37CA8-AE73-49BE-957F-C631FDE96521}.Release|Any CPU.Build.0 = Release|Any CPU
 EndGlobalSection
 EndGlobal

@@ -17,6 +17,7 @@ case "$suite" in
   b3-live-inbox) live_inbox=true ;;
   b3-testnet-order) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests"; expected=134 ;;
   b3-live-testnet-order) live_inbox=true; tool_project=TradeOps.DeribitTestnetOrderQualification ;;
+  b3-mainnet-eth) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests|FullyQualifiedName~DeribitMainnetEthQualificationTests"; expected=144 ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|fixture]'; exit 2 ;;
 esac
@@ -157,6 +158,8 @@ capture_paths=(
   tools/TradeOps.DeribitPrivateSessionProbe
   tools/TradeOps.DeribitLiveInboxQualification
   tools/TradeOps.DeribitTestnetOrderQualification
+  tools/TradeOps.DeribitMainnetEthQualification
+  scripts/deribit/Deribit-MainnetEthLocal.ps1
   scripts/deribit/Deribit-TestnetOrderLocal.ps1
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj

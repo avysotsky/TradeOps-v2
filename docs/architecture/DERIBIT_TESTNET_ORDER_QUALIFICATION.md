@@ -1,5 +1,9 @@
 # B3 — one testnet order and durable private events
 
+The owner's subsequent [small-account mainnet ETH decision](DERIBIT_MAINNET_ETH_QUALIFICATION.md)
+supersedes waiting for this testnet scenario. This document still describes only
+the original testnet entrypoint, which cannot enable mainnet trading.
+
 The next acceptance run has a finite result: one BTC-PERPETUAL minimum-size passive
 buy, its committed open event, a targeted cancellation and its committed cancelled
 event. It never treats a quiet socket as an order-capture success.

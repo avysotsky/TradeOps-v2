@@ -32,21 +32,45 @@ internal sealed class TestnetOrderInput
             ClientId.Any(char.IsControl) || ClientSecret.Any(char.IsControl))
             throw new InvalidOperationException("Explicit dedicated testnet qualification required.");
     }
+    internal void ValidateMainnetEth()
+    {
+        if (Purpose != "MAINNET_SMALL_ETH_ONE_ORDER_V1" || Environment != "Mainnet" ||
+            !ApprovedOneOrderAndCancellation || ExpectedAccountId <= 0 || AccountType is not ("main" or "subaccount") ||
+            string.IsNullOrWhiteSpace(ClientId) || string.IsNullOrWhiteSpace(ClientSecret) || ClientId.Length > 512 ||
+            ClientSecret.Length > 4096 || ClientId.Any(char.IsControl) || ClientSecret.Any(char.IsControl))
+            throw new InvalidOperationException("Pinned owner-approved one-dollar ETH mainnet scope required.");
+    }
 }
 
 internal sealed record TestnetOrderResult(string Status, bool? DatabaseUsed, int PlacementAttempts,
     int CancellationAttempts, bool ExchangeOrderResolved, bool OpenEventCommitted, bool CancelEventCommitted,
-    bool UnexpectedFill, long? IncidentRows, bool TradingReady = false, string Environment = "Testnet");
+    bool UnexpectedFill, long? IncidentRows, bool TradingReady = false, string Environment = "Testnet", bool JournalRetained = false,
+    bool BaselinePositionPreserved = true);
 
 internal static class TestnetOrderQualification
 {
     internal const string Instrument = "BTC-PERPETUAL";
     internal const decimal MaximumNativeUsd = 10m;
-    internal static async Task<TestnetOrderResult> RunAsync(TestnetOrderInput input, HttpClient http,
+    internal static Task<TestnetOrderResult> RunAsync(TestnetOrderInput input, HttpClient http,
         string attemptDirectory, CancellationToken ct,
-        Func<DeribitOptions, DeribitPrivateWebSocketStream>? streamFactory = null)
+        Func<DeribitOptions, DeribitPrivateWebSocketStream>? streamFactory = null) =>
+        RunCoreAsync(input, http, attemptDirectory, false, ct, streamFactory);
+
+    internal static Task<TestnetOrderResult> RunMainnetEthAsync(TestnetOrderInput input, HttpClient http,
+        string attemptDirectory, CancellationToken ct,
+        Func<DeribitOptions, DeribitPrivateWebSocketStream>? streamFactory = null,
+        Func<bool, CancellationToken, Task<QualificationDatabase>>? databaseFactory = null) =>
+        RunCoreAsync(input, http, attemptDirectory, true, ct, streamFactory, databaseFactory);
+
+    private static async Task<TestnetOrderResult> RunCoreAsync(TestnetOrderInput input, HttpClient http,
+        string attemptDirectory, bool mainnet, CancellationToken ct,
+        Func<DeribitOptions, DeribitPrivateWebSocketStream>? streamFactory,
+        Func<bool, CancellationToken, Task<QualificationDatabase>>? databaseFactory = null)
     {
-        input.Validate(); // Before filesystem, DB or network access.
+        if (mainnet) input.ValidateMainnetEth(); else input.Validate(); // Before filesystem, DB or network access.
+        var environment = mainnet ? OmsEnvironment.Mainnet : OmsEnvironment.Testnet;
+        var instrumentName = mainnet ? "ETH-PERPETUAL" : Instrument;
+        var currency = mainnet ? "ETH" : "BTC";
         Directory.CreateDirectory(attemptDirectory);
         // One running acceptance process in this local directory. No claim of production sender fencing.
         using var exclusive = new FileStream(Path.Combine(attemptDirectory, "run.lock"), FileMode.OpenOrCreate,
@@ -54,7 +78,7 @@ internal static class TestnetOrderQualification
         // Never start a second order while the previous attempt has no proved exchange resolution.
         var markerPath = Path.Combine(attemptDirectory, "attempt.json");
         if (File.Exists(markerPath)) throw new InvalidOperationException("Previous testnet attempt needs reconciliation.");
-        var rpc = new TestnetRpc(http);
+        var rpc = new TestnetRpc(http, environment);
         // HTTP connections may change between requests: connection-scoped WS tokens cannot be reused here.
         var restSession = "session:to_b3_" + Guid.NewGuid().ToString("N");
         var auth = await rpc.Call("public/auth", new { grant_type = "client_credentials", client_id = input.ClientId,
@@ -64,31 +88,41 @@ internal static class TestnetOrderQualification
         if (auth.GetProperty("expires_in").GetInt32() is < 150 or > 300)
             throw new InvalidOperationException("Unexpected bounded REST token lifetime.");
         rpc.Token = auth.GetProperty("access_token").GetString() ?? throw new InvalidOperationException();
-        var identity = await rpc.Call("private/get_account_summary", new { currency = "BTC", extended = true }, ct);
+        var identity = await rpc.Call("private/get_account_summary", new { currency, extended = true }, ct);
         var nativeId = identity.GetProperty("id").GetInt64();
         var accountType = identity.GetProperty("type").GetString();
         if (nativeId <= 0 || accountType is not ("main" or "subaccount") ||
             input.ExpectedAccountId != 0 && nativeId != input.ExpectedAccountId ||
             input.AccountType.Length != 0 && accountType != input.AccountType)
             throw new InvalidOperationException("Testnet account pin failed.");
-        var orders = await rpc.Call("private/get_open_orders_by_currency", new { currency = "BTC" }, ct);
-        var positions = await rpc.Call("private/get_positions", new { currency = "BTC" }, ct);
-        if (orders.GetArrayLength() != 0 || positions.EnumerateArray().Any(x => x.GetProperty("size").GetDecimal() != 0))
+        if (mainnet && (identity.GetProperty("total_equity_usd").GetDecimal() is <= 0 or > 20 ||
+            identity.GetProperty("total_margin_balance_usd").GetDecimal() - identity.GetProperty("total_initial_margin_usd").GetDecimal() < 1))
+            throw new InvalidOperationException("Small account equity/margin guard refused.");
+        var orders = await rpc.Call("private/get_open_orders_by_currency", new { currency }, ct);
+        var positions = await rpc.Call("private/get_positions", new { currency }, ct);
+        if (orders.GetArrayLength() != 0 || (!mainnet && positions.EnumerateArray().Any(x => x.GetProperty("size").GetDecimal() != 0)))
             throw new InvalidOperationException("An idle dedicated BTC test account is required.");
-        var instrument = await rpc.Call("public/get_instrument", new { instrument_name = Instrument }, ct);
-        var book = await rpc.Call("public/get_order_book", new { instrument_name = Instrument, depth = 1 }, ct);
-        var terms = ValidateRisk(instrument, book, DateTimeOffset.UtcNow);
+        var baselinePosition = mainnet ? PositionFingerprint(positions, instrumentName) : "";
+        var instrument = await rpc.Call("public/get_instrument", new { instrument_name = instrumentName }, ct);
+        var book = await rpc.Call("public/get_order_book", new { instrument_name = instrumentName, depth = 1 }, ct);
+        var terms = ValidateRisk(instrument, book, DateTimeOffset.UtcNow, mainnet);
         var native = "observed-native:" + nativeId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var scope = new AccountKey(new("local-testnet-qualification"), new("DERIBIT"), OmsEnvironment.Testnet,
+        var scope = new AccountKey(new(mainnet ? "local-mainnet-qualification" : "local-testnet-qualification"), new("DERIBIT"), environment,
             new(native), accountType == "subaccount" ? new TradingSubaccountId(native) : null);
-        await using var database = await OmsPostgresTestDatabase.CreateAsync();
-        await using var role = await CaptureRole.CreateAsync(database, ct);
-        await using var owner = await OmsPostgresPrivateCaptureOwner.AcquireAsync(role.Source, scope, ct);
+        await using var database = await (databaseFactory?.Invoke(mainnet, ct) ?? QualificationDatabase.OpenAsync(mainnet, ct));
+        await using var owner = await OmsPostgresPrivateCaptureOwner.AcquireAsync(database.Capture, scope, ct);
         await using var coordinator = new OmsPrivateCaptureCoordinator(owner);
-        var journal = new OmsPostgresJournal(database.Source);
+        var journal = new OmsPostgresJournal(database.Journal);
+        if (mainnet)
+        {
+            await using var gate = await database.Journal.OpenConnectionAsync(ct);
+            await using var unresolved = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM oms_commands WHERE dispatch_phase IN ('DispatchStarted','Ambiguous')) OR EXISTS(SELECT 1 FROM oms_integrity_incidents)", gate);
+            if (await unresolved.ExecuteScalarAsync(ct) is not false)
+                throw new InvalidOperationException("Unresolved durable mainnet state refuses a new placement.");
+        }
         var plan = new DeribitPrivateCapturePlan(nativeId, accountType == "subaccount",
-            new[] { new DeribitPrivateInstrument(Instrument, "future", "BTC", OmsPrivateAmountUnit.Usd, "USD") });
-        var settings = new DeribitOptions { WebSocketUrl = "wss://test.deribit.com/ws/api/v2",
+            new[] { new DeribitPrivateInstrument(instrumentName, "future", currency, OmsPrivateAmountUnit.Usd, "USD") });
+        var settings = new DeribitOptions { WebSocketUrl = mainnet ? "wss://www.deribit.com/ws/api/v2" : "wss://test.deribit.com/ws/api/v2",
             ClientId = input.ClientId, ClientSecret = input.ClientSecret };
         var stream = streamFactory?.Invoke(settings) ?? new(settings, NullLogger<DeribitPrivateWebSocketStream>.Instance);
         var diagnostics = new DeribitPrivateCaptureDiagnostics();
@@ -106,14 +140,21 @@ internal static class TestnetOrderQualification
         {
             await WaitAsync(() => Task.FromResult(diagnostics.Snapshot.SubscriptionsConfirmed == 1), run,
                 diagnostics, TimeSpan.FromSeconds(30), ct);
-            instrument = await rpc.Call("public/get_instrument", new { instrument_name = Instrument }, ct);
-            book = await rpc.Call("public/get_order_book", new { instrument_name = Instrument, depth = 1 }, ct);
-            terms = ValidateRisk(instrument, book, DateTimeOffset.UtcNow);
+            instrument = await rpc.Call("public/get_instrument", new { instrument_name = instrumentName }, ct);
+            book = await rpc.Call("public/get_order_book", new { instrument_name = instrumentName, depth = 1 }, ct);
+            terms = ValidateRisk(instrument, book, DateTimeOffset.UtcNow, mainnet);
+            long? validUntil = null;
+            if (mainnet)
+            {
+                var time = (await rpc.Call("public/get_time", new { }, ct)).GetInt64();
+                if (Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - time) > 5000) throw new InvalidOperationException("Venue clock guard failed.");
+                validUntil = time + 5000;
+            }
             // A non-secret recovery marker is flushed BEFORE dispatch. Never delete it after uncertainty.
             using (var marker = new FileStream(markerPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
             {
-                JsonSerializer.Serialize(marker, new { environment = "Testnet", instrument = Instrument,
-                    label, state = "MAY_HAVE_BEEN_SENT", createdAtUtc = DateTimeOffset.UtcNow });
+                JsonSerializer.Serialize(marker, new { environment = environment.ToString(), instrument = instrumentName,
+                    label, state = "MAY_HAVE_BEEN_SENT", validUntil, createdAtUtc = DateTimeOffset.UtcNow });
                 marker.Flush(true);
             }
             var command = Request(OmsJournalCommandKind.Place, 0);
@@ -122,11 +163,13 @@ internal static class TestnetOrderQualification
             try
             {
                 // Exactly one send. No retries after timeout, cancellation or an ambiguous response.
-                var reply = await rpc.Call("private/buy", new { instrument_name = Instrument,
-                    amount = terms.Amount, type = "limit", price = terms.Price, time_in_force = "good_til_cancelled",
-                    post_only = true, reject_post_only = true, label }, ct);
+                var payload = new Dictionary<string, object> { ["instrument_name"] = instrumentName,
+                    ["amount"] = terms.Amount, ["type"] = "limit", ["price"] = terms.Price, ["time_in_force"] = "good_til_cancelled",
+                    ["post_only"] = true, ["reject_post_only"] = true, ["label"] = label };
+                if (validUntil.HasValue) payload["valid_until"] = validUntil.Value;
+                var reply = await rpc.Call("private/buy", payload, ct);
                 var order = reply.GetProperty("order");
-                VerifyOrder(order, label, terms.Amount);
+                VerifyOrder(order, label, terms.Amount, instrumentName);
                 exchangeOrderId = order.GetProperty("order_id").GetString();
                 accepted = order.GetProperty("order_state").GetString() == "open";
                 unexpectedFill |= order.GetProperty("filled_amount").GetDecimal() != 0;
@@ -155,7 +198,7 @@ internal static class TestnetOrderQualification
                     cancellations = 1;
                     try
                     {
-                        var reply = await rpc.Call("private/cancel_by_label", new { currency = "BTC", label }, cleanup.Token);
+                        var reply = await rpc.Call("private/cancel_by_label", new { currency, label }, cleanup.Token);
                         if (reply.GetInt32() is < 0 or > 1) throw new InvalidOperationException();
                         await journal.RecordOutcomeAsync(scope, cancel.CommandId, OmsJournalDispatchOutcome.Acknowledged, cleanup.Token);
                     }
@@ -164,9 +207,9 @@ internal static class TestnetOrderQualification
                         await journal.RecordOutcomeAsync(scope, cancel.CommandId, OmsJournalDispatchOutcome.Ambiguous, cleanup.Token);
                         // A lost cancel ACK is resolved only by querying explicit order state below.
                     }
-                    var states = await rpc.Call("private/get_order_state_by_label", new { currency = "BTC", label }, cleanup.Token);
+                    var states = await rpc.Call("private/get_order_state_by_label", new { currency, label }, cleanup.Token);
                     if (states.GetArrayLength() != 1) throw new InvalidOperationException();
-                    var state = states[0]; VerifyOrder(state, label, terms.Amount);
+                    var state = states[0]; VerifyOrder(state, label, terms.Amount, instrumentName);
                     if (exchangeOrderId is not null && exchangeOrderId != state.GetProperty("order_id").GetString())
                         throw new InvalidOperationException("Resolved order identity differs.");
                     exchangeOrderId ??= state.GetProperty("order_id").GetString();
@@ -185,7 +228,7 @@ internal static class TestnetOrderQualification
             try { await run.WaitAsync(TimeSpan.FromSeconds(20)); successfulShutdown = true; } catch { }
         }
         using var audit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await using var auditConnection = await role.Source.OpenConnectionAsync(audit.Token);
+        await using var auditConnection = await database.Capture.OpenConnectionAsync(audit.Token);
         await using var incidentsQuery = new NpgsqlCommand("SELECT count(*) FROM oms_integrity_incidents", auditConnection);
         var incidents = (long)(await incidentsQuery.ExecuteScalarAsync(audit.Token))!;
         await using var fillsQuery = new NpgsqlCommand("""
@@ -195,21 +238,25 @@ SELECT EXISTS(SELECT 1 FROM oms_inbox WHERE schema_version=2 AND
 """, auditConnection);
         fillsQuery.Parameters.AddWithValue("label", label);
         unexpectedFill |= (bool)(await fillsQuery.ExecuteScalarAsync(audit.Token))!;
+        var baselinePreserved = !mainnet || placements == 0 || baselinePosition == PositionFingerprint(
+            await rpc.Call("private/get_positions", new { currency }, audit.Token), instrumentName);
         var d = diagnostics.Snapshot;
         var pass = accepted && resolved && openCommitted && cancelCommitted && !unexpectedFill &&
             successfulShutdown && incidents == 0 && d.Epochs == 1 && d.Problems == 0 &&
-            d.Authenticated == 1 && d.AccountsVerified == 1 && d.SubscriptionsConfirmed == 1;
+            d.Authenticated == 1 && d.AccountsVerified == 1 && d.SubscriptionsConfirmed == 1 && baselinePreserved;
         // Keep the attempt marker even after resolution; launcher archives it before an explicitly new run.
-        if (resolved) File.WriteAllText(markerPath, JsonSerializer.Serialize(new { environment = "Testnet",
-            instrument = Instrument, label, state = unexpectedFill ? "RESOLVED_WITH_FILL" : "RESOLVED", pass }));
-        return new(pass ? "TESTNET_ORDER_CAPTURE_PASS" : resolved ? "TESTNET_ORDER_CAPTURE_FAILED" :
-            "TESTNET_ORDER_UNRESOLVED", true, placements, cancellations, resolved, openCommitted,
-            cancelCommitted, unexpectedFill, incidents);
+        if (resolved) File.WriteAllText(markerPath, JsonSerializer.Serialize(new { environment = environment.ToString(),
+            instrument = instrumentName, label, state = unexpectedFill ? "RESOLVED_WITH_FILL" : "RESOLVED", pass }));
+        var prefix = mainnet ? "MAINNET_ETH" : "TESTNET_ORDER";
+        return new(pass ? prefix + "_CAPTURE_PASS" : resolved ? prefix + "_CAPTURE_FAILED" :
+            prefix + "_UNRESOLVED", true, placements, cancellations, resolved, openCommitted,
+            cancelCommitted, unexpectedFill, incidents, Environment: environment.ToString(), JournalRetained: database.Persistent,
+            BaselinePositionPreserved: baselinePreserved);
 
         OmsJournalCommandRequest Request(OmsJournalCommandKind kind, long version) => new(scope, local, intent,
-            new(Guid.NewGuid()), new(version), new(kind, Instrument, OrderSide.Buy, OrderType.Limit,
+            new(Guid.NewGuid()), new(version), new(kind, instrumentName, OrderSide.Buy, OrderType.Limit,
                 terms.Amount, OmsQuantityUnit.QuoteAsset, terms.Price, null, "good_til_cancelled", false, true,
-                "testnet-one-order-acceptance", "owner-approved-testnet", "bounded-testnet-usd10:" + label,
+                mainnet ? "mainnet-eth-one-dollar-v1" : "testnet-one-order-acceptance", "owner-approved-qualification", (mainnet ? "mainnet-usd1:" : "bounded-testnet-usd10:") + label,
                 DateTimeOffset.UtcNow, TargetClientOrderId: label));
         async Task Start(OmsJournalCommandRequest request, CancellationToken token)
         {
@@ -219,28 +266,31 @@ SELECT EXISTS(SELECT 1 FROM oms_inbox WHERE schema_version=2 AND
         }
         async Task<long> CountState(string state, CancellationToken token)
         {
-            await using var db = await role.Source.OpenConnectionAsync(token);
+            await using var db = await database.Capture.OpenConnectionAsync(token);
             await using var query = new NpgsqlCommand("""
-SELECT count(*) FROM oms_inbox WHERE schema_version=2 AND environment=3
+SELECT count(*) FROM oms_inbox WHERE schema_version=2 AND environment=@environment
  AND event_json->'facts'->>'clientLabel'=@label
- AND event_json->'facts'->>'nativeInstrument'='BTC-PERPETUAL'
+ AND event_json->'facts'->>'nativeInstrument'=@instrument
  AND event_json->'facts'->>'orderState'=@state
  AND (@orderId='' OR event_json->'facts'->>'exchangeOrderId'=@orderId)
  AND (event_json->'facts'->>'filledNativeAmount')::numeric=0
 """, db);
             query.Parameters.AddWithValue("label", label); query.Parameters.AddWithValue("state", state);
             query.Parameters.AddWithValue("orderId", exchangeOrderId ?? "");
+            query.Parameters.AddWithValue("environment", (short)environment); query.Parameters.AddWithValue("instrument", instrumentName);
             return (long)(await query.ExecuteScalarAsync(token))!;
         }
     }
 
-    internal static (decimal Amount, decimal Price) ValidateRisk(JsonElement metadata, JsonElement book, DateTimeOffset now)
+    internal static (decimal Amount, decimal Price) ValidateRisk(JsonElement metadata, JsonElement book, DateTimeOffset now, bool mainnetEth = false)
     {
-        if (metadata.GetProperty("instrument_name").GetString() != Instrument ||
+        var name = mainnetEth ? "ETH-PERPETUAL" : Instrument;
+        var currency = mainnetEth ? "ETH" : "BTC";
+        if (metadata.GetProperty("instrument_name").GetString() != name ||
             metadata.GetProperty("kind").GetString() != "future" || metadata.GetProperty("instrument_type").GetString() != "reversed" ||
-            metadata.GetProperty("base_currency").GetString() != "BTC" || metadata.GetProperty("quote_currency").GetString() != "USD" ||
-            metadata.GetProperty("settlement_currency").GetString() != "BTC" || !metadata.GetProperty("is_active").GetBoolean() ||
-            book.GetProperty("instrument_name").GetString() != Instrument || book.GetProperty("state").GetString() != "open")
+            metadata.GetProperty("base_currency").GetString() != currency || metadata.GetProperty("quote_currency").GetString() != "USD" ||
+            metadata.GetProperty("settlement_currency").GetString() != currency || !metadata.GetProperty("is_active").GetBoolean() ||
+            book.GetProperty("instrument_name").GetString() != name || book.GetProperty("state").GetString() != "open")
             throw new InvalidOperationException("Unsupported test instrument.");
         if (metadata.TryGetProperty("tick_size_steps", out var steps) && steps.GetArrayLength() != 0)
             throw new InvalidOperationException("Stepped tick sizes require separate qualification.");
@@ -251,7 +301,7 @@ SELECT count(*) FROM oms_inbox WHERE schema_version=2 AND environment=3
         var minimum = book.GetProperty("min_price").GetDecimal();
         var maximum = book.GetProperty("max_price").GetDecimal();
         var age = now - DateTimeOffset.FromUnixTimeMilliseconds(book.GetProperty("timestamp").GetInt64());
-        if (amount <= 0 || amount > MaximumNativeUsd || tick <= 0 || bid <= 0 || ask <= bid ||
+        if (amount <= 0 || amount > (mainnetEth ? 1m : MaximumNativeUsd) || tick <= 0 || bid <= 0 || ask <= bid ||
             minimum <= 0 || maximum < ask || age < TimeSpan.FromSeconds(-2) || age > TimeSpan.FromSeconds(5))
             throw new InvalidOperationException("Bounded testnet risk check failed.");
         var price = decimal.Floor(bid * 0.995m / tick) * tick;
@@ -274,9 +324,16 @@ SELECT count(*) FROM oms_inbox WHERE schema_version=2 AND environment=3
             !scope.Split(' ').Contains(expectedSession) || !scope.Split(' ').Contains("trade:read_write") || !scope.Split(' ').Contains("account:read"))
             throw new InvalidOperationException("Required testnet grant missing.");
     }
-    private static void VerifyOrder(JsonElement order, string label, decimal amount)
+    private static string PositionFingerprint(JsonElement positions, string instrument)
     {
-        if (order.GetProperty("label").GetString() != label || order.GetProperty("instrument_name").GetString() != Instrument ||
+        var selected = positions.EnumerateArray().Where(x => x.GetProperty("instrument_name").GetString() == instrument).ToArray();
+        if (selected.Length > 1) throw new InvalidOperationException("Ambiguous initial instrument position.");
+        return JsonSerializer.Serialize(selected.Select(x => new { Direction = x.GetProperty("direction").GetString(),
+            Size = x.GetProperty("size").GetDecimal().ToString("G29", System.Globalization.CultureInfo.InvariantCulture) }));
+    }
+    private static void VerifyOrder(JsonElement order, string label, decimal amount, string instrument)
+    {
+        if (order.GetProperty("label").GetString() != label || order.GetProperty("instrument_name").GetString() != instrument ||
             order.GetProperty("direction").GetString() != "buy" || order.GetProperty("amount").GetDecimal() != amount ||
             string.IsNullOrWhiteSpace(order.GetProperty("order_id").GetString())) throw new InvalidOperationException("Order pin failed.");
     }

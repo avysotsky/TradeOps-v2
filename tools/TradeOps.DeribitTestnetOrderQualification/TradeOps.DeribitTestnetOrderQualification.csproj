@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="..\TradeOps.DeribitLiveInboxQualification\TradeOps.DeribitLiveInboxQualification.csproj" />
     <InternalsVisibleTo Include="TradeOps.UnitTests" />
+    <InternalsVisibleTo Include="TradeOps.DeribitMainnetEthQualification" />
   </ItemGroup>
 </Project>

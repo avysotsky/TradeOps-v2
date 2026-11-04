@@ -18,7 +18,7 @@
 
 ## Среда и безопасность
 
-- MAINNET STRICT READ-ONLY: оба execution switches false. Никаких реальных placement/cancel/replace. Мутирующие testnet-проверки требуют отдельного разрешения.
+- Решение владельца 2026-11-04: продолжать ограниченные торговые проверки на ранее сохранённом малом mainnet-счёте, не ждать testnet. Первый отдельный прогон — ETH-PERPETUAL, максимум 1 USD native notional, один post-only placement и адресная отмена, без повторной отправки; при fill остановиться и сообщить, без автоматического flatten. Владелец обновил права существующего ключа до торговли; повторно ключ/разрешение не запрашивать. Привязку сверять по сохранённому encrypted native pin. Журнал mainnet сохранять постоянно, не в удаляемом test clone. Оба обычных execution switches по умолчанию false; разрешение не включает произвольную торговлю, другие счета, увеличение размера, cancel-all или изменение существующих позиций.
 - Не трогать production Comments/Command Service, соседние проекты, постоянные БД, Docker daemon, глобальные настройки или WSL. Никаких глобальных prune/restart/compose down.
 - До и после тяжёлой работы Ubuntu выполнять `/home/user/.local/bin/wsl-resource-guard`; при отказе не начинать тяжёлую операцию.
 - Сборка существующим Windows SDK `D:\DotNet\dotnet.exe`, последовательно: `-m:1 -nr:false -p:BuildInParallel=false -p:UseSharedCompilation=false`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`. Не устанавливать SDK и не менять global.json ради WSL.
