@@ -16,7 +16,7 @@ internal sealed class TestnetRpc(HttpClient http)
             "private/buy" or "private/cancel_by_label" or "private/get_order_state_by_label"))
             throw new InvalidOperationException("Unsupported acceptance method.");
         var requestId = Interlocked.Increment(ref id);
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://test.deribit.com/api/v2/" + method)
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://test.deribit.com/api/v2/" + method)
         { Content = JsonContent.Create(new { jsonrpc = "2.0", id = requestId, method, @params = parameters }) };
         request.Headers.CacheControl = new CacheControlHeaderValue { NoStore = true };
         if (method.StartsWith("private/", StringComparison.Ordinal))

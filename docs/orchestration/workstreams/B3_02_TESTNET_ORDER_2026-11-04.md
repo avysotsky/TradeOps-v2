@@ -60,9 +60,11 @@ are implemented, with no changes to production execution switches or host defaul
 
 ## Next action
 
-Authorization is received and recorded locally; do not request it again. Enroll
-the separate testnet key via the hidden local prompt, then execute one bounded cycle at the published
-SHA and inspect exchange state, committed events and cleanup. Do not launch more
-quiet mainnet sessions while waiting. After evidence from this cycle, implement
+Authorization is received and recorded locally; do not request it again.
+[Subsequent key enrollment and real preflight](B3_02_TESTNET_KEY_2026-11-04.md) are
+complete; BTC-PERPETUAL currently reports halted. When it reopens, execute one
+bounded cycle at the published SHA and inspect exchange state, committed events
+and cleanup. Do not launch more quiet mainnet sessions while waiting.
+After evidence from this cycle, implement
 the recovery/history/fill cases needed by B4 and the full risk/sender gates in B5;
 this first cancellation scenario cannot prove partial-fill or outage recovery.

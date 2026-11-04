@@ -39,10 +39,12 @@ probe has [separate evidence and limits](../architecture/DERIBIT_PRIVATE_SESSION
 and four fixture cases. Its venue responses are synthetic; actual commit/dedup uses
 restricted-role PostgreSQL. The optional [live inbox mode](../architecture/DERIBIT_LIVE_INBOX_QUALIFICATION.md)
 is separate and never runs from these offline tests.
-`b3-testnet-order` adds 15 cases to the 117 inbox/fixture cases, 132 total.
+`b3-testnet-order` adds 17 cases to the 117 inbox/fixture cases, 134 total.
 These use scripted exchange replies and real PostgreSQL for journal/capture,
 including one placement, lost place/cancel ACK, unresolved cancellation, an
-unexpected fill and refusal to repeat an attempt. The separately approved
+unexpected fill and refusal to repeat an attempt.
+HTTP requests assert POST and short REST-session scope, rejecting WS connection
+tokens or another session. The separately approved
 [one-order live testnet scenario](../architecture/DERIBIT_TESTNET_ORDER_QUALIFICATION.md)
 does not run in this suite.
 `fixture` checks four additional integration cases

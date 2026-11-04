@@ -15,7 +15,7 @@ case "$suite" in
   b3-session) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests"; expected=108 ;;
   b3-inbox) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests"; expected=117 ;;
   b3-live-inbox) live_inbox=true ;;
-  b3-testnet-order) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests"; expected=132 ;;
+  b3-testnet-order) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests"; expected=134 ;;
   b3-live-testnet-order) live_inbox=true; tool_project=TradeOps.DeribitTestnetOrderQualification ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|fixture]'; exit 2 ;;

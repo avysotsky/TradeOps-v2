@@ -55,10 +55,14 @@ internal static class TestnetOrderQualification
         var markerPath = Path.Combine(attemptDirectory, "attempt.json");
         if (File.Exists(markerPath)) throw new InvalidOperationException("Previous testnet attempt needs reconciliation.");
         var rpc = new TestnetRpc(http);
+        // HTTP connections may change between requests: connection-scoped WS tokens cannot be reused here.
+        var restSession = "session:to_b3_" + Guid.NewGuid().ToString("N");
         var auth = await rpc.Call("public/auth", new { grant_type = "client_credentials", client_id = input.ClientId,
             client_secret = input.ClientSecret,
-            scope = "connection trade:read_write account:read wallet:none block_trade:none block_rfq:none" }, ct);
-        ValidateGrant(auth.GetProperty("scope").GetString()!);
+            scope = restSession + " expires:300 trade:read_write account:read wallet:none block_trade:none block_rfq:none" }, ct);
+        ValidateGrant(auth.GetProperty("scope").GetString()!, restSession);
+        if (auth.GetProperty("expires_in").GetInt32() is < 150 or > 300)
+            throw new InvalidOperationException("Unexpected bounded REST token lifetime.");
         rpc.Token = auth.GetProperty("access_token").GetString() ?? throw new InvalidOperationException();
         var identity = await rpc.Call("private/get_account_summary", new { currency = "BTC", extended = true }, ct);
         var nativeId = identity.GetProperty("id").GetInt64();
@@ -255,19 +259,19 @@ SELECT count(*) FROM oms_inbox WHERE schema_version=2 AND environment=3
             throw new InvalidOperationException("No qualified passive test price.");
         return (amount, price);
     }
-    internal static void ValidateGrant(string scope)
+    internal static void ValidateGrant(string scope, string expectedSession)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in scope.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             var key = item.Split(':')[0];
-            if (!seen.Add(key) || (item is not ("connection" or "trade:read_write" or "account:read" or
+            if (!seen.Add(key) || (item != expectedSession && item is not ("expires:300" or "trade:read_write" or "account:read" or
                 "wallet:none" or "block_trade:none" or "block_rfq:none" or "mainaccount" or "subaccount") &&
                 !(item.StartsWith("name:", StringComparison.Ordinal) && item.Length is > 5 and <= 160 && !item.Any(char.IsControl))))
                 throw new InvalidOperationException("Unexpected testnet grant.");
         }
         if (seen.Contains("mainaccount") && seen.Contains("subaccount") ||
-            !scope.Split(' ').Contains("connection") || !scope.Split(' ').Contains("trade:read_write") || !scope.Split(' ').Contains("account:read"))
+            !scope.Split(' ').Contains(expectedSession) || !scope.Split(' ').Contains("trade:read_write") || !scope.Split(' ').Contains("account:read"))
             throw new InvalidOperationException("Required testnet grant missing.");
     }
     private static void VerifyOrder(JsonElement order, string label, decimal amount)

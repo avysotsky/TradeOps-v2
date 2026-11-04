@@ -22,12 +22,14 @@ public sealed class DeribitTestnetOrderQualificationTests
     }
 
     [Theory]
-    [InlineData("connection trade:read_write account:read wallet:read_write")]
-    [InlineData("connection trade:read_write account:read account:read")]
-    [InlineData("connection trade:read account:read")]
-    [InlineData("connection trade:read_write account:read mainaccount subaccount")]
+    [InlineData("session:to_b3_test trade:read_write account:read wallet:read_write")]
+    [InlineData("session:to_b3_test trade:read_write account:read account:read")]
+    [InlineData("session:to_b3_test trade:read account:read")]
+    [InlineData("session:to_b3_test trade:read_write account:read mainaccount subaccount")]
+    [InlineData("connection trade:read_write account:read")]
+    [InlineData("session:another trade:read_write account:read")]
     public void ExpandedOrMalformedGrant_Refused(string scope) =>
-        Assert.Throws<InvalidOperationException>(() => TestnetOrderQualification.ValidateGrant(scope));
+        Assert.Throws<InvalidOperationException>(() => TestnetOrderQualification.ValidateGrant(scope,"session:to_b3_test"));
 
     [Theory]
     [InlineData(20, 0)]
@@ -129,13 +131,17 @@ public sealed class DeribitTestnetOrderQualificationTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Assert.Equal("https", request.RequestUri!.Scheme); Assert.Equal("test.deribit.com", request.RequestUri.Host);
+            Assert.Equal(HttpMethod.Post, request.Method);
             Calls++;
             using var message = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             var root = message.RootElement; var method = root.GetProperty("method").GetString();
             var parameters = root.GetProperty("params"); object result;
             switch (method)
             {
-                case "public/auth": result = new { access_token = "synthetic-token", scope = "connection trade:read_write account:read" }; break;
+                case "public/auth":
+                    Assert.StartsWith("session:to_b3_", parameters.GetProperty("scope").GetString());
+                    Assert.Contains("expires:300", parameters.GetProperty("scope").GetString());
+                    result = new { access_token = "synthetic-token", expires_in = 300, scope = parameters.GetProperty("scope").GetString() }; break;
                 case "private/get_account_summary": result = new { id = 123, type = "main" }; break;
                 case "private/get_open_orders_by_currency": case "private/get_positions": result = Array.Empty<object>(); break;
                 case "public/get_instrument": result = Metadata(); break;

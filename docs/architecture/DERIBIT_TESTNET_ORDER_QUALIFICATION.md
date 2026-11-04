@@ -12,15 +12,21 @@ switches remain false. There is no configurable exchange URL: HTTP and WSS are
 fixed to `test.deribit.com`. An explicit testnet purpose, environment, dedicated
 test-account declaration and one-order/cancellation approval are required.
 
-The owner's [project rule](../../AGENTS.md) still requires separate authorization
-before a mutating testnet run. Developing/running scripted acceptance tests is not
-that authorization. Real testnet placement has **NOT_RUN** until approval and a
-separate testnet credential are present. Mainnet credentials are never read by
+The owner's [project rule](../../AGENTS.md) requires separate authorization
+before a mutating testnet run. Authorization for this one-order scenario is now
+received, and its separate testnet key is created/encrypted and verified by real
+read-only requests. Actual placement remains **NOT_RUN** because BTC-PERPETUAL
+reports `halted`; do not consume the one attempt on a stopped market.
+Mainnet credentials are never read by
 this launcher and are not copied, replaced or elevated.
 
 ## Exact first run
 
-1. Authenticate with requested `trade:read_write account:read`, explicit denial of
+1. Command HTTP requests use JSON-RPC POST with a unique `session:to_b3_...` token
+   and a 300-second lifetime. A `connection` token belongs to one connection and
+   cannot serve independent HTTP requests. The private WSS capture connection
+   retains its own existing read-only connection-scoped authentication.
+   Authenticate with requested `trade:read_write account:read`, explicit denial of
    wallet/block capabilities, reject extra positive grants. Read authenticated
    native ID/type and require the independent private stream to match. An optional
    externally known native pin must match too. This diagnostic identity is not
@@ -87,8 +93,14 @@ Offline tests use scripted exchange responses and real isolated PG:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-testnet-order
 ```
 
+The current suite has 134 cases. Its HTTP fake asserts POST, a unique REST session
+and bounded expiry; it rejects connection-scoped/mismatched grants. It does not
+replace actual venue qualification. [Key enrollment and live read-only results](../orchestration/workstreams/B3_02_TESTNET_KEY_2026-11-04.md).
+
 ## Official semantics checked
 
+- [public/auth](https://docs.deribit.com/api-reference/authentication/public-auth):
+  REST session vs connection scope and bounded token expiry.
 - [private/buy](https://docs.deribit.com/api-reference/trading/private-buy): amount,
   label, limit/GTC and post-only rejection parameters.
 - [public/get_instrument](https://docs.deribit.com/api-reference/market-data/public-get_instrument)
