@@ -6,6 +6,7 @@
 > Multi-venue разделы ниже сохраняются как долгосрочный план, а не текущий scope V2.
 > Состояние интеграции и backlog: [обновление 2026-11-03](BACKLOG_CLEANUP_AND_B1_FIX_2026-11-03.md).
 > **2026-11-04:** [B2 DB-only review завершён](workstreams/B2_01_FINAL_REVIEW_2026-11-04.md), 28/28 выбранных проверок PASS. Следующий этап — B3 Deribit private events, сначала read-only; runtime OMS и торговая готовность этим не заявляются.
+> **2026-11-04, продолжение:** [изолированный reusable PostgreSQL и template clones](workstreams/B2_POSTGRES_REUSE_2026-11-04.md) проверены: B2 28/28 и fixture 4/4 PASS, PG case time 340,9 → 155,9 s при прежних лимитах. [Inventory существующего B3 потока](workstreams/B3_01_PRIVATE_STREAM_INVENTORY_2026-11-04.md) выполнен, прежние offline contracts 12/12 PASS; scoped durable capture и новый lifecycle ещё не реализованы, Issue #73 остаётся открытым.
 
 **Status:** architecture and delivery roadmap integrated into main; the Deribit-only V2 scope above is current; no execution enablement.
 **Date:** 2026-10-25.
