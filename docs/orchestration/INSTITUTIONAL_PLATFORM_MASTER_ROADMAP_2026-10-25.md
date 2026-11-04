@@ -5,6 +5,7 @@
 > Приоритет: B1/B2 → Deribit private events и recovery → reconciliation/risk/fencing → FIX qualification и controlled release.
 > Multi-venue разделы ниже сохраняются как долгосрочный план, а не текущий scope V2.
 > Состояние интеграции и backlog: [обновление 2026-11-03](BACKLOG_CLEANUP_AND_B1_FIX_2026-11-03.md).
+> **2026-11-04:** [B2 DB-only review завершён](workstreams/B2_01_FINAL_REVIEW_2026-11-04.md), 28/28 выбранных проверок PASS. Следующий этап — B3 Deribit private events, сначала read-only; runtime OMS и торговая готовность этим не заявляются.
 
 **Status:** architecture and delivery roadmap integrated into main; the Deribit-only V2 scope above is current; no execution enablement.
 **Date:** 2026-10-25.

@@ -1,6 +1,6 @@
 # B2-01 — Durable OMS journal, PostgreSQL 17 (store-only v1)
 
-**Status (2026-11-03):** DB-only implementation integrated into main; 19 PostgreSQL17 scenarios passed on the integrated tree. Final B2 review remains in [Issue #67](https://github.com/avysotsky/TradeOps-v2/issues/67). **NOT an order-sending gateway**. Historical source branch `TradeOps/b2-01-durable-command-journal`; base `TradeOps/b1-01-oms-domain-identity-contracts@a799aec77ef498c88977a3ee6466989c1a0958ee`. Roadmap PR #56, parent B1 PR #62. See the [integration evidence](../orchestration/DERIBIT_V2_SECURITY_INTEGRATION_2026-11-03.md) and [B1 follow-up](../orchestration/BACKLOG_CLEANUP_AND_B1_FIX_2026-11-03.md) for exact scope and limits.
+**Status (2026-11-04):** final DB-only review completed for [Issue #67](https://github.com/avysotsky/TradeOps-v2/issues/67), with 23/23 PostgreSQL17 cases and 5/5 contract cases PASS. Decimal-scale replay and restricted application-role acceptance are covered. **NOT an order-sending gateway**. Historical source branch `TradeOps/b2-01-durable-command-journal`; base `TradeOps/b1-01-oms-domain-identity-contracts@a799aec77ef498c88977a3ee6466989c1a0958ee`. See the [final review and legacy integration plan](../orchestration/workstreams/B2_01_FINAL_REVIEW_2026-11-04.md) for exact evidence and limits. B3/B4/B5 and physical-send fencing remain separate gates.
 
 ## Non-negotiable boundary
 
@@ -25,7 +25,7 @@ Every row identity includes **(tenant_id, venue_id, environment, account_id, sub
 | `oms_integrity_incidents` | generated bigint `incident_id` | append-only, no payload/credential dump |
 | `oms_account_leases` | `(scope...)` | monotonically incremented generation under row lock |
 
-The schema uses `jsonb`, server-side `clock_timestamp()` timestamps (`timestamptz`), simple `bytea` digests, PostgreSQL checks, composite FKs and atomic unique constraints. `OmsJournalCanonical` serializes a fixed-version, fixed-field request (including full scope, IDs and expected version) with deterministic System.Text.Json options and hashes the UTF-8 bytes. Maximum payload 16 KiB. Validation rejects whitespace-only/oversized inputs, invalid enum and GUIDs, non-UTC request event timestamps, nonpositive quantities/prices. The strongly typed payload carries instrument, side, order type, units, quantity, **limit, trigger, time-in-force, reduce-only, post-only, provenance, operator/strategy, risk decision reference and request UTC time**, plus mandatory target client/exchange order reference for Cancel/Replace and optional distinct FIX ClOrdID/OrigClOrdID correlation. Nulls are explicit. No API keys, auth headers or transport serialization strings are accepted. An existing command ID with differing payload hash is `Collision`; no upsert mutates the original.
+The schema uses `jsonb`, server-side `clock_timestamp()` timestamps (`timestamptz`), simple `bytea` digests, PostgreSQL checks, composite FKs and atomic unique constraints. `OmsJournalCanonical` serializes a fixed-version, fixed-field request (including full scope, IDs and expected version) with deterministic System.Text.Json options and hashes the UTF-8 bytes. Maximum payload 16 KiB. Validation rejects whitespace-only/oversized inputs, invalid enum and GUIDs, non-UTC request event timestamps, nonpositive quantities/prices. The strongly typed payload carries instrument, side, order type, units, quantity, **limit, trigger, time-in-force, reduce-only, post-only, provenance, operator/strategy, risk decision reference and request UTC time**, plus mandatory target client/exchange order reference for Cancel/Replace and optional distinct FIX ClOrdID/OrigClOrdID correlation. Nulls are explicit. No API keys, auth headers or transport serialization strings are accepted. An existing scoped command/event ID is `Duplicate` when its digest matches or its entire versioned JSONB payload is equal. Thus `1` and `1.000` are equal decimal values, while changed parameters remain `Collision`. The first writer's JSON and SHA-256 are never rewritten; existing v1 rows require no migration. See the final review for the numeric replay regression and restricted-role evidence.
 
 ## Transactional operations / concurrency
 
@@ -64,18 +64,33 @@ T7     B4 reconciles order/fill histories    only proven facts may resolve unkno
 
 ## Local-only verification (GitHub Actions forbidden)
 
-Use a **separate disposable PostgreSQL 17** Docker network/container with no published port and a .NET SDK 10 container under WSL2. The exact B2 branch HEAD must be checked against GitHub `ls-remote` and cloned/exported into a disposable tree; ensure the `TradeOps/b1-01-oms-domain-identity-contracts` base SHA matches the assigned parent. Set `TRADEOPS_B2_POSTGRES` to the isolated PostgreSQL17 admin connection for integration tests; no production DB. Tests create/drop individually named temporary databases, so never point them at a persistent/shared PostgreSQL service.
+Use a **separate disposable PostgreSQL 17** server with no published port or shared data.
+Set `TRADEOPS_B2_POSTGRES` only inside the test process; never use a persistent/shared database.
+Use the installed .NET10 SDK, or an existing qualified SDK container when appropriate;
+do not transplant old WSL settings or pull historical images automatically.
 
-```bash
-dotnet restore TradeOps.sln
-dotnet build TradeOps.sln -c Release --no-restore
-TRADEOPS_B2_POSTGRES='Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=<synthetic>' \
-  dotnet test tests/TradeOps.UnitTests/TradeOps.UnitTests.csproj -c Release --no-build \
-  --filter 'FullyQualifiedName~OmsJournal' \
-  --logger 'trx;LogFileName=B2-01.trx'
-dotnet test TradeOps.sln -c Release --no-build
-```
+The fixture rejects absent `TRADEOPS_B2_POSTGRES` and non-17 servers before creating
+its individually named test databases. The current B2 suite contains **5 pure contract
+cases and 23 PostgreSQL cases = 28 executed cases**. The latest runtime evidence is
+**28/28 PASS**, independently parsed from TRX; missing/skipped tests cannot qualify the gate.
 
-**Fail-closed requirement:** each `OmsJournalPostgresTests` case throws `POSTGRES_ACCEPTANCE_NOT_RUN` if `TRADEOPS_B2_POSTGRES` is absent. The fixture also queries `server_version_num` and rejects anything except PostgreSQL major version **17** before creating a disposable test database. Written regression suite: **5 isolated B2 contract tests plus 19 PostgreSQL integration tests = 24 tests**, including concurrent same CommandId with different payload and concurrent same IntentId against different aggregates, dispatch-precommit rollback, migration Up/Down and non-rearmable outbox. A successful `dotnet test` exit by itself is not enough: the local runner must verify the B2 TRX has at least 24 actual passing, zero skipped tests. These tests are **NOT RUN** until executed in WSL2/Docker and evidenced by log files.
+A build can be made with the repository-pinned SDK. If Ubuntu's installed compatible
+runtime SDK differs from global.json, run the portable test assembly through `dotnet vstest`
+from a working directory outside that SDK pin, rather than changing global configuration.
+The acceptance run records exact source/build, tool versions, selected cases, exit codes,
+PostgreSQL version/major validation, raw TRX and resource cleanup.
 
-Acceptance **requires** full logs, TRX and `summary.json` recording: exact HEAD SHA, build exit code, total/passed/failed/skipped tests, PostgreSQL17 version, execution environment, failpoints and PASSED/FAILED/NOT_RUN. A test suite run without `TRADEOPS_B2_POSTGRES` is **not** a PostgreSQL acceptance PASS, even if xUnit reports green. Hosted GitHub Actions must never be started. B1/G0/orchestrator acceptance and B2 stack review are separate gates.
+Intermediate changes run the minimal affected suites. Full unrelated suites and browser
+checks are separate gates when the changed execution path requires them; do not repeatedly
+run them for the same unchanged code. The current DB-only class has no production DI caller,
+so this review does not claim API/Worker/gateway E2E or live exchange qualification.
+
+Migrations and temporary role creation use only the isolated fixture administrator.
+Journal acceptance also runs as a generated **NOSUPERUSER/NOCREATEDB/NOCREATEROLE** login,
+with OMS table SELECT/INSERT/UPDATE, schema usage and incident-sequence usage. No TRUNCATE,
+DDL ownership or production role changes are required. Immutable triggers remain active.
+The test role is removed after its connections close; only this test server is affected.
+
+Full evidence and the plan for scoped legacy Order/Fill integration are in the
+[final B2 review](../orchestration/workstreams/B2_01_FINAL_REVIEW_2026-11-04.md).
+DB-only acceptance is not trading authorization. GitHub Actions remain forbidden.

@@ -61,11 +61,11 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
         await LockIdAsync(db, tx, request.Scope, "Command", request.CommandId.Value, cancellationToken);
         await LockIdAsync(db, tx, request.Scope, "Intent", request.IntentId.Value, cancellationToken);
 
-        var known = await ReadDigestAsync(db, tx, request.Scope, request.CommandId.Value,
-            cancellationToken);
-        if (known is not null)
+        var known = await ReadPayloadMatchAsync(db, tx, request.Scope, request.CommandId.Value,
+            json, digest, cancellationToken);
+        if (known.HasValue)
         {
-            var result = known.SequenceEqual(digest)
+            var result = known.Value
                 ? OmsJournalWriteResult.Duplicate
                 : OmsJournalWriteResult.Collision;
             if (result == OmsJournalWriteResult.Collision)
@@ -144,11 +144,11 @@ RETURNING version
             {
                 // A concurrent identical request may have won while we waited for CAS.
                 // ReadCommitted sees the committed winner after the conflicting UPDATE.
-                var raced = await ReadDigestAsync(db, tx, request.Scope,
-                    request.CommandId.Value, cancellationToken);
-                if (raced is not null)
+                var raced = await ReadPayloadMatchAsync(db, tx, request.Scope,
+                    request.CommandId.Value, json, digest, cancellationToken);
+                if (raced.HasValue)
                 {
-                    var result = raced.SequenceEqual(digest)
+                    var result = raced.Value
                         ? OmsJournalWriteResult.Duplicate : OmsJournalWriteResult.Collision;
                     if (result == OmsJournalWriteResult.Collision)
                         await RecordIncidentAsync(db, tx, request.Scope, "CommandCollision",
@@ -331,19 +331,20 @@ ON CONFLICT DO NOTHING
             await tx.CommitAsync(cancellationToken);
             return OmsJournalInboxResult.Inserted;
         }
-        byte[] stored;
+        bool matches;
         await using (var existing = Command($"""
-SELECT payload_sha256 FROM oms_inbox
+SELECT payload_sha256=@digest OR event_json=@json FROM oms_inbox
 WHERE {ScopeWhere} AND event_namespace=@namespace AND event_id=@event
 FOR UPDATE
 """, db, tx, item.Scope))
         {
             existing.Parameters.AddWithValue("namespace", item.Namespace);
             existing.Parameters.AddWithValue("event", item.EventId);
-            stored = (byte[]?)await existing.ExecuteScalarAsync(cancellationToken)
+            AddJson(existing, json, digest);
+            matches = (bool?)await existing.ExecuteScalarAsync(cancellationToken)
                 ?? throw new InvalidOperationException("Conflicting inbox row disappeared.");
         }
-        if (stored.SequenceEqual(digest))
+        if (matches)
         {
             await tx.CommitAsync(cancellationToken);
             return OmsJournalInboxResult.Duplicate;
@@ -394,16 +395,20 @@ RETURNING generation
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<byte[]?> ReadDigestAsync(NpgsqlConnection db, NpgsqlTransaction tx,
-        AccountKey scope, Guid commandId, CancellationToken ct)
+    private static async Task<bool?> ReadPayloadMatchAsync(NpgsqlConnection db, NpgsqlTransaction tx,
+        AccountKey scope, Guid commandId, string json, byte[] digest, CancellationToken ct)
     {
+        // Preserve the first writer's JSON/digest, including existing v1 rows.
+        // JSONB numeric equality treats 1 and 1.000 as the same decimal value;
+        // a different scale must not quarantine an otherwise identical replay.
         await using var cmd = Command($"""
-SELECT payload_sha256 FROM oms_commands
+SELECT payload_sha256=@digest OR request_json=@json FROM oms_commands
 WHERE {ScopeWhere} AND command_id=@command
 FOR UPDATE
 """, db, tx, scope);
         cmd.Parameters.AddWithValue("command", commandId);
-        return (byte[]?)await cmd.ExecuteScalarAsync(ct);
+        AddJson(cmd, json, digest);
+        return (bool?)await cmd.ExecuteScalarAsync(ct);
     }
 
     private static async Task RecordIncidentAsync(NpgsqlConnection db, NpgsqlTransaction tx,

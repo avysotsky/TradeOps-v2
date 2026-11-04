@@ -267,6 +267,85 @@ public sealed class OmsJournalPostgresTests
     }
 
     [Fact]
+    public async Task DecimalScaleInInbox_IsDuplicateWithoutRewritingOriginalEvidence()
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var journal = new OmsPostgresJournal(ds);
+            var original = Event(Scope());
+            Assert.Equal(OmsJournalInboxResult.Inserted,
+                await journal.PersistInboxAsync(original));
+            var stored = await ScalarString(cs,
+                "SELECT event_json::text || '|' || encode(payload_sha256,'hex') FROM oms_inbox");
+            var replay = original with { Quantity = 2.000m, Price = 60000.000m };
+            Assert.Equal(original, replay);
+
+            Assert.Equal(OmsJournalInboxResult.Duplicate,
+                await new OmsPostgresJournal(ds).PersistInboxAsync(replay));
+            Assert.Equal(1, await Count(cs, "oms_inbox"));
+            Assert.Equal(0, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(cs,
+                "SELECT event_json::text || '|' || encode(payload_sha256,'hex') FROM oms_inbox"));
+
+            Assert.Equal(OmsJournalInboxResult.Collision,
+                await journal.PersistInboxAsync(replay with { Price = 60001m }));
+            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(cs,
+                "SELECT event_json::text || '|' || encode(payload_sha256,'hex') FROM oms_inbox"));
+        });
+    }
+
+    [Theory]
+    [InlineData(OrderType.Limit)]
+    [InlineData(OrderType.Stop)]
+    public async Task DecimalScaleInCommand_IsDuplicateWithoutRewritingOriginalJournal(OrderType type)
+    {
+        await WithPostgres(async (ds, cs) =>
+        {
+            var journal = new OmsPostgresJournal(ds);
+            var request = Request();
+            request = request with
+            {
+                Payload = request.Payload with
+                {
+                    OrderType = type, PostOnly = false,
+                    LimitPrice = type == OrderType.Limit ? 65000m : null,
+                    TriggerPrice = type == OrderType.Stop ? 64000m : null
+                }
+            };
+            Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(request));
+            var stored = await ScalarString(cs,
+                "SELECT request_json::text || '|' || encode(payload_sha256,'hex') FROM oms_commands");
+            var replay = request with
+            {
+                Payload = request.Payload with
+                {
+                    Quantity = 1.000m,
+                    LimitPrice = type == OrderType.Limit ? 65000.000m : null,
+                    TriggerPrice = type == OrderType.Stop ? 64000.000m : null
+                }
+            };
+            Assert.Equal(request, replay);
+
+            Assert.Equal(OmsJournalWriteResult.Duplicate,
+                await new OmsPostgresJournal(ds).PersistAsync(replay));
+            foreach (var table in new[] { "oms_aggregates", "oms_intents", "oms_commands", "oms_outbox" })
+                Assert.Equal(1, await Count(cs, table));
+            Assert.Equal(1, await ScalarLong(cs, "SELECT version FROM oms_aggregates"));
+            Assert.Equal(0, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(cs,
+                "SELECT request_json::text || '|' || encode(payload_sha256,'hex') FROM oms_commands"));
+
+            Assert.Equal(OmsJournalWriteResult.Collision,
+                await journal.PersistAsync(replay with
+                { Payload = replay.Payload with { Quantity = 2m } }));
+            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(cs,
+                "SELECT request_json::text || '|' || encode(payload_sha256,'hex') FROM oms_commands"));
+        });
+    }
+
+    [Fact]
     public async Task ConcurrentExecutionInbox_ExactlyOneInserted()
     {
         await WithPostgres(async (ds, cs) =>
@@ -370,6 +449,100 @@ public sealed class OmsJournalPostgresTests
             Assert.Contains("Refusing destructive OMS journal rollback", refusal.MessageText);
             Assert.Equal(1, await Count(cs, "oms_commands"));
             Assert.Equal(1, await Count(cs, "oms_outbox"));
+        });
+    }
+
+    [Fact]
+    public async Task RestrictedApplicationRole_CanJournalRecoverAndDeduplicateWithoutSuperuser()
+    {
+        await WithPostgres(async (_, cs) =>
+        {
+            // The fixture owns a unique disposable database; no persistent role is used.
+            var role = "oms_app_" + Guid.NewGuid().ToString("N");
+            var password = Guid.NewGuid().ToString("N");
+            await using var admin = new NpgsqlConnection(cs);
+            await admin.OpenAsync();
+            await using (var create = new NpgsqlCommand($"""
+CREATE ROLE "{role}" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '{password}';
+GRANT USAGE ON SCHEMA public TO "{role}";
+GRANT SELECT, INSERT, UPDATE ON
+ oms_aggregates, oms_intents, oms_commands, oms_outbox,
+ oms_attempts, oms_inbox, oms_integrity_incidents, oms_account_leases TO "{role}";
+GRANT USAGE ON SEQUENCE oms_integrity_incidents_incident_id_seq TO "{role}";
+""", admin))
+                await create.ExecuteNonQueryAsync();
+            try
+            {
+                var application = new NpgsqlConnectionStringBuilder(cs)
+                { Username = role, Password = password, Pooling = false };
+                await using var source = NpgsqlDataSource.Create(application.ConnectionString);
+                await using var db = await source.OpenConnectionAsync();
+                await using (var identity = new NpgsqlCommand("""
+SELECT count(*) FROM pg_roles WHERE rolname=current_user
+ AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+""", db))
+                    Assert.Equal(1L, (long)(await identity.ExecuteScalarAsync())!);
+                await using (var permission = new NpgsqlCommand(
+                    "SELECT has_table_privilege(current_user, 'oms_commands', 'TRUNCATE')", db))
+                    Assert.False((bool)(await permission.ExecuteScalarAsync())!);
+
+                var journal = new OmsPostgresJournal(source);
+                var request = Request();
+                Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(request));
+                Assert.Equal(OmsJournalWriteResult.Duplicate, await journal.PersistAsync(request with
+                { Payload = request.Payload with { Quantity = 1.000m, LimitPrice = 65000.000m } }));
+                Assert.Equal(OmsJournalWriteResult.Collision, await journal.PersistAsync(request with
+                { Payload = request.Payload with { Quantity = 2m } }));
+                Assert.Equal(OmsJournalAttemptResult.Started,
+                    await journal.MarkDispatchStartedAsync(request.Scope, request.CommandId));
+                Assert.True(await journal.RecordOutcomeAsync(request.Scope, request.CommandId,
+                    OmsJournalDispatchOutcome.Ambiguous));
+                Assert.Equal(OmsJournalAttemptResult.AlreadyStartedOrResolved,
+                    await new OmsPostgresJournal(source).MarkDispatchStartedAsync(
+                        request.Scope, request.CommandId));
+                Assert.True(await journal.RecordOutcomeAsync(request.Scope, request.CommandId,
+                    OmsJournalDispatchOutcome.Acknowledged));
+
+                var item = Event(request.Scope);
+                Assert.Equal(OmsJournalInboxResult.Inserted, await journal.PersistInboxAsync(item));
+                Assert.Equal(OmsJournalInboxResult.Duplicate, await journal.PersistInboxAsync(item with
+                { Quantity = 2.000m, Price = 60000.000m }));
+                Assert.Equal(OmsJournalInboxResult.Collision, await journal.PersistInboxAsync(item with
+                { Price = 60001m }));
+                Assert.Equal(1L, await journal.TryAcquireMetadataLeaseAsync(
+                    request.Scope, Guid.NewGuid(), TimeSpan.FromMinutes(1)));
+                Assert.Null(await journal.TryAcquireMetadataLeaseAsync(
+                    request.Scope, Guid.NewGuid(), TimeSpan.FromMinutes(1)));
+
+                await using (var tamper = new NpgsqlCommand(
+                    "UPDATE oms_commands SET request_json='{}'::jsonb", db))
+                {
+                    var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+                        tamper.ExecuteNonQueryAsync());
+                    Assert.Equal("P0001", refused.SqlState);
+                }
+                await using (var truncate = new NpgsqlCommand("TRUNCATE oms_commands", db))
+                {
+                    var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+                        truncate.ExecuteNonQueryAsync());
+                    Assert.Equal("42501", refused.SqlState);
+                }
+                Assert.Equal(1, await Count(application.ConnectionString, "oms_commands"));
+                Assert.Equal(1, await Count(application.ConnectionString, "oms_attempts"));
+                Assert.Equal(2, await Count(application.ConnectionString, "oms_integrity_incidents"));
+                Assert.Equal("Acknowledged", await ScalarString(application.ConnectionString,
+                    "SELECT dispatch_phase FROM oms_commands"));
+                Assert.Equal("Acknowledged", await ScalarString(application.ConnectionString,
+                    "SELECT dispatch_phase FROM oms_attempts"));
+                Assert.Equal("Resolved", await ScalarString(application.ConnectionString,
+                    "SELECT state FROM oms_outbox"));
+            }
+            finally
+            {
+                await using var drop = new NpgsqlCommand(
+                    $"DROP OWNED BY \"{role}\"; DROP ROLE \"{role}\";", admin);
+                await drop.ExecuteNonQueryAsync();
+            }
         });
     }
 
