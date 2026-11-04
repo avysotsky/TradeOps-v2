@@ -6,8 +6,9 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 suite=${1:-b2}
 case "$suite" in
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
+  b3) filter='FullyQualifiedName~OmsPrivateEventContractTests|FullyQualifiedName~OmsPrivateCapturePostgresTests'; expected=28 ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
-  *) echo 'Usage: oms-postgres.sh [b2|fixture]'; exit 2 ;;
+  *) echo 'Usage: oms-postgres.sh [b2|b3|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
 owner=tradeops-tests-v1
@@ -108,7 +109,7 @@ unset password
 cpu=$(awk '/Cpus_allowed_list/ {print $2}' /proc/self/status)
 cpu=${cpu%%[-,]*}
 git -c safe.directory="$repo" -C "$repo" rev-parse HEAD > "$out/source-sha.txt"
-git -c safe.directory="$repo" -C "$repo" diff --binary HEAD -- tests/TradeOps.UnitTests scripts/testing > "$out/source.patch"
+git -c safe.directory="$repo" -C "$repo" diff --binary HEAD -- src/TradeOps.Application/Oms src/TradeOps.Infrastructure/Persistence tests/TradeOps.UnitTests scripts/testing > "$out/source.patch"
 sha256sum "$repo/tests/TradeOps.UnitTests/bin/Release/net10.0/TradeOps.UnitTests.dll" > "$out/test-assembly-sha256.txt"
 docker inspect --format '{{.Id}} {{.State.StartedAt}} {{.RestartCount}}' "$container" > "$out/test-server.txt"
 docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}} {{.PIDs}}' "$container" > "$out/resources-before.txt"
@@ -139,7 +140,7 @@ cases=root.findall('t:Results/t:UnitTestResult',ns)
 def seconds(value):
     h,m,s=value.split(':'); return int(h)*3600+int(m)*60+float(s)
 summary={'counters':counters,'case_seconds':sum(seconds(x.attrib['duration']) for x in cases),
-         'pg_case_seconds':sum(seconds(x.attrib['duration']) for x in cases if 'OmsJournalPostgresTests' in x.attrib['testName']),
+         'pg_case_seconds':sum(seconds(x.attrib['duration']) for x in cases if any(n in x.attrib['testName'] for n in ['OmsJournalPostgresTests','OmsPrivateCapturePostgresTests'])),
          'test_server_retained':True}
 ok=int(sys.argv[3])==0 and len(cases)==int(sys.argv[2]) and int(counters['passed'])==int(sys.argv[2]) and all(x.attrib['outcome']=='Passed' for x in cases)
 db=(out/'database-after.txt').read_text().splitlines()
