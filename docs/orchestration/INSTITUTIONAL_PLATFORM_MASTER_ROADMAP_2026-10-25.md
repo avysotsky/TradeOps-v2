@@ -22,6 +22,8 @@
 
 > **Решение владельца, mainnet ETH 2026-11-04:** не ждать testnet; продолжить на ранее сохранённом реальном малом счёте. Владелец обновил торговое право существующего ключа и выбрал **ETH-PERPETUAL, минимум 1 USD**. Сохранённый native pin совпал, реальный API подтвердил trade:read_write и открытый рынок. [Первый ограниченный прогон](../architecture/DERIBIT_MAINNET_ETH_QUALIFICATION.md): один post-only ордер не более 1 USD native amount, адресная отмена, без повторной отправки/автоматического flatten, постоянный OMS journal и сравнение исходной позиции. Ключ, счёт и разрешение повторно не запрашивать. Обычные host switches остаются false; broad production execution/B4/B5 не квалифицированы.
 
+> **B3, actual mainnet ETH proof 2026-11-04:** [один настоящий ETH-PERPETUAL ордер 1 USD выставлен и адресно отменён](workstreams/B3_03_MAINNET_ETH_2026-11-04.md), `MAINNET_ETH_CAPTURE_PASS`. Open/cancel факты сохранены в постоянный PostgreSQL: commands/attempts=2/2, inbox/observations/incidents=2/2/0. Исполнений нет, исходная позиция сохранилась, environment/peers PASS. Повторного ордера не было, marker завершённого прогона остаётся. Ключ и native pin прежние; права обновил владелец. #73 не закрывается автоматически; B4/B5/FIX и account-wide readiness остаются отдельными gates.
+
 **Status:** architecture and delivery roadmap integrated into main; Deribit-only V2 scope remains current; dedicated owner-approved ETH qualification is separate from global execution enablement.
 **Date:** 2026-10-25.
 **Owner reference:** [ZentoEra Senior Quant Developer](https://www.zentoera.com/careers/quant-developer); [TradeOps-v2 issue #40, Deribit FIX 4.4](https://github.com/avysotsky/TradeOps-v2/issues/40).

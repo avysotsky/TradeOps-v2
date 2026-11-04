@@ -7,6 +7,11 @@ The encrypted account pin and credential-ID fingerprint identify that account;
 neither an account name nor the vault's historical `ReadOnly` filename determines
 the actual API grant. Do not ask for the same account/key/authorization again.
 
+[First real result](../orchestration/workstreams/B3_03_MAINNET_ETH_2026-11-04.md):
+one 1 USD placement and targeted cancellation PASS, both private facts committed,
+no fill, existing position preserved, persistent journal retained. The completed
+attempt marker prevents automatic repetition.
+
 ## First bounded case
 
 - Fixed mainnet endpoints; pinned native account ID/type mandatory. Explicit
