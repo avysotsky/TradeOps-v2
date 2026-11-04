@@ -5,6 +5,7 @@ Windows PowerShell, from the repository:
 ```powershell
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b2
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-stream
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -20,7 +21,9 @@ wsl.exe -d Ubuntu -u root -- bash /mnt/d/Projects/TradeOps-v2/scripts/testing/om
 `b2` checks the actual TRX for all 28 B2 cases (23 PostgreSQL + 5 pure contracts),
 with no failed/skipped cases. `b3` checks 28 scoped capture cases (11 PostgreSQL +
 17 contracts), including ordinary application-role, upgrade/Down, atomic commit
-and concurrent/idempotent observation tests. `fixture` checks four additional integration cases
+and concurrent/idempotent observation tests. `b3-stream` checks 52 targeted lifecycle,
+parser, coordinator, real loopback transport, PG pipeline and existing Deribit cases.
+`fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.
 Logs, TRX, counters, durations, container snapshots and guard results stay under

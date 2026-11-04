@@ -98,10 +98,12 @@ marked test PG17, never the persistent development/production databases.
 
 ## Remaining B3 gates
 
-The existing `DeribitPrivateWebSocketStream` still uses its legacy testnet path.
-Next extend that adapter behind this application port, with strict read-only auth,
-one bounded receive/capture path, size limits, heartbeat/test_request, cancellation,
-renewal/reconnect, stream epoch and account-switch rejection. Invalid raw input must
+The existing `DeribitPrivateWebSocketStream` now also has an explicit
+[read-only capture lifecycle](DERIBIT_PRIVATE_CAPTURE_LIFECYCLE.md), qualified with
+scripted RPC, loopback sockets and real isolated PostgreSQL. Its default legacy
+worker registration remains unchanged; live capture host selection is not enabled.
+The new entry point supplies bounded receive/capture, read-only auth/account checks,
+heartbeat, deadlines/reconnect and stale account/epoch rejection. Invalid raw input must
 produce a recovery/gap outcome rather than being silently discarded by a caller;
 this store accepts only already normalized valid envelopes, capped at 32 KiB per
 serialized document. It is not a raw packet archive or raw-frame parser.

@@ -5,7 +5,7 @@ using TradeOps.Domain.Enums;
 
 namespace TradeOps.Infrastructure.Exchange.Deribit;
 
-internal static class DeribitWebSocketMessageParser
+internal static partial class DeribitWebSocketMessageParser
 {
     private const string OrderChannelPrefix = "user.orders.";
     private const string TradeChannelPrefix = "user.trades.";

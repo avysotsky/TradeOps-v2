@@ -7,7 +7,7 @@ using TradeOps.Application.Models;
 
 namespace TradeOps.Infrastructure.Exchange.Deribit;
 
-public sealed class DeribitPrivateWebSocketStream(
+public sealed partial class DeribitPrivateWebSocketStream(
     DeribitOptions options,
     ILogger<DeribitPrivateWebSocketStream> logger) : IExchangeEventStream
 {
@@ -23,6 +23,16 @@ public sealed class DeribitPrivateWebSocketStream(
         Func<ExchangeOrderUpdate, CancellationToken, Task> onOrderUpdate,
         Func<ExchangeExecutionUpdate, CancellationToken, Task> onExecutionUpdate,
         CancellationToken cancellationToken = default)
+    {
+        EnterRun();
+        try { await RunLegacyAsync(onOrderUpdate, onExecutionUpdate, cancellationToken); }
+        finally { ExitRun(); }
+    }
+
+    private async Task RunLegacyAsync(
+        Func<ExchangeOrderUpdate, CancellationToken, Task> onOrderUpdate,
+        Func<ExchangeExecutionUpdate, CancellationToken, Task> onExecutionUpdate,
+        CancellationToken cancellationToken)
     {
         ValidateConfiguration(options);
 
