@@ -1,6 +1,6 @@
 using System.Text.Json;
 using TradeOps.Application.Oms;
-using TradeOps.Infrastructure.Exchange.Deribit;
+using TradeOps.Connectors.Deribit;
 using Xunit;
 using static TradeOps.UnitTests.Support.DeribitCaptureTestRig;
 

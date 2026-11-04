@@ -1,3 +1,4 @@
+using TradeOps.Connectors.Deribit;
 using TradeOps.Infrastructure.Exchange.Deribit;
 using Xunit;
 

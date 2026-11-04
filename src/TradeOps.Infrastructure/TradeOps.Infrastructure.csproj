@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\TradeOps.Application\TradeOps.Application.csproj" />
+    <ProjectReference Include="..\TradeOps.Connectors.Deribit\TradeOps.Connectors.Deribit.csproj" />
     <ProjectReference Include="..\TradeOps.Domain\TradeOps.Domain.csproj" />
   </ItemGroup>
 </Project>

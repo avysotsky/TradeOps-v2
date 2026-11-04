@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using TradeOps.Application.Interfaces;
 using TradeOps.Application.Models;
 
-namespace TradeOps.Infrastructure.Exchange.Deribit;
+namespace TradeOps.Connectors.Deribit;
 
 public sealed partial class DeribitPrivateWebSocketStream(
     DeribitOptions options,

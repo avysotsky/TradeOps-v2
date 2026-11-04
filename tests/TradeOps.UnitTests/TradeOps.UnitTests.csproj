@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\TradeOps.Api\TradeOps.Api.csproj" />
     <ProjectReference Include="..\..\apps\TradeOps.TerminalApi\TradeOps.TerminalApi.csproj" />
     <ProjectReference Include="..\..\src\TradeOps.Application\TradeOps.Application.csproj" />
+    <ProjectReference Include="..\..\src\TradeOps.Connectors.Deribit\TradeOps.Connectors.Deribit.csproj" />
     <ProjectReference Include="..\..\src\TradeOps.Infrastructure\TradeOps.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\TradeOps.Worker\TradeOps.Worker.csproj" />
     <ProjectReference Include="..\..\tools\TradeOps.PublicResearchDemo\TradeOps.PublicResearchDemo.csproj" />

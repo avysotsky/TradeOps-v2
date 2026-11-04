@@ -3,7 +3,7 @@ using System.Text.Json;
 using TradeOps.Application.Models;
 using TradeOps.Domain.Enums;
 
-namespace TradeOps.Infrastructure.Exchange.Deribit;
+namespace TradeOps.Connectors.Deribit;
 
 internal static partial class DeribitWebSocketMessageParser
 {

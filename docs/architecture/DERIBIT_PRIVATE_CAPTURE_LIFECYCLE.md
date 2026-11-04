@@ -1,5 +1,13 @@
 # Deribit private read-only capture lifecycle
 
+The transport and parser now live in the separate
+[`TradeOps.Connectors.Deribit`](../../src/TradeOps.Connectors.Deribit/TradeOps.Connectors.Deribit.csproj)
+assembly, with namespace `TradeOps.Connectors.Deribit`. It references Application/Domain contracts,
+not Infrastructure or persistence. Legacy REST and DI composition remain in
+Infrastructure; the [target architecture](TARGET_PLATFORM_ARCHITECTURE.md)
+describes the remaining boundaries. This extraction preserves capture schemas
+and behavior; it does not register a new host or enable execution.
+
 This increment extends the existing `DeribitPrivateWebSocketStream` and
 `DeribitWebSocketMessageParser`. `RunCaptureAsync` is an explicit capture entry point;
 the legacy testnet worker still selects `IExchangeEventStream.RunAsync`. No new

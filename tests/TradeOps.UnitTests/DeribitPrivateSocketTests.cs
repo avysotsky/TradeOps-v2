@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using TradeOps.Infrastructure.Exchange.Deribit;
+using TradeOps.Connectors.Deribit;
 using Xunit;
 
 namespace TradeOps.UnitTests;

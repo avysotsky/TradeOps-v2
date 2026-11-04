@@ -2,7 +2,7 @@ using System.Text.Json;
 using TradeOps.Application.Oms;
 using TradeOps.Domain.Oms;
 
-namespace TradeOps.Infrastructure.Exchange.Deribit;
+namespace TradeOps.Connectors.Deribit;
 
 internal static partial class DeribitWebSocketMessageParser
 {

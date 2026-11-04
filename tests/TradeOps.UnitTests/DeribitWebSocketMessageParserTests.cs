@@ -1,5 +1,5 @@
 using TradeOps.Domain.Enums;
-using TradeOps.Infrastructure.Exchange.Deribit;
+using TradeOps.Connectors.Deribit;
 using Xunit;
 
 namespace TradeOps.UnitTests;

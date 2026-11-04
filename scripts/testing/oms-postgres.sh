@@ -110,12 +110,25 @@ unset password
 cpu=$(awk '/Cpus_allowed_list/ {print $2}' /proc/self/status)
 cpu=${cpu%%[-,]*}
 git -c safe.directory="$repo" -C "$repo" rev-parse HEAD > "$out/source-sha.txt"
-git -c safe.directory="$repo" -C "$repo" diff --binary HEAD -- src/TradeOps.Application/Oms src/TradeOps.Infrastructure/Persistence src/TradeOps.Infrastructure/Exchange/Deribit tests/TradeOps.UnitTests scripts/testing > "$out/source.patch"
-python3 - "$repo" "$out" <<'PY'
+capture_paths=(
+  TradeOps.sln
+  src/TradeOps.Application/TradeOps.Application.csproj
+  src/TradeOps.Domain/TradeOps.Domain.csproj
+  src/TradeOps.Connectors.Deribit
+  src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
+  src/TradeOps.Infrastructure/Exchange/ExchangeServiceRegistration.cs
+  src/TradeOps.Application/Oms
+  src/TradeOps.Infrastructure/Persistence
+  src/TradeOps.Infrastructure/Exchange/Deribit
+  tests/TradeOps.UnitTests
+  scripts/testing
+)
+git -c safe.directory="$repo" -C "$repo" diff --binary HEAD -- "${capture_paths[@]}" > "$out/source.patch"
+python3 - "$repo" "$out" "${capture_paths[@]}" <<'PY'
 import sys,subprocess,hashlib,json
 from pathlib import Path
 repo=Path(sys.argv[1]); out=Path(sys.argv[2])
-paths=['src/TradeOps.Application/Oms','src/TradeOps.Infrastructure/Persistence','src/TradeOps.Infrastructure/Exchange/Deribit','tests/TradeOps.UnitTests','scripts/testing']
+paths=sys.argv[3:]
 files=subprocess.check_output(['git','-c','safe.directory='+str(repo),'-C',str(repo),'ls-files','-z','--',*paths]).decode().split('\0')
 manifest={p:hashlib.sha256((repo/p).read_bytes().replace(b'\r\n',b'\n')).hexdigest() for p in files if p}
 (out/'source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')

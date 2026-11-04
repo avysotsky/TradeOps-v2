@@ -1,4 +1,4 @@
-namespace TradeOps.Infrastructure.Exchange.Deribit;
+namespace TradeOps.Connectors.Deribit;
 
 public sealed class DeribitOptions
 {

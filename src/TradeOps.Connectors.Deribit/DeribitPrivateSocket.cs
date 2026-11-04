@@ -2,7 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using TradeOps.Application.Oms;
 
-namespace TradeOps.Infrastructure.Exchange.Deribit;
+namespace TradeOps.Connectors.Deribit;
 
 internal interface IDeribitPrivateSocket : IDisposable
 {

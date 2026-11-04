@@ -2,7 +2,7 @@ using System.Collections.Frozen;
 using TradeOps.Application.Oms;
 using TradeOps.Domain.Oms;
 
-namespace TradeOps.Infrastructure.Exchange.Deribit;
+namespace TradeOps.Connectors.Deribit;
 
 /// <summary>Trusted server instrument metadata, never inferred from UI state or a bare symbol.</summary>
 public sealed record DeribitPrivateInstrument(string Name, string Kind, string Currency,

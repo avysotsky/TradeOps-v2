@@ -1,3 +1,4 @@
+using TradeOps.Connectors.Deribit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TradeOps.Application.Interfaces;

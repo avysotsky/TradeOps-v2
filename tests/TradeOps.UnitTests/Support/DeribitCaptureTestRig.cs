@@ -4,7 +4,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using TradeOps.Application.Oms;
 using TradeOps.Domain.Oms;
-using TradeOps.Infrastructure.Exchange.Deribit;
+using TradeOps.Connectors.Deribit;
 
 namespace TradeOps.UnitTests.Support;
 
