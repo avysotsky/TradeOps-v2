@@ -1,6 +1,8 @@
 # Bounded Deribit private-session probe
 
 Explicit diagnostic tool for [B3 read-only capture](DERIBIT_READONLY_CAPTURE_HOST.md).
+The [isolated inbox variant](DERIBIT_LIVE_INBOX_QUALIFICATION.md) is selected only with
+`-WithIsolatedInbox`; the following default-mode contract remains DB-free.
 It reuses the existing connector lifecycle; it is not an additional API/Worker
 registration or a deployment. No database or sender implementation is referenced.
 
@@ -30,8 +32,8 @@ is Windows CurrentUser DPAPI, with its usual same-user trust boundary.
 
 The probe accepts main or subaccount identity. Its in-memory diagnostic AccountKey
 names the authenticated native entity; for a subaccount the optional marker repeats
-the known native ID. This is **not** an inferred parent account. This scope is never
-persisted, promoted to a production tenant/account hierarchy or used to send orders.
+the known native ID. This is **not** an inferred parent account. The default protocol-only
+mode never persists it, promotes it to a production hierarchy or uses it to send orders.
 Production parent/tenant mapping still needs the separately governed server binding.
 
 ## Public preflight and private session

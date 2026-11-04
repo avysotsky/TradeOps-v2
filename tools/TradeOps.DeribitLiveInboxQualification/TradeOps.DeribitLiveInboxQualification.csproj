@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);TRADEOPS_QUALIFICATION_TOOL</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TradeOps.DeribitPrivateSessionProbe\TradeOps.DeribitPrivateSessionProbe.csproj" />
+    <ProjectReference Include="..\..\src\TradeOps.Infrastructure\TradeOps.Infrastructure.csproj" />
+    <!-- Reuse marked-server, clone and cleanup guards; never maintain a second weaker fixture. -->
+    <Compile Include="..\..\tests\TradeOps.UnitTests\Support\OmsPostgresTestDatabase.cs" Link="Support\OmsPostgresTestDatabase.cs" />
+    <EmbeddedResource Include="..\..\src\TradeOps.Infrastructure\Persistence\Migrations\*.cs;..\..\src\TradeOps.Infrastructure\Persistence\Configurations\*.cs;..\..\src\TradeOps.Infrastructure\Persistence\TradeOpsDbContext.cs"
+                      LogicalName="TradeOps.TestSchema.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\scripts\testing\postgres-test-init.sql" LogicalName="TradeOps.TestSchema.postgres-test-init.sql" />
+    <InternalsVisibleTo Include="TradeOps.UnitTests" />
+  </ItemGroup>
+</Project>

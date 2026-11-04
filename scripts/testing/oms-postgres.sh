@@ -4,6 +4,7 @@
 set -Eeuo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 suite=${1:-b2}
+live_inbox=false
 stream_filter='FullyQualifiedName~DeribitPrivateCaptureTests|FullyQualifiedName~DeribitPrivateCaptureParserTests|FullyQualifiedName~OmsPrivateCaptureCoordinatorTests|FullyQualifiedName~DeribitPrivateSocketTests|FullyQualifiedName~DeribitPrivateStreamPostgresTests|FullyQualifiedName~DeribitAdapterTests|FullyQualifiedName~DeribitWebSocketMessageParserTests|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_SelectsDeribitTestnetFromConfiguration|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_DeribitProductionBaseUrlIsRejectedOnResolution'
 case "$suite" in
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
@@ -11,14 +12,17 @@ case "$suite" in
   b3-stream) filter=$stream_filter; expected=52 ;;
   b3-host) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests"; expected=83 ;;
   b3-session) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests"; expected=108 ;;
+  b3-inbox) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests"; expected=117 ;;
+  b3-live-inbox) live_inbox=true ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
-  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|fixture]'; exit 2 ;;
+  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
 owner=tradeops-tests-v1
 container=tradeops-tests-v1-pg17
 network=tradeops-tests-v1-net
 image=postgres:17.11-bookworm
+server_validated=false
 init="$repo/scripts/testing/postgres-test-init.sql"
 out="$repo/.tradeops/postgres-reuse/$(date -u +%Y%m%dT%H%M%S)-$suite-$RANDOM"
 mkdir -p "$out"
@@ -26,7 +30,7 @@ guard() { runuser -u user -- /home/user/.local/bin/wsl-resource-guard; }
 snapshot() {
   docker inspect $(docker ps -aq) | python3 -c 'import json,sys; print("\n".join(sorted(" ".join(str(v) for v in [x["Id"],x["Name"],x["State"]["Status"],x["State"]["StartedAt"],x["RestartCount"],x["State"].get("Health",{}).get("Status","")]) for x in json.load(sys.stdin) if x["Name"]!="/tradeops-tests-v1-pg17")))'
 }
-guard | tee "$out/guard-before.txt"
+if [[ "$live_inbox" == true ]]; then guard > "$out/guard-before.txt"; else guard | tee "$out/guard-before.txt"; fi
 snapshot > "$out/docker-before.txt"
 finish() {
   local result=$?
@@ -36,6 +40,34 @@ finish() {
     echo 'FAIL: existing container state changed; inspect evidence'; result=1
   fi
   guard > "$out/guard-after.txt" || result=1
+  if [[ "$live_inbox" == true ]]; then
+    if [[ "$server_validated" == true ]]; then
+      docker exec "$container" psql -X -U tradeops_test_admin -d postgres -At -c \
+        "SELECT datname FROM pg_database ORDER BY datname; SELECT rolname FROM pg_roles WHERE rolname ~ '^to_app_'; SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'to_%';" > "$out/database-after.txt" || result=1
+    else
+      : > "$out/database-after.txt"; result=1
+    fi
+    python3 - "$out" "$result" <<'PY'
+import json,sys
+from pathlib import Path
+out=Path(sys.argv[1]); good=sys.argv[2]=='0'
+try: data=json.loads((out/'live-tool.log').read_text())
+except Exception: data=dict(Status='LIVE_INBOX_FAILED',Stage='GUARD_OR_TOOL_OUTPUT',DatabaseUsed=None,TradingReady=False,MutatingCalls=0)
+try:
+    db=(out/'database-after.txt').read_text().splitlines()
+    clean=not any(x.startswith(('to_test_','to_app_')) for x in db) and sum(x.startswith('to_tpl_') for x in db)<=1 and db[-1]=='0'
+except Exception: clean=False
+data['EnvironmentStatus']='PASS' if good else 'FAIL'; data['CleanupStatus']='PASS' if clean else 'FAIL'
+data['EvidenceRelativeDirectory']='.tradeops/postgres-reuse/'+out.name
+data['CaptureSourceCommit']=(out/'source-sha.txt').read_text().strip() if (out/'source-sha.txt').exists() else None
+ok=good and clean and data['Status'] in ['LIVE_INBOX_CONNECTED_NO_EVENTS','LIVE_INBOX_CAPTURE_PASS']
+if not ok: data['Status']='LIVE_INBOX_FAILED'
+(out/'summary.json').write_text(json.dumps(data,indent=2)+'\n')
+print('TRADEOPS_LIVE_INBOX_RESULT='+json.dumps(data,separators=(',',':')))
+sys.exit(0 if ok else 1)
+PY
+    exit "$?"
+  fi
   python3 - "$out/summary.json" "$result" <<'PY'
 import json,sys
 from pathlib import Path
@@ -102,6 +134,7 @@ for attempt in $(seq 1 45); do
   sleep 1
 done
 [[ "$ready" == true ]] || { echo 'TEST_POSTGRES_NOT_READY'; exit 1; }
+server_validated=true
 password=$(docker inspect "$container" | python3 -c 'import json,sys; print(next(x.split("=",1)[1] for x in json.load(sys.stdin)[0]["Config"]["Env"] if x.startswith("POSTGRES_PASSWORD=")))')
 ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container")
 [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'TEST_NETWORK_ADDRESS_MISSING'; exit 1; }
@@ -117,6 +150,7 @@ capture_paths=(
   src/TradeOps.Connectors.Deribit
   src/TradeOps.Worker
   tools/TradeOps.DeribitPrivateSessionProbe
+  tools/TradeOps.DeribitLiveInboxQualification
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
   src/TradeOps.Infrastructure/Exchange/ExchangeServiceRegistration.cs
@@ -136,11 +170,26 @@ files=subprocess.check_output(['git','-c','safe.directory='+str(repo),'-C',str(r
 manifest={p:hashlib.sha256((repo/p).read_bytes().replace(b'\r\n',b'\n')).hexdigest() for p in files if p}
 (out/'source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 PY
-sha256sum "$repo/tests/TradeOps.UnitTests/bin/Release/net10.0/TradeOps.UnitTests.dll" > "$out/test-assembly-sha256.txt"
+if [[ "$live_inbox" == true ]]; then
+  sha256sum "$repo/tools/TradeOps.DeribitLiveInboxQualification/bin/Release/net10.0/TradeOps.DeribitLiveInboxQualification.dll" > "$out/tool-assembly-sha256.txt"
+else
+  sha256sum "$repo/tests/TradeOps.UnitTests/bin/Release/net10.0/TradeOps.UnitTests.dll" > "$out/test-assembly-sha256.txt"
+fi
 docker inspect --format '{{.Id}} {{.State.StartedAt}} {{.RestartCount}}' "$container" > "$out/test-server.txt"
 docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}} {{.PIDs}}' "$container" > "$out/resources-before.txt"
 cd /tmp # use installed Ubuntu SDK outside global.json
 set +e
+if [[ "$live_inbox" == true ]]; then
+  export TRADEOPS_B2_POSTGRES="$connection"
+  taskset -c "$cpu" runuser -u user -- env -u TRADEOPS_TEST_POSTGRES_ADMIN -u GITHUB_ACTIONS \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_PROCESSOR_COUNT=1 \
+    DeribitTerminal__ExecutionEnabled=false DeribitTerminal__MainnetExecutionEnabled=false \
+    dotnet "$repo/tools/TradeOps.DeribitLiveInboxQualification/bin/Release/net10.0/TradeOps.DeribitLiveInboxQualification.dll" \
+    > "$out/live-tool.log" 2>&1
+  result=$?
+  unset TRADEOPS_B2_POSTGRES connection
+  exit "$result" # finish validates peer containers, guard, clone/role/session cleanup, then emits a redacted frame
+fi
 taskset -c "$cpu" runuser -u user -- env \
   -u TRADEOPS_TEST_POSTGRES_ADMIN -u GITHUB_ACTIONS \
   DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_PROCESSOR_COUNT=1 \
@@ -166,7 +215,7 @@ cases=root.findall('t:Results/t:UnitTestResult',ns)
 def seconds(value):
     h,m,s=value.split(':'); return int(h)*3600+int(m)*60+float(s)
 summary={'counters':counters,'case_seconds':sum(seconds(x.attrib['duration']) for x in cases),
-         'pg_case_seconds':sum(seconds(x.attrib['duration']) for x in cases if any(n in x.attrib['testName'] for n in ['OmsJournalPostgresTests','OmsPrivateCapturePostgresTests','DeribitPrivateStreamPostgresTests','DeribitCaptureHostPostgresTests'])),
+         'pg_case_seconds':sum(seconds(x.attrib['duration']) for x in cases if any(n in x.attrib['testName'] for n in ['OmsJournalPostgresTests','OmsPrivateCapturePostgresTests','DeribitPrivateStreamPostgresTests','DeribitCaptureHostPostgresTests','DeribitLiveInboxQualificationTests'])),
          'test_server_retained':True}
 ok=int(sys.argv[3])==0 and len(cases)==int(sys.argv[2]) and int(counters['passed'])==int(sys.argv[2]) and all(x.attrib['outcome']=='Passed' for x in cases)
 db=(out/'database-after.txt').read_text().splitlines()

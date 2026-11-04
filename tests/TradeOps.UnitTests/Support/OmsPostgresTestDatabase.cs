@@ -6,7 +6,11 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using TradeOps.Infrastructure.Persistence;
 
+#if TRADEOPS_QUALIFICATION_TOOL
+namespace TradeOps.QualificationSupport;
+#else
 namespace TradeOps.UnitTests.Support;
+#endif
 
 internal enum PostgresPreparation { TemplateClone, FreshMigrations }
 
@@ -79,7 +83,7 @@ internal sealed class OmsPostgresTestDatabase : IAsyncDisposable
             builder.MaxPoolSize = 20; // > the 16-way inbox/12-way command races
             builder.MinPoolSize = 0;
             fixture.Source = NpgsqlDataSource.Create(builder.ConnectionString);
-            Console.WriteLine($"PG_FIXTURE mode={mode} pooling={pooling} template={fixture.SourceTemplate ?? "none"} " +
+            PreparationLog($"PG_FIXTURE mode={mode} pooling={pooling} template={fixture.SourceTemplate ?? "none"} " +
                 $"prepare_ms={fixture.lifetime.ElapsedMilliseconds}");
             return fixture;
         }
@@ -221,7 +225,7 @@ FROM pg_database WHERE datname=@name
         finally
         {
             await admin.DisposeAsync(); // releases server lease even on failure
-            Console.WriteLine($"PG_FIXTURE total_ms={lifetime.ElapsedMilliseconds}");
+            PreparationLog($"PG_FIXTURE total_ms={lifetime.ElapsedMilliseconds}");
         }
     }
 
@@ -259,6 +263,13 @@ FROM pg_database WHERE datname=@name
             hash.AppendData(Encoding.UTF8.GetBytes(reader.ReadToEnd().Replace("\r\n", "\n") + "\0"));
         }
         return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private static void PreparationLog(string message)
+    {
+#if !TRADEOPS_QUALIFICATION_TOOL
+        Console.WriteLine(message);
+#endif
     }
 
     internal static async Task Execute(NpgsqlConnection connection, string sql)

@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\tools\TradeOps.TranscriptResearchDemo\TradeOps.TranscriptResearchDemo.csproj" />
     <ProjectReference Include="..\..\tools\TradeOps.ProviderTranscriptResearchDemo\TradeOps.ProviderTranscriptResearchDemo.csproj" />
     <ProjectReference Include="..\..\tools\TradeOps.DeribitPrivateSessionProbe\TradeOps.DeribitPrivateSessionProbe.csproj" />
+    <ProjectReference Include="..\..\tools\TradeOps.DeribitLiveInboxQualification\TradeOps.DeribitLiveInboxQualification.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Hash schema inputs, never a Git SHA or the entire application assembly. -->

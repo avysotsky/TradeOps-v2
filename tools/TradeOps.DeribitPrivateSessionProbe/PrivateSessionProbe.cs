@@ -71,9 +71,7 @@ public static class PrivateSessionProbe
         // Diagnostic scope only. Account denotes the authenticated native entity, NOT an inferred parent.
         // A subaccount marker repeats its known native ID; no parent-account mapping is manufactured.
         // This scope is never persisted, promoted or installed as a production account hierarchy.
-        var native = "observed-native:" + input.ExpectedAccountId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var scope = new AccountKey(new("local-readonly-qualification"), new("DERIBIT"), OmsEnvironment.Mainnet,
-            new(native), input.AccountType == "subaccount" ? new TradingSubaccountId(native) : null);
+        var scope = CreateDiagnosticScope(input.ExpectedAccountId, input.AccountType);
         var session = await coordinator.SwitchAsync(scope, ct);
         var settings = new DeribitOptions { WebSocketUrl = "wss://www.deribit.com/ws/api/v2",
             ClientId = input.ClientId, ClientSecret = input.ClientSecret };
@@ -121,5 +119,15 @@ public static class PrivateSessionProbe
             Interlocked.Increment(ref rejected);
             throw new InvalidOperationException("Protocol-only probe does not persist private events.");
         }
+    }
+
+    /// <summary>Acceptance-only native entity/marker scope, not a production parent-account mapping.</summary>
+    public static AccountKey CreateDiagnosticScope(long nativeId, string accountType)
+    {
+        if (nativeId <= 0 || accountType is not ("main" or "subaccount"))
+            throw new InvalidOperationException("Invalid diagnostic account identity.");
+        var native = "observed-native:" + nativeId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return new(new("local-readonly-qualification"), new("DERIBIT"), OmsEnvironment.Mainnet,
+            new(native), accountType == "subaccount" ? new TradingSubaccountId(native) : null);
     }
 }
