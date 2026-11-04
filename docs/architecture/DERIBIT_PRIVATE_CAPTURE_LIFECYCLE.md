@@ -39,7 +39,11 @@ The capture path can send only:
   connection's account ID, main/subaccount type and queried currency with the pin;
 - public/set_heartbeat, private/subscribe, and public/test.
 
-Missing, duplicate, elevated or unrecognized granted scopes fail closed. Authentication
+Missing required connection/read grants, duplicate or elevated permissions fail closed.
+The explicit denied categories may be omitted from the normalized grant; a single
+bounded server `name:` label is ignored and never logged or used as account identity.
+Other unrecognized grants fail closed. [Live probe and scope normalization](DERIBIT_PRIVATE_SESSION_PROBE.md).
+Authentication
 and account mismatch stop the transport before releasing buffered events. API errors
 are sanitized to typed reasons; auth/account payloads, token strings and remote error
 messages are not logged. There is no placement/cancel/replace RPC in this path.

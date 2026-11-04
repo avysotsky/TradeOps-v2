@@ -135,7 +135,7 @@ public sealed class DeribitPrivateCaptureTests
 
     [Theory]
     [InlineData("connection mainaccount trade:read_write account:read wallet:none block_trade:none block_rfq:none")]
-    [InlineData("connection mainaccount trade:read account:read block_trade:none block_rfq:none")]
+    [InlineData("connection mainaccount trade:read account:read wallet:read block_trade:none block_rfq:none")]
     [InlineData("session:other trade:read account:read wallet:none block_trade:none block_rfq:none")]
     [InlineData("connection mainaccount trade:read trade:read account:read wallet:none block_trade:none block_rfq:none")]
     public async Task UnverifiedPermissions_FailClosedBeforeSubscriptionOrCapture(string scope)

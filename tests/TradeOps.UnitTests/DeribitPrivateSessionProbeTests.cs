@@ -17,7 +17,8 @@ public sealed class DeribitPrivateSessionProbeTests
     [InlineData(true)]
     public async Task QuietVerifiedSession_RecordsCorrelatedHeartbeat_WithoutDurableCaptureClaim(bool sub)
     {
-        var socket = new Socket { AccountType = sub ? "subaccount" : "main", OnSubscribe = (s, id, p) => { s.Heartbeat(); s.Reply(id, p.GetProperty("channels")); } };
+        var socket = new Socket { AccountType = sub ? "subaccount" : "main", GrantedScope = "connection trade:read account:read name:synthetic-label",
+            OnSubscribe = (s, id, p) => { s.Heartbeat(); s.Reply(id, p.GetProperty("channels")); } };
         var input = Input(); input.AccountType = socket.AccountType; input.Validate();
         var result = await PrivateSessionProbe.ObserveAsync(input, Plan(sub: sub), settings => Stream(() => socket, settings),
             TimeSpan.FromMilliseconds(100), CancellationToken.None);
@@ -37,6 +38,7 @@ public sealed class DeribitPrivateSessionProbeTests
         Assert.True(socket.Aborted);
         Assert.DoesNotContain("synthetic-secret", JsonSerializer.Serialize(result));
         Assert.DoesNotContain("observed-native", JsonSerializer.Serialize(result));
+        Assert.DoesNotContain("synthetic-label", JsonSerializer.Serialize(result));
     }
 
     [Fact]

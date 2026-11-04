@@ -107,7 +107,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                 var auth = await RequestAsync("public/auth", new
                 {
                     grant_type = "client_credentials", client_id = options.ClientId, client_secret = options.ClientSecret,
-                    scope = "connection trade:read account:read wallet:none block_trade:none block_rfq:none"
+                    scope = DeribitPrivateReadOnlyScope.Requested
                 }, ct);
                 var expires = ValidateAuth(auth);
                 diagnostics?.Authenticated();
@@ -263,11 +263,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                 !auth.TryGetProperty("expires_in", out var expiry) || expiry.ValueKind != JsonValueKind.Number || !expiry.TryGetDouble(out var seconds) ||
                 !double.IsFinite(seconds) || seconds < 10 || seconds > 31536000)
                 throw new DeribitCaptureException(OmsPrivateStreamProblem.AuthenticationRejected, false);
-            var tokens = ReadString(auth, "scope").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            foreach (var required in new[] { "connection", "trade:read", "account:read", "wallet:none", "block_trade:none", "block_rfq:none" })
-                if (tokens.Count(x => x == required) != 1) throw new DeribitCaptureException(OmsPrivateStreamProblem.AuthenticationRejected, false);
-            if (tokens.Any(x => x is not ("connection" or "mainaccount" or "subaccount" or "trade:read" or "account:read" or
-                "wallet:none" or "block_trade:none" or "block_rfq:none")))
+            if (!DeribitPrivateReadOnlyScope.IsValidGrant(ReadString(auth, "scope")))
                 throw new DeribitCaptureException(OmsPrivateStreamProblem.AuthenticationRejected, false);
             return seconds;
         }
