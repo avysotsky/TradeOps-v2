@@ -8,11 +8,15 @@ Infrastructure; the [target architecture](TARGET_PLATFORM_ARCHITECTURE.md)
 describes the remaining boundaries. This extraction preserves capture schemas
 and behavior; it does not register a new host or enable execution.
 
+An explicit [read-only host mode](DERIBIT_READONLY_CAPTURE_HOST.md) now supplies
+the trusted server binding and restricted capture-only composition. Default
+application settings still do not select it; live deployment is a separate gate.
+
 This increment extends the existing `DeribitPrivateWebSocketStream` and
 `DeribitWebSocketMessageParser`. `RunCaptureAsync` is an explicit capture entry point;
-the legacy testnet worker still selects `IExchangeEventStream.RunAsync`. No new
-host registration, credentials, application-role deployment or live connection is
-enabled automatically. [Capture storage contract](OMS_PRIVATE_EVENT_CAPTURE.md).
+the legacy testnet mode still selects `IExchangeEventStream.RunAsync`. The explicit
+capture mode excludes that legacy worker. No credentials, application-role deployment
+or live connection is enabled automatically. [Capture storage contract](OMS_PRIVATE_EVENT_CAPTURE.md).
 
 ## Binding and read-only protocol
 

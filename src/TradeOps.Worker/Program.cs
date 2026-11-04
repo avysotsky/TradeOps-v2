@@ -10,6 +10,16 @@ using TradeOps.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+if (DeribitCaptureStartup.TryConfigure(builder))
+{
+    using var captureHost = builder.Build();
+    var captureWorker = captureHost.Services.GetServices<IHostedService>()
+        .OfType<DeribitReadOnlyCaptureWorker>().Single();
+    await captureHost.RunAsync();
+    if (captureWorker.ExecuteTask?.IsFaulted == true) Environment.ExitCode = 1;
+    return;
+}
+
 var connectionString = builder.Configuration.GetConnectionString("TradeOpsDb")
     ?? throw new InvalidOperationException("Connection string 'TradeOpsDb' is not configured.");
 

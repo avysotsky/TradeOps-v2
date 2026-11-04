@@ -6,6 +6,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b2
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-stream
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-host
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -23,6 +24,10 @@ with no failed/skipped cases. `b3` checks 28 scoped capture cases (11 PostgreSQL
 17 contracts), including ordinary application-role, upgrade/Down, atomic commit
 and concurrent/idempotent observation tests. `b3-stream` checks 52 targeted lifecycle,
 parser, coordinator, real loopback transport, PG pipeline and existing Deribit cases.
+`b3-host` checks those 52 plus 26 startup/binding/composition cases and five real PG
+host/ownership cases, 83 total. It uses scripted venue sockets. Its connection-loss
+case terminates only the owned backend of a generated application role inside its
+generated test clone; no container/server restart or persistent DB is used.
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.

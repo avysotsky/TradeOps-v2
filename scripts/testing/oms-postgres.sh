@@ -4,12 +4,14 @@
 set -Eeuo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 suite=${1:-b2}
+stream_filter='FullyQualifiedName~DeribitPrivateCaptureTests|FullyQualifiedName~DeribitPrivateCaptureParserTests|FullyQualifiedName~OmsPrivateCaptureCoordinatorTests|FullyQualifiedName~DeribitPrivateSocketTests|FullyQualifiedName~DeribitPrivateStreamPostgresTests|FullyQualifiedName~DeribitAdapterTests|FullyQualifiedName~DeribitWebSocketMessageParserTests|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_SelectsDeribitTestnetFromConfiguration|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_DeribitProductionBaseUrlIsRejectedOnResolution'
 case "$suite" in
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
   b3) filter='FullyQualifiedName~OmsPrivateEventContractTests|FullyQualifiedName~OmsPrivateCapturePostgresTests'; expected=28 ;;
-  b3-stream) filter='FullyQualifiedName~DeribitPrivateCaptureTests|FullyQualifiedName~DeribitPrivateCaptureParserTests|FullyQualifiedName~OmsPrivateCaptureCoordinatorTests|FullyQualifiedName~DeribitPrivateSocketTests|FullyQualifiedName~DeribitPrivateStreamPostgresTests|FullyQualifiedName~DeribitAdapterTests|FullyQualifiedName~DeribitWebSocketMessageParserTests|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_SelectsDeribitTestnetFromConfiguration|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_DeribitProductionBaseUrlIsRejectedOnResolution'; expected=52 ;;
+  b3-stream) filter=$stream_filter; expected=52 ;;
+  b3-host) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests"; expected=83 ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
-  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|fixture]'; exit 2 ;;
+  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
 owner=tradeops-tests-v1
@@ -115,6 +117,7 @@ capture_paths=(
   src/TradeOps.Application/TradeOps.Application.csproj
   src/TradeOps.Domain/TradeOps.Domain.csproj
   src/TradeOps.Connectors.Deribit
+  src/TradeOps.Worker
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
   src/TradeOps.Infrastructure/Exchange/ExchangeServiceRegistration.cs
   src/TradeOps.Application/Oms
@@ -163,7 +166,7 @@ cases=root.findall('t:Results/t:UnitTestResult',ns)
 def seconds(value):
     h,m,s=value.split(':'); return int(h)*3600+int(m)*60+float(s)
 summary={'counters':counters,'case_seconds':sum(seconds(x.attrib['duration']) for x in cases),
-         'pg_case_seconds':sum(seconds(x.attrib['duration']) for x in cases if any(n in x.attrib['testName'] for n in ['OmsJournalPostgresTests','OmsPrivateCapturePostgresTests','DeribitPrivateStreamPostgresTests'])),
+         'pg_case_seconds':sum(seconds(x.attrib['duration']) for x in cases if any(n in x.attrib['testName'] for n in ['OmsJournalPostgresTests','OmsPrivateCapturePostgresTests','DeribitPrivateStreamPostgresTests','DeribitCaptureHostPostgresTests'])),
          'test_server_retained':True}
 ok=int(sys.argv[3])==0 and len(cases)==int(sys.argv[2]) and int(counters['passed'])==int(sys.argv[2]) and all(x.attrib['outcome']=='Passed' for x in cases)
 db=(out/'database-after.txt').read_text().splitlines()
