@@ -12,6 +12,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-testnet-order
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-mainnet-eth
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order-reducer
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -61,6 +62,8 @@ partial-cancel/late-fill races and incomplete coverage. It performs no live exch
 requests and never changes the retained mainnet qualification store. The
 [order projection contract](../architecture/DERIBIT_ORDER_RECOVERY_PROJECTION.md)
 describes the boundary and remaining account recovery work.
+`b4-order-reducer` selects the 47 recovery cases alone for changes confined to
+the reducer/result contract; it uses the same marked test server and cleanup guards.
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.

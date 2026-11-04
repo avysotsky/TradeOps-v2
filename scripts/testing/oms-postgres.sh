@@ -20,7 +20,8 @@ case "$suite" in
   b3-mainnet-eth) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests|FullyQualifiedName~DeribitMainnetEthQualificationTests"; expected=144 ;;
   b4-order) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests|FullyQualifiedName~DeribitReadOnlyScopeTests|FullyQualifiedName~DeribitLiveInboxQualificationTests|FullyQualifiedName~OmsPostgresFixtureTests|FullyQualifiedName~DeribitTestnetOrderQualificationTests|FullyQualifiedName~DeribitMainnetEthQualificationTests|FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests|FullyQualifiedName~OmsPrivateEventContractTests|FullyQualifiedName~OmsPrivateCapturePostgresTests|FullyQualifiedName~DeribitOrderRecovery"; expected=247 ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
-  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|b3-testnet-order|b3-mainnet-eth|b4-order|fixture]'; exit 2 ;;
+  b4-order-reducer) filter='FullyQualifiedName~DeribitOrderRecovery'; expected=47 ;;
+  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|b3-testnet-order|b3-mainnet-eth|b4-order|b4-order-reducer|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
 owner=tradeops-tests-v1

@@ -46,6 +46,10 @@ public sealed class DeribitOrderRecoveryProjectorTests
     {
         var result = Project([Report()]);
         Assert.True(result.IsConsistent);
+        Assert.Equal(Account, result.Scope);
+        Assert.Equal(Epoch, result.Epoch);
+        Assert.Equal(From, result.RequiredFromUtc);
+        Assert.Equal(Through, result.ThroughUtc);
         var order = Assert.Single(result.Orders);
         Assert.Equal("cancelled", order.NativeState);
         Assert.Equal(0, order.KnownFilledNativeAmount);

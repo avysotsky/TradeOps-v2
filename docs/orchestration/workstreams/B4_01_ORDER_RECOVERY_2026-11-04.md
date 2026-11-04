@@ -17,6 +17,8 @@ ledger from committed capture plus a closed recovery batch.
   reopening terminal orders, external orders and changed terms block consistency.
 - Stable output across event arrival permutations. Unknown totals remain unknown;
   decimal overflow blocks instead of wrapping/clamping.
+- Each result retains its full account scope, epoch and window. Previously observed
+  native IDs are not claimed to be linked to a local OMS intent.
 - PostgreSQL replay cases open fresh physical connections, reconstruct committed
   observations including quarantined alternatives, and assert unchanged legacy
   Orders/Fills. The SQL decoder is test-only, not a production reader.
@@ -25,10 +27,25 @@ ledger from committed capture plus a closed recovery batch.
 
 ## Validation
 
-Acceptance pending until actual build/TRX/cleanup/environment evidence is recorded.
-The `b4-order` suite selects 247 cases: previous B3 144, journal 28, private capture
-28, new reducer 45 and new PostgreSQL replay 2. Venue messages are scripted; no
-keys are unlocked and no real exchange operations are performed.
+The full `b4-order` run passed **247/247**, zero failures/skips, on code revision
+`a1733e7eafa4427d47af5935a996c165417dfe4b`. Counts: previous B3 144,
+journal 28, private capture 28, new reducer 45 and new PostgreSQL replay 2.
+TRX, cleanup and environment all PASS. Normalized source hashes match that revision.
+After this full run, the result contract gained account/epoch/window context and
+matching assertions; the algorithm and the 200 pre-existing regression cases were
+unchanged. A final targeted `b4-order-reducer` run is pending for that additive change.
+Venue messages are scripted; no keys are unlocked and no real exchange operations
+are performed. This is not live restart/history qualification.
+
+Local evidence, excluded from Git:
+
+- `.tradeops/postgres-reuse/20261104T214911-b4-order-20606/` — full 247-case run.
+- `.tradeops/b4-order-full-summary.json` — verified source/binary and TRX summary.
+
+The full-run test assembly SHA-256 is
+`7ee10f15d42fe503493c3137522a7dbb4511029971fdafd4b16565dcbe6e448c`.
+The reusable PG server ID/start/restart remained unchanged, test clones/roles were
+cleaned and zero test sessions remained. Peer container snapshots are identical.
 
 ## Remaining scope
 

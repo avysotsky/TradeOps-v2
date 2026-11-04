@@ -24,7 +24,8 @@ public sealed record DeribitRecoveredOrder(string Currency, string NativeInstrum
     OmsPrivateAmountUnit AmountUnit, string AmountCurrency,
     decimal? KnownFilledNativeAmount, bool PreviouslyObserved, bool HasCurrentEvidence);
 
-public sealed record DeribitOrderRecoveryResult(IReadOnlyList<DeribitRecoveredOrder> Orders,
+public sealed record DeribitOrderRecoveryResult(AccountKey Scope, Guid Epoch,
+    DateTimeOffset RequiredFromUtc, DateTimeOffset ThroughUtc, IReadOnlyList<DeribitRecoveredOrder> Orders,
     IReadOnlyList<DeribitOrderRecoveryIssue> Issues, int DistinctExecutions)
 {
     // Order-ledger comparison only. This never grants account READY or send permission.
@@ -143,7 +144,7 @@ public static class DeribitOrderRecoveryProjector
                     fresh ? latest.OrderState : null, latest.Side, latest.NativeAmount,
                     latest.AmountUnit, latest.AmountCurrency, filled, known.Contains(key), fresh));
         }
-        return new(orders.AsReadOnly(), issues.OrderBy(x => x.Problem)
+        return new(scope, epoch, requiredFromUtc, throughUtc, orders.AsReadOnly(), issues.OrderBy(x => x.Problem)
             .ThenBy(x => x.Currency, StringComparer.Ordinal).ThenBy(x => x.ExchangeOrderId, StringComparer.Ordinal)
             .ToList().AsReadOnly(), executions.Count);
 

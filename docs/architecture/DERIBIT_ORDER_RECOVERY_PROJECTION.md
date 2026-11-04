@@ -4,7 +4,9 @@
 the existing private facts v2 and observation v1 contracts. It rebuilds a bounded
 native order ledger from prior committed data plus one closed recovery batch.
 It performs no I/O or dispatch, writes no legacy Orders/Fills and never grants
-account READY or send permission. It is deliberately Deribit-specific.
+account READY or send permission. It is deliberately Deribit-specific. Each result
+retains the full account scope, recovery epoch and time window so it cannot be
+published as an account-free collection of raw order IDs.
 
 ## Inputs and comparison
 
