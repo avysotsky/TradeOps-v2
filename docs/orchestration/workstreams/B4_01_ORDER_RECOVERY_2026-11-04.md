@@ -33,7 +33,12 @@ journal 28, private capture 28, new reducer 45 and new PostgreSQL replay 2.
 TRX, cleanup and environment all PASS. Normalized source hashes match that revision.
 After this full run, the result contract gained account/epoch/window context and
 matching assertions; the algorithm and the 200 pre-existing regression cases were
-unchanged. A final targeted `b4-order-reducer` run is pending for that additive change.
+unchanged. The final targeted `b4-order-reducer` run passed **47/47** on revision
+`83bc4018d5da656f583b00341d47b9fb5c07d592`, zero failures/skips and
+cleanup/environment PASS. Its source manifest matches that revision. Release build
+passed with zero errors and 15 pre-existing analyzer warnings. The complete 247-case
+suite was not repeated after the additive result-context change; all 47 affected
+recovery cases, including both PostgreSQL replays, were rerun.
 Venue messages are scripted; no keys are unlocked and no real exchange operations
 are performed. This is not live restart/history qualification.
 
@@ -41,9 +46,13 @@ Local evidence, excluded from Git:
 
 - `.tradeops/postgres-reuse/20261104T214911-b4-order-20606/` — full 247-case run.
 - `.tradeops/b4-order-full-summary.json` — verified source/binary and TRX summary.
+- `.tradeops/postgres-reuse/20261104T215805-b4-order-reducer-8743/` — final 47-case run.
+- `.tradeops/b4-order-summary.json` — final verified source/binary and TRX summary.
 
 The full-run test assembly SHA-256 is
 `7ee10f15d42fe503493c3137522a7dbb4511029971fdafd4b16565dcbe6e448c`.
+The final targeted-run test assembly SHA-256 is
+`29c6af4559ecfdc31d35ad55174ccb18950c26af4d17fe6c95ba6be279cdf46e`.
 The reusable PG server ID/start/restart remained unchanged, test clones/roles were
 cleaned and zero test sessions remained. Peer container snapshots are identical.
 

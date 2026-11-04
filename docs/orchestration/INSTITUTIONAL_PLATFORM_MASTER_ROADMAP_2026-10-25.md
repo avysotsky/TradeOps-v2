@@ -24,6 +24,8 @@
 
 > **B3, actual mainnet ETH proof 2026-11-04:** [один настоящий ETH-PERPETUAL ордер 1 USD выставлен и адресно отменён](workstreams/B3_03_MAINNET_ETH_2026-11-04.md), `MAINNET_ETH_CAPTURE_PASS`. Open/cancel факты сохранены в постоянный PostgreSQL: commands/attempts=2/2, inbox/observations/incidents=2/2/0. Исполнений нет, исходная позиция сохранилась, environment/peers PASS. Повторного ордера не было, marker завершённого прогона остаётся. Ключ и native pin прежние; права обновил владелец. #73 не закрывается автоматически; B4/B5/FIX и account-wide readiness остаются отдельными gates.
 
+> **B4-01, 2026-11-04:** [реализовано восстановление native order ledger из сохранённых и recovery-фактов](workstreams/B4_01_ORDER_RECOVERY_2026-11-04.md): dedup WS/history/ledger, scope/epoch/window/coverage, сверка отдельных сделок с cumulative quantity, явные блокирующие расхождения вместо выдуманных отмен. Полный прогон 247/247; после добавления account/epoch/window в результат — 47/47 affected recovery cases, включая два PG replay, environment/cleanup PASS. Торговых действий не выполнялось. Следующий шаг — scoped/version/hash-validated durable reader и checkpoint/incidents, затем coherent read-only collection history/fills/positions/balances и durable projection/recovery gate. B4/READY и B5 sender fencing ещё не завершены; #73 остаётся открыт.
+
 **Status:** architecture and delivery roadmap integrated into main; Deribit-only V2 scope remains current; dedicated owner-approved ETH qualification is separate from global execution enablement.
 **Date:** 2026-10-25.
 **Owner reference:** [ZentoEra Senior Quant Developer](https://www.zentoera.com/careers/quant-developer); [TradeOps-v2 issue #40, Deribit FIX 4.4](https://github.com/avysotsky/TradeOps-v2/issues/40).
