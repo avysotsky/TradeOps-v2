@@ -5,13 +5,14 @@ using TradeOps.Domain.Enums;
 using TradeOps.Domain.Oms;
 using TradeOps.Infrastructure.Persistence;
 using TradeOps.Infrastructure.Persistence.Oms;
+using TradeOps.UnitTests.Support;
 using Xunit;
 
 namespace TradeOps.UnitTests;
 
 /// <summary>
 /// Opt-in real PostgreSQL integration tests. Requires TRADEOPS_B2_POSTGRES set to
-/// a disposable PostgreSQL 17 admin connection string. The acceptance runner MUST
+/// the dedicated, ownership-marked PostgreSQL 17 test server. The acceptance runner MUST
 /// set the variable; absent variable is NOT proof of Postgres PASS.
 /// </summary>
 public sealed class OmsJournalPostgresTests
@@ -45,10 +46,10 @@ public sealed class OmsJournalPostgresTests
                 .Select(_ => new OmsPostgresJournal(ds).PersistAsync(request)));
             Assert.Equal(1, outcomes.Count(x => x == OmsJournalWriteResult.Created));
             Assert.Equal(11, outcomes.Count(x => x == OmsJournalWriteResult.Duplicate));
-            Assert.Equal(1, await Count(cs, "oms_intents"));
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-            Assert.Equal(1, await ScalarLong(cs, "SELECT version FROM oms_aggregates"));
+            Assert.Equal(1, await Count(ds, "oms_intents"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+            Assert.Equal(1, await ScalarLong(ds, "SELECT version FROM oms_aggregates"));
         });
     }
 
@@ -62,10 +63,10 @@ public sealed class OmsJournalPostgresTests
             Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(original));
             var collision = original with { Payload = original.Payload with { Quantity = 7m } };
             Assert.Equal(OmsJournalWriteResult.Collision, await journal.PersistAsync(collision));
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
-            Assert.Equal(1, await ScalarLong(cs, "SELECT version FROM oms_aggregates"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+            Assert.Equal(1, await Count(ds, "oms_integrity_incidents"));
+            Assert.Equal(1, await ScalarLong(ds, "SELECT version FROM oms_aggregates"));
         });
     }
 
@@ -81,11 +82,11 @@ public sealed class OmsJournalPostgresTests
             Assert.Equal(1, results.Count(x => x == OmsJournalWriteResult.Created));
             Assert.Equal(5, results.Count(x => x == OmsJournalWriteResult.Duplicate));
             Assert.Equal(6, results.Count(x => x == OmsJournalWriteResult.Collision));
-            Assert.Equal(1, await Count(cs, "oms_aggregates"));
-            Assert.Equal(1, await Count(cs, "oms_intents"));
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-            Assert.Equal(6, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(1, await Count(ds, "oms_aggregates"));
+            Assert.Equal(1, await Count(ds, "oms_intents"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+            Assert.Equal(6, await Count(ds, "oms_integrity_incidents"));
         });
     }
 
@@ -103,11 +104,11 @@ public sealed class OmsJournalPostgresTests
                 new OmsPostgresJournal(ds).PersistAsync(other));
             Assert.Single(results.Where(x => x == OmsJournalWriteResult.Created));
             Assert.Single(results.Where(x => x == OmsJournalWriteResult.Collision));
-            Assert.Equal(1, await Count(cs, "oms_aggregates"));
-            Assert.Equal(1, await Count(cs, "oms_intents"));
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(1, await Count(ds, "oms_aggregates"));
+            Assert.Equal(1, await Count(ds, "oms_intents"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+            Assert.Equal(1, await Count(ds, "oms_integrity_incidents"));
         });
     }
 
@@ -123,9 +124,9 @@ public sealed class OmsJournalPostgresTests
             var otherSubaccount = Request(scope: Scope(sub: "desk-1"));
             foreach (var item in new[] { baseRequest, otherAccount, otherVenue, otherSubaccount })
                 Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(item));
-            Assert.Equal(4, await Count(cs, "oms_commands"));
-            Assert.Equal(4, await Count(cs, "oms_outbox"));
-            Assert.Equal(4, await Count(cs, "oms_aggregates"));
+            Assert.Equal(4, await Count(ds, "oms_commands"));
+            Assert.Equal(4, await Count(ds, "oms_outbox"));
+            Assert.Equal(4, await Count(ds, "oms_aggregates"));
         });
     }
 
@@ -139,10 +140,10 @@ public sealed class OmsJournalPostgresTests
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 journal.PersistAsync(request, _ => throw new InvalidOperationException("kill-before-commit")));
             foreach (var table in new[] { "oms_aggregates", "oms_intents", "oms_commands", "oms_outbox" })
-                Assert.Equal(0, await Count(cs, table));
+                Assert.Equal(0, await Count(ds, table));
             Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(request));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-        });
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+        }, pooling: false);
     }
 
     [Fact]
@@ -158,8 +159,8 @@ public sealed class OmsJournalPostgresTests
                 new OmsPostgresJournal(ds).PersistAsync(second));
             Assert.Single(responses.Where(x => x == OmsJournalWriteResult.Created));
             Assert.Single(responses.Where(x => x == OmsJournalWriteResult.StaleVersion));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-            Assert.Equal(1, await ScalarLong(cs, "SELECT version FROM oms_aggregates"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+            Assert.Equal(1, await ScalarLong(ds, "SELECT version FROM oms_aggregates"));
         });
     }
 
@@ -172,8 +173,8 @@ public sealed class OmsJournalPostgresTests
             Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(Request()));
             var next = Request(commandId: Guid.NewGuid(), expected: 0);
             Assert.Equal(OmsJournalWriteResult.StaleVersion, await journal.PersistAsync(next));
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
         });
     }
 
@@ -194,14 +195,14 @@ public sealed class OmsJournalPostgresTests
             var restarted = new OmsPostgresJournal(ds);
             Assert.Equal(OmsJournalAttemptResult.AlreadyStartedOrResolved,
                 await restarted.MarkDispatchStartedAsync(request.Scope, command));
-            Assert.Equal(1, await Count(cs, "oms_attempts"));
-            Assert.Equal("DispatchStarted", await ScalarString(cs,
+            Assert.Equal(1, await Count(ds, "oms_attempts"));
+            Assert.Equal("DispatchStarted", await ScalarString(ds,
                 "SELECT dispatch_phase FROM oms_commands"));
-            Assert.Equal("NeedsRecovery", await ScalarString(cs,
+            Assert.Equal("NeedsRecovery", await ScalarString(ds,
                 "SELECT state FROM oms_outbox"));
             Assert.False(await restarted.RecordOutcomeAsync(request.Scope,
                 new OmsCommandId(Guid.NewGuid()), OmsJournalDispatchOutcome.Acknowledged));
-        });
+        }, pooling: false);
     }
 
     [Fact]
@@ -215,16 +216,16 @@ public sealed class OmsJournalPostgresTests
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 journal.MarkDispatchStartedAsync(request.Scope, request.CommandId,
                     _ => throw new InvalidOperationException("crash-before-dispatch-commit")));
-            Assert.Equal(0, await Count(cs, "oms_attempts"));
-            Assert.Equal("PersistedNotSent", await ScalarString(cs,
+            Assert.Equal(0, await Count(ds, "oms_attempts"));
+            Assert.Equal("PersistedNotSent", await ScalarString(ds,
                 "SELECT dispatch_phase FROM oms_commands"));
-            Assert.Equal("NotSent", await ScalarString(cs, "SELECT state FROM oms_outbox"));
+            Assert.Equal("NotSent", await ScalarString(ds, "SELECT state FROM oms_outbox"));
             Assert.Equal(OmsJournalAttemptResult.Started,
                 await new OmsPostgresJournal(ds).MarkDispatchStartedAsync(
                     request.Scope, request.CommandId));
-            Assert.Equal(1, await Count(cs, "oms_attempts"));
-            Assert.Equal("NeedsRecovery", await ScalarString(cs, "SELECT state FROM oms_outbox"));
-        });
+            Assert.Equal(1, await Count(ds, "oms_attempts"));
+            Assert.Equal("NeedsRecovery", await ScalarString(ds, "SELECT state FROM oms_outbox"));
+        }, pooling: false);
     }
 
     [Fact]
@@ -241,10 +242,10 @@ public sealed class OmsJournalPostgresTests
             Assert.Equal(OmsJournalAttemptResult.AlreadyStartedOrResolved,
                 await new OmsPostgresJournal(ds).MarkDispatchStartedAsync(
                     request.Scope, request.CommandId));
-            Assert.Equal(1, await Count(cs, "oms_attempts"));
-            Assert.Equal("NeedsRecovery", await ScalarString(cs,
+            Assert.Equal(1, await Count(ds, "oms_attempts"));
+            Assert.Equal("NeedsRecovery", await ScalarString(ds,
                 "SELECT state FROM oms_outbox"));
-        });
+        }, pooling: false);
     }
 
     [Fact]
@@ -261,8 +262,8 @@ public sealed class OmsJournalPostgresTests
                 await j.PersistInboxAsync(first with { Quantity = 3m }));
             Assert.Equal(OmsJournalInboxResult.Inserted,
                 await j.PersistInboxAsync(Event(Scope(account: "second"))));
-            Assert.Equal(2, await Count(cs, "oms_inbox"));
-            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(2, await Count(ds, "oms_inbox"));
+            Assert.Equal(1, await Count(ds, "oms_integrity_incidents"));
         });
     }
 
@@ -275,22 +276,22 @@ public sealed class OmsJournalPostgresTests
             var original = Event(Scope());
             Assert.Equal(OmsJournalInboxResult.Inserted,
                 await journal.PersistInboxAsync(original));
-            var stored = await ScalarString(cs,
+            var stored = await ScalarString(ds,
                 "SELECT event_json::text || '|' || encode(payload_sha256,'hex') FROM oms_inbox");
             var replay = original with { Quantity = 2.000m, Price = 60000.000m };
             Assert.Equal(original, replay);
 
             Assert.Equal(OmsJournalInboxResult.Duplicate,
                 await new OmsPostgresJournal(ds).PersistInboxAsync(replay));
-            Assert.Equal(1, await Count(cs, "oms_inbox"));
-            Assert.Equal(0, await Count(cs, "oms_integrity_incidents"));
-            Assert.Equal(stored, await ScalarString(cs,
+            Assert.Equal(1, await Count(ds, "oms_inbox"));
+            Assert.Equal(0, await Count(ds, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(ds,
                 "SELECT event_json::text || '|' || encode(payload_sha256,'hex') FROM oms_inbox"));
 
             Assert.Equal(OmsJournalInboxResult.Collision,
                 await journal.PersistInboxAsync(replay with { Price = 60001m }));
-            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
-            Assert.Equal(stored, await ScalarString(cs,
+            Assert.Equal(1, await Count(ds, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(ds,
                 "SELECT event_json::text || '|' || encode(payload_sha256,'hex') FROM oms_inbox"));
         });
     }
@@ -314,7 +315,7 @@ public sealed class OmsJournalPostgresTests
                 }
             };
             Assert.Equal(OmsJournalWriteResult.Created, await journal.PersistAsync(request));
-            var stored = await ScalarString(cs,
+            var stored = await ScalarString(ds,
                 "SELECT request_json::text || '|' || encode(payload_sha256,'hex') FROM oms_commands");
             var replay = request with
             {
@@ -330,17 +331,17 @@ public sealed class OmsJournalPostgresTests
             Assert.Equal(OmsJournalWriteResult.Duplicate,
                 await new OmsPostgresJournal(ds).PersistAsync(replay));
             foreach (var table in new[] { "oms_aggregates", "oms_intents", "oms_commands", "oms_outbox" })
-                Assert.Equal(1, await Count(cs, table));
-            Assert.Equal(1, await ScalarLong(cs, "SELECT version FROM oms_aggregates"));
-            Assert.Equal(0, await Count(cs, "oms_integrity_incidents"));
-            Assert.Equal(stored, await ScalarString(cs,
+                Assert.Equal(1, await Count(ds, table));
+            Assert.Equal(1, await ScalarLong(ds, "SELECT version FROM oms_aggregates"));
+            Assert.Equal(0, await Count(ds, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(ds,
                 "SELECT request_json::text || '|' || encode(payload_sha256,'hex') FROM oms_commands"));
 
             Assert.Equal(OmsJournalWriteResult.Collision,
                 await journal.PersistAsync(replay with
                 { Payload = replay.Payload with { Quantity = 2m } }));
-            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
-            Assert.Equal(stored, await ScalarString(cs,
+            Assert.Equal(1, await Count(ds, "oms_integrity_incidents"));
+            Assert.Equal(stored, await ScalarString(ds,
                 "SELECT request_json::text || '|' || encode(payload_sha256,'hex') FROM oms_commands"));
         });
     }
@@ -355,7 +356,7 @@ public sealed class OmsJournalPostgresTests
                 .Select(_ => new OmsPostgresJournal(ds).PersistInboxAsync(item)));
             Assert.Equal(1, results.Count(x => x == OmsJournalInboxResult.Inserted));
             Assert.Equal(15, results.Count(x => x == OmsJournalInboxResult.Duplicate));
-            Assert.Equal(1, await Count(cs, "oms_inbox"));
+            Assert.Equal(1, await Count(ds, "oms_inbox"));
         });
     }
 
@@ -371,9 +372,9 @@ public sealed class OmsJournalPostgresTests
                 commandId: Guid.Parse("30000000-0000-4000-8000-000000000009"));
             Assert.Equal(OmsJournalWriteResult.Collision,
                 await journal.PersistAsync(differentAggregate));
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-            Assert.Equal(1, await Count(cs, "oms_integrity_incidents"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+            Assert.Equal(1, await Count(ds, "oms_integrity_incidents"));
         });
     }
 
@@ -389,8 +390,8 @@ public sealed class OmsJournalPostgresTests
             await using var tamper = new NpgsqlCommand(
                 "UPDATE oms_commands SET request_json='{}'::jsonb", db);
             await Assert.ThrowsAsync<PostgresException>(() => tamper.ExecuteNonQueryAsync());
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
         });
     }
 
@@ -408,7 +409,7 @@ public sealed class OmsJournalPostgresTests
             await using var rearm = new NpgsqlCommand(
                 "UPDATE oms_outbox SET state='NotSent'", db);
             await Assert.ThrowsAsync<PostgresException>(() => rearm.ExecuteNonQueryAsync());
-            Assert.Equal("NeedsRecovery", await ScalarString(cs,
+            Assert.Equal("NeedsRecovery", await ScalarString(ds,
                 "SELECT state FROM oms_outbox"));
         });
     }
@@ -431,7 +432,7 @@ public sealed class OmsJournalPostgresTests
                 "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname='Orders' AND relkind='r')",
                 connection);
             Assert.True((bool)(await legacy.ExecuteScalarAsync() ?? false));
-        });
+        }, PostgresPreparation.FreshMigrations);
     }
 
     [Fact]
@@ -447,9 +448,9 @@ public sealed class OmsJournalPostgresTests
                 db.Database.MigrateAsync("20261004190000_AddTradingViewDeliveryHealthState"));
             Assert.Equal("P0001", refusal.SqlState);
             Assert.Contains("Refusing destructive OMS journal rollback", refusal.MessageText);
-            Assert.Equal(1, await Count(cs, "oms_commands"));
-            Assert.Equal(1, await Count(cs, "oms_outbox"));
-        });
+            Assert.Equal(1, await Count(ds, "oms_commands"));
+            Assert.Equal(1, await Count(ds, "oms_outbox"));
+        }, PostgresPreparation.FreshMigrations);
     }
 
     [Fact]
@@ -458,12 +459,14 @@ public sealed class OmsJournalPostgresTests
         await WithPostgres(async (_, cs) =>
         {
             // The fixture owns a unique disposable database; no persistent role is used.
-            var role = "oms_app_" + Guid.NewGuid().ToString("N");
+            var role = "to_app_" + Guid.NewGuid().ToString("N");
             var password = Guid.NewGuid().ToString("N");
             await using var admin = new NpgsqlConnection(cs);
             await admin.OpenAsync();
             await using (var create = new NpgsqlCommand($"""
 CREATE ROLE "{role}" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '{password}';
+COMMENT ON ROLE "{role}" IS 'tradeops-tests:role:v1:{admin.Database}';
+GRANT CONNECT ON DATABASE "{admin.Database}" TO "{role}";
 GRANT USAGE ON SCHEMA public TO "{role}";
 GRANT SELECT, INSERT, UPDATE ON
  oms_aggregates, oms_intents, oms_commands, oms_outbox,
@@ -474,7 +477,7 @@ GRANT USAGE ON SEQUENCE oms_integrity_incidents_incident_id_seq TO "{role}";
             try
             {
                 var application = new NpgsqlConnectionStringBuilder(cs)
-                { Username = role, Password = password, Pooling = false };
+                { Username = role, Password = password, Pooling = true, MaxPoolSize = 20 };
                 await using var source = NpgsqlDataSource.Create(application.ConnectionString);
                 await using var db = await source.OpenConnectionAsync();
                 await using (var identity = new NpgsqlCommand("""
@@ -527,14 +530,14 @@ SELECT count(*) FROM pg_roles WHERE rolname=current_user
                         truncate.ExecuteNonQueryAsync());
                     Assert.Equal("42501", refused.SqlState);
                 }
-                Assert.Equal(1, await Count(application.ConnectionString, "oms_commands"));
-                Assert.Equal(1, await Count(application.ConnectionString, "oms_attempts"));
-                Assert.Equal(2, await Count(application.ConnectionString, "oms_integrity_incidents"));
-                Assert.Equal("Acknowledged", await ScalarString(application.ConnectionString,
+                Assert.Equal(1, await Count(source, "oms_commands"));
+                Assert.Equal(1, await Count(source, "oms_attempts"));
+                Assert.Equal(2, await Count(source, "oms_integrity_incidents"));
+                Assert.Equal("Acknowledged", await ScalarString(source,
                     "SELECT dispatch_phase FROM oms_commands"));
-                Assert.Equal("Acknowledged", await ScalarString(application.ConnectionString,
+                Assert.Equal("Acknowledged", await ScalarString(source,
                     "SELECT dispatch_phase FROM oms_attempts"));
-                Assert.Equal("Resolved", await ScalarString(application.ConnectionString,
+                Assert.Equal("Resolved", await ScalarString(source,
                     "SELECT state FROM oms_outbox"));
             }
             finally
@@ -576,62 +579,26 @@ SELECT count(*) FROM pg_roles WHERE rolname=current_user
             "BTC-PERPETUAL", 2m, 60000m,
             new DateTimeOffset(2026, 10, 25, 12, 0, 0, TimeSpan.Zero));
 
-    private static async Task WithPostgres(Func<NpgsqlDataSource, string, Task> act)
+    private static async Task WithPostgres(Func<NpgsqlDataSource, string, Task> act,
+        PostgresPreparation mode = PostgresPreparation.TemplateClone, bool pooling = true)
     {
-        var admin = Environment.GetEnvironmentVariable("TRADEOPS_B2_POSTGRES");
-        if (string.IsNullOrWhiteSpace(admin))
-            throw new InvalidOperationException(
-                "POSTGRES_ACCEPTANCE_NOT_RUN: TRADEOPS_B2_POSTGRES is missing. " +
-                "OMS PostgreSQL tests MUST FAIL without an isolated PostgreSQL 17 connection.");
-
-        var dbName = "b2_journal_" + Guid.NewGuid().ToString("N");
-        var builder = new NpgsqlConnectionStringBuilder(admin) { Database = "postgres", Pooling = false };
-        var test = new NpgsqlConnectionStringBuilder(builder.ConnectionString)
-        { Database = dbName, Pooling = false };
-        await using var adminDb = new NpgsqlConnection(builder.ConnectionString);
-        await adminDb.OpenAsync();
-        await using (var version = new NpgsqlCommand(
-            "SELECT current_setting('server_version_num')::integer", adminDb))
-        {
-            var versionNumber = Convert.ToInt32(await version.ExecuteScalarAsync());
-            if (versionNumber < 170000 || versionNumber >= 180000)
-                throw new InvalidOperationException(
-                    $"PostgreSQL 17 required for OMS acceptance; found server_version_num={versionNumber}.");
-        }
-        await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{dbName}\"", adminDb))
-            await create.ExecuteNonQueryAsync();
-        try
-        {
-            var options = new DbContextOptionsBuilder<TradeOpsDbContext>()
-                .UseNpgsql(test.ConnectionString).Options;
-            await using (var context = new TradeOpsDbContext(options))
-                await context.Database.MigrateAsync();
-            await using var ds = NpgsqlDataSource.Create(test.ConnectionString);
-            await act(ds, test.ConnectionString);
-        }
-        finally
-        {
-            await using var drop = new NpgsqlCommand(
-                $"DROP DATABASE IF EXISTS \"{dbName}\" WITH (FORCE)", adminDb);
-            await drop.ExecuteNonQueryAsync();
-        }
+        await using var database = await OmsPostgresTestDatabase.CreateAsync(mode, pooling);
+        await act(database.Source, database.ConnectionString);
     }
 
-    private static async Task<long> Count(string cs, string table) =>
-        await ScalarLong(cs, $"SELECT count(*) FROM {table}");
+    private static async Task<long> Count(NpgsqlDataSource ds, string table) =>
+        await ScalarLong(ds, $"SELECT count(*) FROM {table}");
 
-    private static async Task<long> ScalarLong(string cs, string sql)
+    private static async Task<long> ScalarLong(NpgsqlDataSource ds, string sql)
     {
-        await using var db = new NpgsqlConnection(cs);
-        await db.OpenAsync();
+        await using var db = await ds.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(sql, db);
         return (long)(await command.ExecuteScalarAsync() ?? 0L);
     }
 
-    private static async Task<string> ScalarString(string cs, string sql)
+    private static async Task<string> ScalarString(NpgsqlDataSource ds, string sql)
     {
-        await using var db = new NpgsqlConnection(cs);
-        await db.OpenAsync();
+        await using var db = await ds.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(sql, db);
         return (string)(await command.ExecuteScalarAsync() ?? "");
     }

@@ -25,4 +25,11 @@
     <ProjectReference Include="..\..\tools\TradeOps.TranscriptResearchDemo\TradeOps.TranscriptResearchDemo.csproj" />
     <ProjectReference Include="..\..\tools\TradeOps.ProviderTranscriptResearchDemo\TradeOps.ProviderTranscriptResearchDemo.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Hash schema inputs, never a Git SHA or the entire application assembly. -->
+    <EmbeddedResource Include="..\..\src\TradeOps.Infrastructure\Persistence\Migrations\*.cs;..\..\src\TradeOps.Infrastructure\Persistence\Configurations\*.cs;..\..\src\TradeOps.Infrastructure\Persistence\TradeOpsDbContext.cs"
+                      LogicalName="TradeOps.TestSchema.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\scripts\testing\postgres-test-init.sql"
+                      LogicalName="TradeOps.TestSchema.postgres-test-init.sql" />
+  </ItemGroup>
 </Project>
