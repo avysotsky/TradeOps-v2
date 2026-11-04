@@ -44,6 +44,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitSyntheticEx
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.Connectors.Deribit", "src\TradeOps.Connectors.Deribit\TradeOps.Connectors.Deribit.csproj", "{F6AAE2F1-C3BF-459A-9E0F-655E5FF55343}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradeOps.DeribitInstrumentManifest", "tools\TradeOps.DeribitInstrumentManifest\TradeOps.DeribitInstrumentManifest.csproj", "{7D88DA0B-B025-49E7-9F53-92F12C32D237}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -136,5 +138,9 @@ Global
         {F6AAE2F1-C3BF-459A-9E0F-655E5FF55343}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {F6AAE2F1-C3BF-459A-9E0F-655E5FF55343}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {F6AAE2F1-C3BF-459A-9E0F-655E5FF55343}.Release|Any CPU.Build.0 = Release|Any CPU
+        {7D88DA0B-B025-49E7-9F53-92F12C32D237}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {7D88DA0B-B025-49E7-9F53-92F12C32D237}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {7D88DA0B-B025-49E7-9F53-92F12C32D237}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {7D88DA0B-B025-49E7-9F53-92F12C32D237}.Release|Any CPU.Build.0 = Release|Any CPU
 EndGlobalSection
 EndGlobal

@@ -10,6 +10,11 @@ Both `DeribitTerminal:ExecutionEnabled` and `DeribitTerminal:MainnetExecutionEna
 
 Server configuration supplies the entire immutable `DeribitPrivateCaptureBinding`: tenant, local account, optional subaccount, Testnet/Mainnet environment, expected remote numeric account ID, expected main/subaccount type and instrument manifest. Official WSS endpoint is derived from the environment; custom endpoints are not accepted by this host. Remote ID/type are checked by the transport before releasing observations. This verifies a server-supplied pin, not an automatic discovery of credential ownership.
 
+The explicit [public instrument manifest preflight](DERIBIT_INSTRUMENT_MANIFEST.md)
+can validate configured names and units before private qualification. It does not
+generate the account binding, infer subscription currency or turn public metadata
+success into account coverage/readiness. It is not enabled automatically by this host.
+
 Illustrative **non-secret** configuration; IDs/metadata are synthetic and must be replaced with verified server mappings before any deployment:
 
 ```json
