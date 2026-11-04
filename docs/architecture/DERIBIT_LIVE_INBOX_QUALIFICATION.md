@@ -70,6 +70,8 @@ result only after cleanup, guard and peer-snapshot checks.
 Neither success establishes account-wide coverage, complete recovery, production
 hierarchy or trading readiness. Metadata is restricted to qualified inverse BTC
 future/options groups. No order is created to generate events. Epochs remain RECOVERING.
+`MutatingCalls` counts exchange mutations; owned test provisioning and DB row counts
+are reported separately.
 
 Offline `b3-inbox` runs 117 cases: previous 108, five fixture/store checks including
 main/subaccount real commit/dedup and quiet/wrong-ID outcomes, plus four fixture cases.

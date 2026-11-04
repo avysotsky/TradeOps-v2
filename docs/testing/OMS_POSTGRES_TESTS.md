@@ -8,6 +8,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-stream
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-host
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-session
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-inbox
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -33,6 +34,10 @@ generated test clone; no container/server restart or persistent DB is used.
 policy cases, 108 total. All venue traffic in this suite remains scripted/loopback;
 it never unlocks a vault or performs live requests. The actual bounded Windows live
 probe has [separate evidence and limits](../architecture/DERIBIT_PRIVATE_SESSION_PROBE.md).
+`b3-inbox` checks 117 cases: the 108 session cases, five linked-fixture/store cases
+and four fixture cases. Its venue responses are synthetic; actual commit/dedup uses
+restricted-role PostgreSQL. The optional [live inbox mode](../architecture/DERIBIT_LIVE_INBOX_QUALIFICATION.md)
+is separate and never runs from these offline tests.
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.
