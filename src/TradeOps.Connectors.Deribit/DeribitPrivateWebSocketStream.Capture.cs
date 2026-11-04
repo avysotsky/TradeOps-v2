@@ -32,7 +32,8 @@ public sealed partial class DeribitPrivateWebSocketStream
     /// All successful subscriptions remain RECOVERING until a separately qualified B4 coherence gate.
     /// </summary>
     public async Task RunCaptureAsync(OmsPrivateCaptureCoordinator coordinator, OmsPrivateCaptureSession session,
-        DeribitPrivateCapturePlan plan, CancellationToken cancellationToken = default)
+        DeribitPrivateCapturePlan plan, CancellationToken cancellationToken = default,
+        DeribitPrivateCaptureDiagnostics? diagnostics = null)
     {
         var endpoint = plan.Validate(options, session.Scope);
         using var owner = session.AcquireRunner();
@@ -45,15 +46,17 @@ public sealed partial class DeribitPrivateWebSocketStream
             while (!lifetime.IsCancellationRequested)
             {
                 epoch = await coordinator.BeginEpochAsync(session, lifetime.Token);
+                diagnostics?.Epoch();
                 try
                 {
                     using var socket = captureSocket();
-                    await new CaptureEpoch(socket, options, endpoint, plan, coordinator, session, epoch, captureClock)
+                    await new CaptureEpoch(socket, options, endpoint, plan, coordinator, session, epoch, captureClock, diagnostics)
                         .RunAsync(lifetime.Token);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
                 catch (DeribitCaptureException failure)
                 {
+                    diagnostics?.Problem(failure.Problem);
                     await coordinator.UpdateAsync(session, epoch, OmsPrivateStreamPhase.Recovering, failure.Problem);
                     logger.LogWarning("Deribit private capture requires reconciliation: {Reason}", failure.Problem);
                     if (!failure.Retryable) throw;
@@ -77,7 +80,7 @@ public sealed partial class DeribitPrivateWebSocketStream
 
     private sealed class CaptureEpoch(IDeribitPrivateSocket socket, DeribitOptions options, Uri endpoint,
         DeribitPrivateCapturePlan plan, OmsPrivateCaptureCoordinator coordinator,
-        OmsPrivateCaptureSession session, Guid epoch, TimeProvider clock)
+        OmsPrivateCaptureSession session, Guid epoch, TimeProvider clock, DeribitPrivateCaptureDiagnostics? diagnostics)
     {
         private readonly Channel<OmsPrivateEventEnvelope> queue = Channel.CreateBounded<OmsPrivateEventEnvelope>(
             new BoundedChannelOptions(plan.Limits.BufferCapacity)
@@ -107,6 +110,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                     scope = "connection trade:read account:read wallet:none block_trade:none block_rfq:none"
                 }, ct);
                 var expires = ValidateAuth(auth);
+                diagnostics?.Authenticated();
                 // Connection-scoped tokens are renewed by closing/re-authenticating, never refreshing on another socket.
                 renewal.CancelAfter(TimeSpan.FromSeconds(Math.Min(plan.Limits.MaxConnectionLifetime.TotalSeconds, expires * 0.8)));
                 var currency = plan.Instruments.Values.OrderBy(x => x.Currency, StringComparer.Ordinal).First().Currency;
@@ -114,6 +118,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                 if (!account.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number || !id.TryGetInt64(out var number) || number != plan.ExpectedAccountId ||
                     ReadString(account, "type") != (plan.IsSubaccount ? "subaccount" : "main") || ReadString(account, "currency") != currency)
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.AccountMismatch, false);
+                diagnostics?.AccountVerified();
                 var heartbeat = await RequestAsync("public/set_heartbeat", new { interval = plan.Limits.HeartbeatSeconds }, ct);
                 if (heartbeat.ValueKind != JsonValueKind.String || heartbeat.GetString() != "ok")
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
@@ -125,6 +130,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
                 await coordinator.UpdateAsync(session, epoch, OmsPrivateStreamPhase.Recovering,
                     OmsPrivateStreamProblem.AwaitingReconciliation, ct);
+                diagnostics?.Subscribed();
                 verified.TrySetResult();
                 while (true) await ReceiveAndRouteAsync(null, ct);
             }
@@ -157,6 +163,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                     using var deadline = Deadline(ct, plan.Limits.CaptureTimeout);
                     var result = await coordinator.TryCaptureAsync(session, epoch, envelope, deadline.Token);
                     if (!result.HasValue) throw new OperationCanceledException(ct);
+                    diagnostics?.CaptureReturned();
                     if (result == OmsPrivateCaptureResult.Collision)
                         await coordinator.UpdateAsync(session, epoch, OmsPrivateStreamPhase.Recovering,
                             OmsPrivateStreamProblem.Collision, ct);
@@ -222,7 +229,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                         expectedMethod != "public/auth");
                 if (!root.TryGetProperty("result", out var result)) throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
                 if (id == expectedId) return result.Clone();
-                if (id == pendingTest) { pendingTest = null; return null; }
+                if (id == pendingTest) { pendingTest = null; diagnostics?.Reply(); return null; }
                 throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
             }
             switch (ReadString(root, "method"))
@@ -232,6 +239,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                     if (type == "test_request")
                     {
                         if (pendingTest.HasValue) throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+                        diagnostics?.Challenge();
                         pendingTest = await SendAsync("public/test", new { }, ct);
                         testStarted = clock.GetTimestamp();
                     }
@@ -239,7 +247,10 @@ public sealed partial class DeribitPrivateWebSocketStream
                     return null;
                 case "subscription":
                     foreach (var envelope in DeribitWebSocketMessageParser.ParseCaptureEvents(root, plan, session.Scope, epoch, clock.GetUtcNow()))
+                    {
+                        diagnostics?.Event();
                         if (!queue.Writer.TryWrite(envelope)) throw new DeribitCaptureException(OmsPrivateStreamProblem.BufferOverflow);
+                    }
                     return null;
                 default: throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
             }

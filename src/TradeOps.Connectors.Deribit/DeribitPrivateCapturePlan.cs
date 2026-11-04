@@ -41,6 +41,7 @@ public sealed class DeribitPrivateCapturePlan
     public long ExpectedAccountId { get; }
     public bool IsSubaccount { get; }
     public DeribitPrivateStreamLimits Limits { get; }
+    public int InstrumentCount => Instruments.Count;
     internal FrozenDictionary<string, DeribitPrivateInstrument> Instruments { get; }
     internal string[] Channels { get; }
 

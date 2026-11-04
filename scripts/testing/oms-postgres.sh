@@ -10,8 +10,9 @@ case "$suite" in
   b3) filter='FullyQualifiedName~OmsPrivateEventContractTests|FullyQualifiedName~OmsPrivateCapturePostgresTests'; expected=28 ;;
   b3-stream) filter=$stream_filter; expected=52 ;;
   b3-host) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests"; expected=83 ;;
+  b3-session) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests|FullyQualifiedName~DeribitPrivateSessionProbeTests"; expected=92 ;;
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
-  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|fixture]'; exit 2 ;;
+  *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
 owner=tradeops-tests-v1
@@ -23,10 +24,7 @@ out="$repo/.tradeops/postgres-reuse/$(date -u +%Y%m%dT%H%M%S)-$suite-$RANDOM"
 mkdir -p "$out"
 guard() { runuser -u user -- /home/user/.local/bin/wsl-resource-guard; }
 snapshot() {
-  for id in $(docker ps -aq); do
-    [[ $(docker inspect --format '{{.Name}}' "$id") == "/$container" ]] && continue
-    docker inspect --format '{{.Id}} {{.Name}} {{.State.Status}} {{.State.StartedAt}} {{.RestartCount}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$id"
-  done | sort
+  docker inspect $(docker ps -aq) | python3 -c 'import json,sys; print("\n".join(sorted(" ".join(str(v) for v in [x["Id"],x["Name"],x["State"]["Status"],x["State"]["StartedAt"],x["RestartCount"],x["State"].get("Health",{}).get("Status","")]) for x in json.load(sys.stdin) if x["Name"]!="/tradeops-tests-v1-pg17")))'
 }
 guard | tee "$out/guard-before.txt"
 snapshot > "$out/docker-before.txt"
@@ -118,6 +116,8 @@ capture_paths=(
   src/TradeOps.Domain/TradeOps.Domain.csproj
   src/TradeOps.Connectors.Deribit
   src/TradeOps.Worker
+  tools/TradeOps.DeribitPrivateSessionProbe
+  scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
   src/TradeOps.Infrastructure/Exchange/ExchangeServiceRegistration.cs
   src/TradeOps.Application/Oms
