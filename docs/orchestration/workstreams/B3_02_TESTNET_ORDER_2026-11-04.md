@@ -50,15 +50,18 @@ are implemented, with no changes to production execution switches or host defaul
 - Final evidence: `.tradeops/postgres-reuse/20261104T180238-b3-testnet-order-9007/`.
   Raw TRX outcomes/counters, source manifest, assembly hash, before/after guard,
   peers and database cleanup are verified before publication.
-- Actual testnet authentication/order/cancellation: **NOT_RUN**. The explicit owner
-  approval and a separate testnet credential remain missing. No mainnet order or
+- Actual testnet authentication/order/cancellation: **NOT_RUN**. The owner has now
+  explicitly approved the single bounded scenario; a separate testnet credential
+  remains missing. Known project settings, local credential store and user/machine
+  testnet environment entries were checked without revealing secret values.
+  Only the existing mainnet read-only vault was found. No mainnet order or
   real-money action was performed. Full unrelated suites, deployment and UI E2E
   were not run. B4/B5 readiness and production hierarchy remain unqualified.
 
 ## Next action
 
-Obtain authorization for this exact first testnet scenario and enroll its separate
-key via the hidden local prompt. Then execute one bounded cycle at the published
+Authorization is received and recorded locally; do not request it again. Enroll
+the separate testnet key via the hidden local prompt, then execute one bounded cycle at the published
 SHA and inspect exchange state, committed events and cleanup. Do not launch more
 quiet mainnet sessions while waiting. After evidence from this cycle, implement
 the recovery/history/fill cases needed by B4 and the full risk/sender gates in B5;
