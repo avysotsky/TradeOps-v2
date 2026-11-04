@@ -107,7 +107,7 @@ public static class PrivateSessionProbe
         var passed = completedWindow && result.Epochs == 1 && result.Authenticated == 1 &&
             result.AccountsVerified == 1 && result.SubscriptionsConfirmed == 1 && result.HeartbeatChallenges > 0 &&
             result.HeartbeatReplies == result.HeartbeatChallenges && result.Problems == 0 && sink.Rejected == 0 &&
-            result.CaptureReturns == 0 && result.NormalizedEvents == 0 && run.IsCompleted;
+            result.CaptureReturns == 0 && result.NormalizedEvents == 0 && run.IsCompletedSuccessfully;
         return new(result.NormalizedEvents > 0 ? "PRIVATE_EVENT_OBSERVED_NOT_STORED" : passed ? "LIVE_SESSION_PASS_NO_DURABLE_CAPTURE" : "LIVE_SESSION_FAIL",
             run.IsCompleted ? "SESSION" : "SESSION_SHUTDOWN", result, plan.InstrumentCount, result.NormalizedEvents);
     }

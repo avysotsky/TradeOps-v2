@@ -100,6 +100,8 @@ try {
     $start.UseShellExecute = $false; $start.CreateNoWindow = $true
     $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
     $start.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.Environment['DeribitTerminal__ExecutionEnabled'] = 'false'
+    $start.Environment['DeribitTerminal__MainnetExecutionEnabled'] = 'false'
     $child = [Diagnostics.Process]::Start($start)
     $output = $child.StandardOutput.ReadToEndAsync(); $errorOutput = $child.StandardError.ReadToEndAsync()
     $child.StandardInput.Write($payload); $child.StandardInput.Close(); $payload = $null
