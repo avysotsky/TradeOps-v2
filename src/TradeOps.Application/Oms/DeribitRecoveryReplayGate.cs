@@ -19,9 +19,15 @@ public sealed record DeribitRecoveryReplayAssessment(DeribitRecoveryGateAssessme
 
 public sealed partial class DeribitRecoveryEvidenceGate
 {
-    public async Task<DeribitRecoveryReplayAssessment> AssessWithReplayAsync(DeribitRecoveryGateRequest request,
+    public Task<DeribitRecoveryReplayAssessment> AssessWithReplayAsync(DeribitRecoveryGateRequest request,
         OmsPrivateCaptureCoordinator coordinator, OmsPrivateCaptureSession session,
-        DeribitReplayDrainOptions? drainOptions = null, CancellationToken ct = default)
+        DeribitReplayDrainOptions? drainOptions = null, CancellationToken ct = default) =>
+        AssessReplayCoreAsync(request, coordinator, session, drainOptions, null, ct);
+
+    private async Task<DeribitRecoveryReplayAssessment> AssessReplayCoreAsync(DeribitRecoveryGateRequest request,
+        OmsPrivateCaptureCoordinator coordinator, OmsPrivateCaptureSession session,
+        DeribitReplayDrainOptions? drainOptions, Func<DeribitRecoveryGateAssessment, CancellationToken, Task>? additionalRead,
+        CancellationToken ct)
     {
         var q = ValidateRequest(request, time.GetUtcNow());
         ArgumentNullException.ThrowIfNull(coordinator); ArgumentNullException.ThrowIfNull(session);
@@ -32,6 +38,7 @@ public sealed partial class DeribitRecoveryEvidenceGate
         try
         {
             var evidence = await AssessAsync(request, ct);
+            if (additionalRead is not null) await additionalRead(evidence, ct);
             var replayProblems = new HashSet<OmsPrivateReplayProblem>();
             var valid = false; var count = 0; var selected = 0;
             using var drain = CancellationTokenSource.CreateLinkedTokenSource(ct);

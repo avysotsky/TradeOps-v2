@@ -9,7 +9,10 @@ public enum DeribitRecoveryEvidenceBlocker
     HistoricalUnfilledCoverageGap, OrderHistoryIncomplete, CoherentCutUnavailable, BufferedReplayUnavailable,
     ExecutionLedgerCoverageUnproven, ExternalOrderEvidence, KnownOrderRetentionExpired,
     KnownOrderUnavailable, KnownReadFailed, KnownReadBindingInvalid, KnownReadEvidenceInvalid,
-    BufferedReplayInvalid, BufferedReplayDrainTimedOut
+    BufferedReplayInvalid, BufferedReplayDrainTimedOut,
+    AccountObservationsUnavailable, AccountReadFailed, AccountReadSkipped, AccountBindingInvalid,
+    AccountCoverageInvalid, AccountObservationInvalid, AccountObservationStale,
+    AccountSnapshotCoherenceUnproven, AccountWideCoverageUnproven
 }
 
 /// <summary>Trusted instrument units/currency, never derived from a bare symbol or returned facts.</summary>

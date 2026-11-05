@@ -23,6 +23,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-host
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-manifest
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-assessment
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -158,6 +159,17 @@ mode/purpose isolation, native identity and private output suppression. The 32
 PowerShell validator cases include v2 schema/policy/count binding and legacy single
 mode compatibility. Venue responses remain scripted; only owned disposable PG
 clones are used. Live account qualification requires a separate explicit invocation.
+
+`b4-account-assessment` selects 445 cases: the prior 394 plus 49 Application
+account assessment cases and two actual PG integrations. They check scope/epoch/
+manifest/unit/window/age validation at use, empty scoped results, malformed/partial
+ports, collections frozen across awaits, pre-I/O refusal, replay overlap, stale-after-
+drain behavior, epoch changes and exception/cancellation/supersession cleanup. The PG
+cases use the production account connector with scripted HTTP and a real retained
+reader/capture commit during account RPCs, including lost ACK without resend. All
+account/coherence/ledger/READY/publication gates remain fail-closed. This qualifies
+the [Application composition](../architecture/DERIBIT_RECOVERY_ACCOUNT_ASSESSMENT.md)
+offline/DB-only, not a new live snapshot or successful recovery.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
