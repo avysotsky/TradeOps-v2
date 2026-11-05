@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 mode=${1:?explicit mode required}
-[[ "$mode" == --read-snapshot || "$mode" == --provision-reader ]] || exit 2
+[[ "$mode" == --read-snapshot || "$mode" == --provision-reader || "$mode" == --read-known-orders ]] || exit 2
 [[ $(id -u) == 0 ]] || exit 2
 container=tradeops-mainnet-qualification-pg17
 out="$repo/.tradeops/mainnet-recovery/$(date -u +%Y%m%dT%H%M%S)-${mode#--}-$RANDOM"

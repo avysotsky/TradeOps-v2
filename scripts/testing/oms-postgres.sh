@@ -24,6 +24,7 @@ case "$suite" in
   b4-reader) filter='FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader'; expected=87 ;;
   b4-binding) filter='FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding'; expected=99 ;;
   b4-collector) filter='FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitPrivateCaptureParser|FullyQualifiedName~DeribitRecoveryQuery'; expected=137 ;;
+  b4-known-orders) filter='FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitPrivateCaptureParser|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead'; expected=173 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|b3-testnet-order|b3-mainnet-eth|b4-order|b4-order-reducer|b4-reader|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
@@ -166,6 +167,7 @@ capture_paths=(
   tools/TradeOps.DeribitMainnetEthQualification
   scripts/deribit/Deribit-MainnetEthLocal.ps1
   scripts/deribit/Deribit-RecoveryCollectionLocal.ps1
+  scripts/deribit/Deribit-KnownOrderRecoveryLocal.ps1
   scripts/deribit/Deribit-TestnetOrderLocal.ps1
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj

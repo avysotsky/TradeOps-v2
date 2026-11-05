@@ -122,6 +122,18 @@ FROM pg_roles WHERE rolname=current_user
     internal static string Password(string adminPassword) => Convert.ToHexStringLower(HMACSHA256.HashData(
         Encoding.UTF8.GetBytes(adminPassword), Encoding.UTF8.GetBytes(Role)));
 
+    internal static async Task<NpgsqlDataSource> OpenReader(CancellationToken ct)
+    {
+        var raw = Environment.GetEnvironmentVariable("TRADEOPS_RECOVERY_POSTGRES");
+        if (string.IsNullOrWhiteSpace(raw)) throw new InvalidOperationException();
+        var config = new NpgsqlConnectionStringBuilder(raw) { IncludeErrorDetail = false, LogParameters = false,
+            SearchPath = "public", Pooling = false, Timeout = 10, CommandTimeout = 20 };
+        if (config.Database != "tradeops_mainnet_qualification" || config.Username != Role) throw new InvalidOperationException();
+        var source = NpgsqlDataSource.Create(config.ConnectionString);
+        try { await ValidateOwnership(source, ct); await ValidateRuntime(source, ct); return source; }
+        catch { await source.DisposeAsync(); throw; }
+    }
+
     internal static async Task Provision(NpgsqlDataSource source, string adminPassword, CancellationToken ct = default)
     {
         await using var connection = await source.OpenConnectionAsync(ct);
