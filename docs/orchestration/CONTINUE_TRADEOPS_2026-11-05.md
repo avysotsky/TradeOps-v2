@@ -1,4 +1,35 @@
-# Продолжение TradeOps-v2 после B4-05b (live INCOMPLETE)
+# Продолжение TradeOps-v2 после B4-05c (scoped live PASS)
+
+## Последнее дополнение 2026-11-05 — B4-05c explicit ETH/future manifest
+
+Код `5eb68c0f37ad38a62b6ddba8a4338eb0117d30ec`:
+[отчёт](workstreams/B4_05C_ETH_FUTURE_MANIFEST_2026-11-05.md).
+**394/394 PASS + 32/32** diagnostics-validator cases, environment/cleanup PASS,
+320 source hashes совпали. Отдельный `--read-eth-future-snapshot` и wrapper
+`-Manifest EthInverseFutures` требуют нового purpose; default single-instrument
+режим сохранён. Policy EthActiveInverseFuturesV1 выбирает 1–256 active inverse
+ETH futures из bounded public catalog до auth, проверяет age/env/units/currencies,
+замораживает manifest. Unsupported active metadata закрывает весь manifest;
+inactive/expired/unmapped private rows всё ещё blocker, без fallback/retry.
+
+Один live read-only запуск: **ACCOUNT_SNAPSHOT_SCOPED_PASS**, exit 0, timestamp
+`2026-11-05T14:20:44.2199014Z`. Public manifest=13, accepted position rows=2,
+BalanceObserved=true, MetadataValidated/QueriesCompleted/NativeBindingVerified/
+FreshAtAssessment=true, Problems empty. Private значения/имена/native IDs не
+публиковались. Это scoped ETH/future observation, не account-wide snapshot:
+AccountWideCoverage/VenueCoherent/AccountReady/publication/TradingReady=false. DB/writes/mutating
+calls=0; permanent journal не открывался, старый harness/terminal lookup не повторялся.
+Старый B4-05b INCOMPLETE не переобозначен; это отдельный явно выбранный group mode.
+Diagnostics SchemaVersion=2 с ManifestPolicy/count binding; durable encoding прежний.
+
+**Следующий increment B4-05d:** scoped account port в Application assessment:
+actual scope/epoch/manifest/currency/kind/window/freshness validation при использовании,
+private values только in memory, не доверять saved diagnostics или success flags.
+Active capture/local replay не заменяют venue coherence/full execution ledger.
+Account-wide coverage, durable projection/gates, B4/READY, B5 fencing и #73 открыты.
+Новое торговое действие этим кодовым этапом не разрешается.
+
+Указание B4-05c как «следующего шага» ниже заменено этим дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-05b read-only qualification host
 

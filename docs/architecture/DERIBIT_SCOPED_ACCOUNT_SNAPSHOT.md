@@ -145,6 +145,12 @@ local diagnostics change; durable event encoding and DB schemas are unchanged.
 
 ## Qualification boundary
 
+B4-05c's separate active-group invocation returned **SCOPED_PASS**: public manifest
+13, accepted position rows 2, balance observed, native identity verified and fresh at
+assessment. No private values were published. This is a qualified scoped read at
+that instant, not venue coherence, account-wide coverage or READY. See the
+[B4-05c report](../orchestration/workstreams/B4_05C_ETH_FUTURE_MANIFEST_2026-11-05.md).
+
 The single B4-05b live attempt returned **UnmappedInstrument / INCOMPLETE** because
 the ETH/future response included an instrument outside the one-instrument manifest.
 No partial values were exposed and no retry or automatic manifest expansion occurred.
