@@ -88,4 +88,6 @@ flowchart TD
 
 Первый B4 increment — [восстановление native order ledger из сохранённых и полученных заново фактов](DERIBIT_ORDER_RECOVERY_PROJECTION.md). Application reducer отделён от транспорта и БД: dedup исполнений, проверка сумм/статусов, scope/epoch/coverage, явные блокирующие расхождения. Это ещё не account recovery/READY: production reader, coherent collector, durable projection/checkpoint и позиции/балансы остаются следующими шагами.
 
+Следующий B4 slice реализован: [чтение durable private snapshot](OMS_PRIVATE_RECOVERY_READER.md) через application port и PostgreSQL adapter, проверка scope/schema/canonical SHA, inbox/observations и blocking incidents/quarantine, затем вызов reducer. Используется полный bounded snapshot в read-only repeatable-read транзакции; timestamp/sequence не объявлены безопасным checkpoint. Production binding/права, coherent venue queries, позиции/балансы и durable projection/gates остаются следующими этапами.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.

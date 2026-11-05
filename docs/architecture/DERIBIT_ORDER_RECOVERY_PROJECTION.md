@@ -63,8 +63,8 @@ paginated recovery queries, coherent positions/balances, local intent/label link
 durable issue/projection publication, recovery orchestration or physical sender
 fencing. Hosts and execution flags are unchanged. A production reader must validate
 full scope, supported schemas, hashes, dispositions/incidents and transaction
-boundaries before supplying these inputs. Test-only SQL decoding is not registered
-in a host.
+boundaries before supplying these inputs. The subsequent validated read-side
+composition is not registered in a host automatically.
 
 The `b4-order` acceptance suite combines the 144 B3 cases, 28 journal cases,
 28 private capture cases, 45 pure reducer cases and two PostgreSQL replay cases:
