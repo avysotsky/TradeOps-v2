@@ -1,4 +1,40 @@
-# Продолжение TradeOps-v2 после B4-05d (Application assessment)
+# Продолжение TradeOps-v2 — единая read-only проверка B4
+
+## Текущий контрольный результат, 2026-11-05
+
+Ориентироваться на [понятный план B4 → QuickFIX/n](B4_TO_QUICKFIX_PLAN_2026-11-05.md),
+а внутренние номера ниже считать технической историей. Единый pipeline теперь
+собран и проверен на реальном счёте; B4 полностью ещё не завершён.
+
+Код `42d2f50fa860985f1cfe4f74e74a567a9be76122`:
+[отчёт](workstreams/B4_05E_UNIFIED_ASSESSMENT_2026-11-05.md),
+[контракт](../architecture/DERIBIT_UNIFIED_READONLY_ASSESSMENT.md).
+**471/471 + 25/25 PASS**, offline environment/cleanup PASS, 328 source hashes совпали.
+Новый opt-in `--assess-account-recovery` / `Deribit-AccountRecoveryLocal.ps1` связывает
+SELECT-only retained reader, actual order/trade/known/account connectors и
+`AssessAccountAsync`; public manifest/native pin/key прежнего scope, no trading path.
+
+Один live run: **RECOVERY_ACCOUNT_EVIDENCE_BLOCKED**, AssessmentCompleted=true, exit 0.
+Public manifest 13, accepted positions 2, balance observed, account observations valid;
+retained/current facts 2/0, known orders 1, addressed 0, retention-expired 1.
+Account-wide/coherence/READY/publication=false. Девять blockers: historical-unfilled
+gap, incomplete order history, no coherent cut, no active buffered replay, unproven
+execution ledger, terminal retention expired/known unavailable, account snapshot
+coherence и account-wide coverage unproven. Scoped account data не заменяют proof.
+Private values/IDs не публиковались, повторов/торговых вызовов/DB writes=0.
+Постоянный audit commands/attempts 2/2, inbox/observations/incidents 2/2/0 неизменен;
+guard и peers PASS. Старый terminal lookup и placement/cancel harness не запускались.
+
+**Следующий крупный результат B4:** правила достаточности/полноты ордеров и исполнений,
+явная область восстановления и доказательство согласованности snapshot/history с
+actual capture/replay. Недоступная история — конкретная блокирующая проблема с
+аудируемым разрешением, не бесконечный повтор одного lookup. Затем сохранённая
+восстановленная модель счёта и полный restart/gap/failure lifecycle с gate READY.
+B5 risk/single sender и обязательный QuickFIX/n остаются по плану; транспортный
+каркас FIX можно разрабатывать до финальной квалификации B4/B5, торговый допуск — после.
+Новое торговое действие этим этапом не разрешено; #73 открыт.
+
+Указание unified host как «следующего шага» ниже заменено этим дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-05d account assessment integration
 
