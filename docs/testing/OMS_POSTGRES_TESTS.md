@@ -19,6 +19,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-known-orders
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-gate
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay-gate
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -118,6 +119,16 @@ and the opt-in scripted adapter queue into the capture port. All venue traffic i
 scripted/loopback and PG resources are owned disposable clones. This qualifies a
 [local replay cut](../architecture/OMS_PRIVATE_CAPTURE_REPLAY.md), not venue coherence,
 live events, production binding, durable checkpoints or READY.
+
+`b4-replay-gate` selects 294 cases: the prior 275 plus 17 active lifecycle/drain
+cases and two PG integrations. They cover owned begin/seal/drain/final validation,
+binding loss, bounded timeout even during an independent commit, exception/cancellation
+cleanup, supersession, metadata separation and preservation of unrelated blockers.
+Actual PG tests combine the production retained reader/capture with overlapping
+buffered events and lost ACK after commit without resend. All venue results remain
+scripted/loopback; only owned disposable clones are used. This qualifies the
+[active local replay gate](../architecture/DERIBIT_ACTIVE_REPLAY_GATE.md), not venue
+coherence, live events, durable publication or READY.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

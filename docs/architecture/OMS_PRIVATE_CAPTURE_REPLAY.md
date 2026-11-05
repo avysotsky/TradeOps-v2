@@ -1,5 +1,9 @@
 # B4-04b — local capture receipt cut and bounded replay
 
+B4-04c now provides the [explicit gate lifecycle integration](DERIBIT_ACTIVE_REPLAY_GATE.md).
+The original base assessment still lacks active replay; the new entry can remove
+only the local-buffer blocker. Venue coherence and account READY remain unqualified.
+
 This adds an opt-in receipt/commit barrier to `OmsPrivateCaptureCoordinator` and
 the existing Deribit private capture queue. It qualifies a **local** cut, not an
 exchange-consistent REST snapshot. The B4-04a gate still reports CoherentCutUnavailable

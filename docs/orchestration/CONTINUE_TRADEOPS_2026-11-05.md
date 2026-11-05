@@ -1,4 +1,30 @@
-# Продолжение TradeOps-v2 после B4-04b
+# Продолжение TradeOps-v2 после B4-04c
+
+## Последнее дополнение 2026-11-05 — B4-04c active replay gate lifecycle
+
+Код `35cc3f6`: [отчёт](workstreams/B4_04C_ACTIVE_REPLAY_GATE_2026-11-05.md),
+[контракт](../architecture/DERIBIT_ACTIVE_REPLAY_GATE.md). **294/294 PASS**,
+environment/cleanup PASS, 311 source hashes совпали. Новый explicit application entry
+`AssessWithReplayAsync` использует реальный active coordinator/session: begin до
+snapshot/query/known reads, seal, bounded drain и финальная cut revalidation.
+Всегда cleanup только своего окна; timeout/exception/cancellation не блокируют
+независимый capture commit и не удаляют более новое superseding window.
+
+Валидный local prefix снимает **только BufferedReplayUnavailable**. Venue coherence,
+history/ledger gaps, AccountReady=false и DurableProjectionPublished=false остаются.
+Replay payload не применяется к reducer и не публикуется. Два новых PG integration
+cases проверили actual reader + overlapping commit и lost-ACK без resend.
+Это **offline/DB-only**: mainnet store/vault/venue/trades не использовались.
+Старые live qualification hosts не имеют active capture и остаются на base assessment.
+
+**Следующий increment:** scoped read-only positions/balances с явными native units,
+currency coverage и freshness/incompleteness, сохраняя границы connector/application.
+Параллельно требуется venue snapshot/history coherence и полный relevant execution
+ledger; local drain не заменяет proof и не сдвигает query cutoff на receive time.
+Затем durable projection/recovery gate; B4/READY, B5 fencing и #73 остаются открытыми.
+Новые торговые действия не нужны и не разрешаются этим кодовым этапом.
+
+Указание B4-04c как «следующего шага» ниже заменено этим последним дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-04b local capture cut/replay
 

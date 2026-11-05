@@ -1,5 +1,9 @@
 # B4-04a — application recovery evidence gate
 
+B4-04c adds an explicit [active replay lifecycle entry](DERIBIT_ACTIVE_REPLAY_GATE.md).
+Only that entry can remove BufferedReplayUnavailable after actual cut validation;
+the original assessment-only method and other blockers described here remain unchanged.
+
 `DeribitRecoveryEvidenceGate` composes the existing retained reader, bounded query
 port and known-order reader in Application. Connectors remain independent of
 PostgreSQL/EF/Infrastructure. This is an opt-in read-side assessment, not an account
