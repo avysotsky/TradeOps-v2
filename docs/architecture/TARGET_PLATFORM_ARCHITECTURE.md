@@ -96,4 +96,6 @@ B4-03b: [bounded read-only collector](DERIBIT_RECOVERY_QUERIES.md) реализ�
 
 B4-03c: [адресное чтение известных retained orders](DERIBIT_KNOWN_ORDER_READS.md) добавлено через отдельный application port и connector. Live old-order lookup дал Missing/10004 при сохранённых двух фактах: свежий статус не выдуман, store не изменён. У get_order_state есть 30-минутное окно для закрытых ордеров; оно не закрывает historical-unfilled gap. Следующий orchestrator/gate должен явно блокировать unavailable evidence, неподтверждённые coverage/coherence и сохранять retained terminal facts.
 
+B4-04a: [application recovery evidence gate](DERIBIT_RECOVERY_EVIDENCE_GATE.md) связывает scoped reader, bounded queries и known-order port, проверяет bindings/window/provenance и явно блокирует retention/coverage/coherence/replay/ledger gaps. Старый terminal order вне retention не опрашивается повторно; сохранённые факты не меняются. Реальный assessment — BLOCKED, без projection/READY. Далее нужны квалифицированные coherent cut/buffered replay, ledger, positions/balances и durable gates, а не дополнительные caller complete flags.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.

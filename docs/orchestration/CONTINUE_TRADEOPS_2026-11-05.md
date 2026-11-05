@@ -1,4 +1,31 @@
-# Продолжение TradeOps-v2 после B4-03c
+# Продолжение TradeOps-v2 после B4-04a
+
+## Последнее дополнение 2026-11-05 — B4-04a evidence gate
+
+Код `d2be4cf3ea5fa31689234cdce9abf74083c1db10`:
+[отчёт](workstreams/B4_04A_EVIDENCE_GATE_2026-11-05.md),
+[контракт](../architecture/DERIBIT_RECOVERY_EVIDENCE_GATE.md). **209/209 PASS**,
+environment/cleanup PASS, 305 source hashes совпали. Application gate связывает
+retained reader → bounded query sources → только нужные addressed lookups, проверяет
+scope/epoch/snapshot/window/provenance. Старые terminal orders вне 30 минут не polling;
+old open orders всё ещё адресуются, Missing никогда не превращается в cancel.
+
+Live `Deribit-RecoveryAssessmentLocal.ps1`: **RECOVERY_EVIDENCE_BLOCKED**, retained/current
+facts **2/0**, known orders **1**, addressed **0**, retention-expired **1**. Семь blockers:
+historical-unfilled gap, incomplete order history, coherent cut unavailable, buffered
+replay unavailable, execution-ledger coverage unproven, terminal retention expired,
+known-order unavailable. CanRebuildOrders/AccountReady/DurableProjectionPublished=false.
+Audit commands/attempts **2/2**, inbox/observations/incidents **2/2/0** неизменен;
+guards/peers PASS, writes/trading **0**. Это проверенный отказ, не завершённое recovery.
+
+**Следующий increment B4-04b:** qualified coherent cut и bounded buffered replay evidence
+с привязкой к активному capture scope/epoch, явными gap/overflow/stale-epoch blockers.
+Не подменять proof caller-флагами complete и не сдвигать cutoff на receive time.
+Затем complete relevant execution ledger, positions/balances и durable projection/gate.
+B4/READY, B5 fencing и #73 остаются незавершёнными. Новые торговые действия и повтор
+lookup старого terminal order не нужны и не разрешаются этим кодовым этапом.
+
+Указание recovery evidence gate как «следующего шага» ниже заменено этим дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-03c и unavailable evidence
 
