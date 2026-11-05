@@ -24,6 +24,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-host
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-manifest
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-assessment
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-unified
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -170,6 +171,16 @@ reader/capture commit during account RPCs, including lost ACK without resend. Al
 account/coherence/ledger/READY/publication gates remain fail-closed. This qualifies
 the [Application composition](../architecture/DERIBIT_RECOVERY_ACCOUNT_ASSESSMENT.md)
 offline/DB-only, not a new live snapshot or successful recovery.
+
+`b4-unified` selects 471 cases: the prior 445 plus 24 host/input/metadata/source/
+redaction cases and two real PG host integrations. The production order, known-order
+and account connectors use scripted HTTP; the PG cases read an actual retained
+terminal order and an actual integrity incident. Counts remain unchanged, expired
+terminal orders are not looked up again and incident evidence suppresses private
+reads. The Windows wrapper additionally runs `Test-AccountRecoveryDiagnostics.ps1`:
+25 real-validator cases, with no vault/venue/process entry. This is offline/DB-only
+verification of the [unified host](../architecture/DERIBIT_UNIFIED_READONLY_ASSESSMENT.md);
+a real read-only qualification is a separate explicit invocation.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
