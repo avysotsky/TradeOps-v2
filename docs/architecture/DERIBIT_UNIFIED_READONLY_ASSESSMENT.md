@@ -25,7 +25,9 @@ fixed owned database/cluster/native scope, existing marked SELECT-only role, no
 provisioning, migrations, grants or write path. A disposable reader lease closes
 the source on success, cancellation or exception. Invalid input/metadata refuses
 before store access; invalid retained evidence suppresses private queries. Closed
-known orders outside retention remain blocked without another addressed lookup.
+known orders outside retention are never repeatedly looked up. The later
+[terminal evidence rule](DERIBIT_RETAINED_TERMINAL_EVIDENCE.md) can qualify their
+historical report/quantity ledger; unresolved references remain blocked.
 
 Orders use a two-minute overlap, at most five pages per source and 2,000 facts.
 Private queries have their existing bounds; account observations retain the trusted
@@ -52,6 +54,9 @@ constant query scopes, bounded counts, typed blockers/problems and consistent
 completion/availability flags. Unknown fields, private error text, claimed READY,
 missing mandatory gates and mismatched process exit are refused. Raw stderr and
 plaintext input are never saved. Local reports remain under ignored `.tradeops/`.
+
+Current diagnostics use SchemaVersion=2 with RetainedTerminalOrdersValidated and
+count/blocker consistency. Prior v1 reports remain historical evidence.
 
 ## Meaning of the result
 

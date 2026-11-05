@@ -1,4 +1,35 @@
-# Продолжение TradeOps-v2 — единая read-only проверка B4
+# Продолжение TradeOps-v2 — полнота B4, retained terminal evidence
+
+## Последний проверенный результат, 2026-11-05
+
+Код `15cd9e605e871aba833ae65a586032309cb966fb`:
+[отчёт](workstreams/B4_TERMINAL_EVIDENCE_2026-11-05.md),
+[правило](../architecture/DERIBIT_RETAINED_TERMINAL_EVIDENCE.md).
+**521/521 + 30/30 PASS**, final environment/cleanup PASS, 332 source hashes совпали.
+Новая Application policy проверяет actual snapshot/selection/query bindings,
+terminal report, native quantity, dedup и точное совпадение cumulative со всеми
+известными executions. Missing/collision/conflicting/late-venue/overflow facts
+закрывают proof; full-ledger/current-state/account-wide/coherence не объявляются.
+
+Один live read-only run подтвердил **1 retained terminal order**, без addressed
+lookup, повторной торговли или DB writes. Было девять blockers, осталось **семь**:
+historical-unfilled gap, incomplete history, no coherent cut, no active buffered
+replay, global execution ledger unproven, account snapshot coherence и account-wide
+coverage unproven. RetentionExpiredOrders=1 остаётся диагностикой; validated=1
+снимает только order-specific retention/unavailable требования к этому ордеру.
+Scoped account observations valid (manifest 13 / accepted position rows 2 / balance
+observed). READY/publication=false. Journal audit 2/2 и 2/2/0 неизменен, guard/peers PASS.
+Diagnostics schema v2 включает validated count; durable v2/v1 encoding прежний.
+
+**Следующий крупный результат:** полный relevant command/order/execution universe
+и общий basis snapshot/history/actual capture/replay. Не подменять global coverage
+совпадением количества для одного terminal order. Затем persisted recovered state
+и end-to-end B4 gate/failure lifecycle по [плану до QuickFIX/n](B4_TO_QUICKFIX_PLAN_2026-11-05.md).
+Старый terminal lookup/placement harness не повторять; новые торговые действия не
+разрешены. B4/READY, B5 physical sender/risk и #73 остаются открытыми.
+
+Девять blockers и v1 diagnostics ниже — исторический результат предыдущего кода;
+текущее правило и семь оставшихся blockers описаны здесь.
 
 ## Текущий контрольный результат, 2026-11-05
 

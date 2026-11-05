@@ -50,9 +50,12 @@ For each retained reference, a compatible current order report avoids redundant
 addressed I/O. Newer contradictory terms/regressing state block the query evidence.
 References still lacking a current report are planned as follows:
 
-- A retained terminal report aged at least 30 minutes adds KnownOrderRetentionExpired
-  and KnownOrderUnavailable; get_order_state is not polled again outside its supported
-  closed-order window. The original terminal fact stays retained.
+- A retained terminal report aged at least 30 minutes is not polled again outside
+  the addressed endpoint's window. The later [terminal evidence policy](DERIBIT_RETAINED_TERMINAL_EVIDENCE.md)
+  derives sufficiency from actual retained reports and executions. If sufficient,
+  the historical reference is counted as validated; otherwise KnownOrderRetentionExpired,
+  KnownOrderUnavailable and RetainedTerminalEvidenceInsufficient remain. No global
+  history/ledger/coherence requirement is removed by that policy.
 - A nonterminal old order can still be open, so it remains eligible for an addressed
   lookup. Recent terminal references are also eligible.
 - The existing selector caps known references at 32; each planned reference is read

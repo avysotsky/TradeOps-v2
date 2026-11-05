@@ -112,4 +112,6 @@ B4-05d: [account port связан с Application assessment](DERIBIT_RECOVERY_A
 
 Единый [read-only B4 pipeline](DERIBIT_UNIFIED_READONLY_ASSESSMENT.md) теперь связывает protected retained reader, order/trade/known/account ports и Application assessment. Один live прогон корректно завершён как BLOCKED; positions/balance доступны в поддерживаемом ETH scope, журнал и peers неизменны, девять history/ledger/retention/replay/coherence/coverage blockers остаются. Это не восстановленная durable модель и не READY. Следующие результаты описаны в [плане B4 → QuickFIX/n](../orchestration/B4_TO_QUICKFIX_PLAN_2026-11-05.md).
 
+Следующее правило [retained terminal evidence](DERIBIT_RETAINED_TERMINAL_EVIDENCE.md) связывает явный terminal report с deduplicated native fills. Для подтверждённого ордера не требуется недоступный fresh lookup только из-за retention; неполный/противоречивый ledger блокируется. Один live run подтвердил конкретный order proof и сократил blockers с девяти до семи, не снимая global history/ledger/coherence/coverage gates или запрета READY/publication. Это историческое order-specific доказательство, не свежий account snapshot и не полный execution ledger.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.
