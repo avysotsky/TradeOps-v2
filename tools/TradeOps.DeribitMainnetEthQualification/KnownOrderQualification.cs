@@ -15,9 +15,11 @@ internal static class KnownOrderQualification
         public string ClientSecret { get; set; } = "";
         public long ExpectedAccountId { get; set; }
         public string AccountType { get; set; } = "";
+        public DateTimeOffset FromUtc { get; set; }
+        public DateTimeOffset ThroughUtc { get; set; }
     }
 
-    internal static async Task<int> RunAsync(CancellationToken ct)
+    internal static async Task<int> RunAsync(CancellationToken ct, bool assess = false)
     {
         Input? input = null;
         try
@@ -30,13 +32,11 @@ internal static class KnownOrderQualification
                 bytes.Write(chunk, 0, n);
             }
             input = JsonSerializer.Deserialize<Input>(bytes.ToArray()) ?? throw new InvalidOperationException();
-            if (input.Purpose != "PINNED_KNOWN_ORDER_READ" || string.IsNullOrWhiteSpace(input.ClientId) || input.ClientId.Length > 512 || input.ClientId.Any(char.IsControl) ||
+            if (input.Purpose != (assess ? "PINNED_RECOVERY_ASSESSMENT" : "PINNED_KNOWN_ORDER_READ") || string.IsNullOrWhiteSpace(input.ClientId) || input.ClientId.Length > 512 || input.ClientId.Any(char.IsControl) ||
                 string.IsNullOrWhiteSpace(input.ClientSecret) || input.ClientSecret.Length > 4096 || input.ClientSecret.Any(char.IsControl))
                 throw new InvalidOperationException();
             var scope = RecoveryStore.Scope(input.ExpectedAccountId, input.AccountType);
             await using var source = await RecoveryStore.OpenReader(ct);
-            var snapshot = await new OmsPostgresPrivateRecoveryReader(source).ReadAsync(scope, cancellationToken: ct);
-            var request = DeribitKnownOrderSelection.FromSnapshot(snapshot, scope, Guid.NewGuid(), "ETH-PERPETUAL");
             using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseDefaultCredentials = false };
             using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
             var plan = new DeribitPrivateCapturePlan(input.ExpectedAccountId, input.AccountType == "subaccount", new[] {
@@ -44,7 +44,26 @@ internal static class KnownOrderQualification
             var catalog = await new DeribitInstrumentCatalog(http).ReadAsync(OmsEnvironment.Mainnet, "ETH", "future", ct);
             DeribitInstrumentCatalog.ValidatePlan(OmsEnvironment.Mainnet, plan, new[] { catalog });
             var options = new DeribitOptions { WebSocketUrl = "wss://www.deribit.com/ws/api/v2", ClientId = input.ClientId, ClientSecret = input.ClientSecret };
-            var result = await new DeribitKnownOrderReader(new(scope, options, plan), http).ReadAsync(request, ct);
+            var binding = new DeribitPrivateCaptureBinding(scope, options, plan);
+            var reader = new OmsPostgresPrivateRecoveryReader(source);
+            var known = new DeribitKnownOrderReader(binding, http);
+            if (assess)
+            {
+                var query = new DeribitRecoveryQuery(scope, Guid.NewGuid(), "ETH-PERPETUAL", input.FromUtc, input.ThroughUtc, TimeSpan.FromMinutes(2));
+                var resultGate = await new DeribitRecoveryEvidenceGate(reader, new DeribitRecoveryQueries(binding, http), known).AssessAsync(
+                    new(query, "ETH", OmsPrivateAmountUnit.Usd, "USD"), ct);
+                Console.WriteLine(JsonSerializer.Serialize(new {
+                    Status = resultGate.CanRebuildOrders ? "ORDER_EVIDENCE_COMPLETE" : "RECOVERY_EVIDENCE_BLOCKED",
+                    resultGate.FromUtc, resultGate.ThroughUtc, resultGate.AssessedAtUtc,
+                    resultGate.RetainedFacts, resultGate.EnumeratedFacts, resultGate.KnownOrders, resultGate.AddressedOrders,
+                    resultGate.RetentionExpiredOrders, resultGate.CanRebuildOrders, resultGate.AccountReady, resultGate.DurableProjectionPublished,
+                    Blockers = resultGate.Blockers.Select(x => x.ToString()), DatabaseUsed = true, SelectOnly = true,
+                    DurableWrites = 0, MutatingCalls = 0, TradingReady = false }));
+                return 0; // Completed diagnostic assessment; BLOCKED never means recovered state.
+            }
+            var snapshot = await reader.ReadAsync(scope, cancellationToken: ct);
+            var request = DeribitKnownOrderSelection.FromSnapshot(snapshot, scope, Guid.NewGuid(), "ETH-PERPETUAL");
+            var result = await known.ReadAsync(request, ct);
             Console.WriteLine(JsonSerializer.Serialize(new {
                 Status = result.QueriesCompleted ? result.AllOrdersFound ? "KNOWN_ORDERS_FOUND" : "KNOWN_ORDERS_UNRESOLVED" : "KNOWN_ORDER_READ_FAILED",
                 result.RequestedOrders, result.QueriesCompleted, result.AllOrdersFound, result.StartedAtUtc, result.CompletedAtUtc,

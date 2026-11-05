@@ -11,6 +11,8 @@ internal static class MainnetEthEntryPoint
         try
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(150));
+            if (args.SequenceEqual(new[] { "--assess-recovery" }))
+                return await KnownOrderQualification.RunAsync(deadline.Token, assess: true);
             if (args.SequenceEqual(new[] { "--read-known-orders" }))
                 return await KnownOrderQualification.RunAsync(deadline.Token);
             if (args.SequenceEqual(new[] { "--collect-recovery" }))
