@@ -55,7 +55,7 @@ try{
 }
 if(!$process.WaitForExit(90000)){throw 'COLLECTION_DEADLINE; inspect local evidence'}
 $null=$stderr.GetAwaiter().GetResult()
-$result=$stdout.GetAwaiter().GetResult()|ConvertFrom-Json
+$result=$stdout.GetAwaiter().GetResult()|ConvertFrom-Json -DateKind String
 $result|Add-Member -NotePropertyName SourceCommit -NotePropertyValue $head
 $result|Add-Member -NotePropertyName AssemblyHashes -NotePropertyValue $hashes
 [IO.File]::WriteAllText((Join-Path $out 'summary.json'),($result|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))

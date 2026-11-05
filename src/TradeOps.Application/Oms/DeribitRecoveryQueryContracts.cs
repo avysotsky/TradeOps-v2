@@ -18,7 +18,8 @@ public sealed record DeribitRecoveryQueryResult(AccountKey Scope, Guid Epoch, st
     string Currency, DateTimeOffset QueryFromUtc, DateTimeOffset ThroughUtc,
     DateTimeOffset StartedAtUtc, DateTimeOffset CompletedAtUtc,
     IReadOnlyList<DeribitRecoverySourceRead> Sources,
-    IReadOnlyList<OmsPrivateEventEnvelope> Observations, IReadOnlyList<DeribitRecoveryQueryProblem> Problems)
+    IReadOnlyList<OmsPrivateEventEnvelope> Observations, IReadOnlyList<DeribitRecoveryQueryProblem> Problems,
+    int? HttpStatusCode = null)
 {
     public bool TraversalComplete => Problems.Count == 0 && Sources.Count == 5 && Sources.All(x => x.Exhausted);
     // Sequential REST reads plus delayed historical indexing do not establish a coherent cut.

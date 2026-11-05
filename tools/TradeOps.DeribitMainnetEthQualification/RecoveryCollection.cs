@@ -52,7 +52,7 @@ internal static class RecoveryCollection
                 FactCount = result.Observations.Count,
                 OrderReports = result.Observations.Count(x => x.Facts.Kind == OmsJournalEventKind.Order),
                 Executions = result.Observations.Count(x => x.Facts.Kind == OmsJournalEventKind.Execution),
-                Problems = result.Problems.Select(x => x.ToString()), DatabaseUsed = false, DurableWrites = 0,
+                Problems = result.Problems.Select(x => x.ToString()), result.HttpStatusCode, DatabaseUsed = false, DurableWrites = 0,
                 MutatingCalls = 0, AccountWideCoverage = false, HistoricalIndexingVerified = false, TradingReady = false }));
             return result.TraversalComplete ? 0 : 1;
         }

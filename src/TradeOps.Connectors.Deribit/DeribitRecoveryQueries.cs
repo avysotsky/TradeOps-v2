@@ -28,6 +28,7 @@ public sealed class DeribitRecoveryQueries(DeribitPrivateCaptureBinding binding,
         var observations = new List<OmsPrivateEventEnvelope>();
         var distinct = new Dictionary<(string, string), byte[]>();
         var problems = new List<DeribitRecoveryQueryProblem>();
+        int? httpStatusCode = null;
         var rpc = new DeribitRecoveryRpc(http, query.Scope.Environment);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
@@ -53,14 +54,14 @@ public sealed class DeribitRecoveryQueries(DeribitPrivateCaptureBinding binding,
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { problems.Add(DeribitRecoveryQueryProblem.Deadline); }
-        catch (DeribitRecoveryQueryException e) { problems.Add(e.Problem); }
+        catch (DeribitRecoveryQueryException e) { problems.Add(e.Problem); httpStatusCode = e.HttpStatusCode; }
         catch (Exception e) when (e is HttpRequestException or IOException) { problems.Add(DeribitRecoveryQueryProblem.Transport); }
         catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException or FormatException or OverflowException)
         { problems.Add(DeribitRecoveryQueryProblem.Protocol); }
         finally { rpc.Token = null; }
         if (problems.Count != 0) observations.Clear(); // Never expose partial evidence as a valid recovery batch.
         return new(query.Scope, query.Epoch, metadata.Name, metadata.Currency, from, through, started, DateTimeOffset.UtcNow,
-            sources.AsReadOnly(), observations.AsReadOnly(), problems.AsReadOnly());
+            sources.AsReadOnly(), observations.AsReadOnly(), problems.AsReadOnly(), httpStatusCode);
 
         async Task VerifyAccount()
         {

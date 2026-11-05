@@ -69,6 +69,7 @@ public sealed class DeribitRecoveryQueryTests
         var result = await Collector(http).CollectAsync(Query() with { MaximumPagesPerSource = mode == "bound" ? 1 : 10,
             MaximumFacts = mode == "fact-limit" ? 1 : 5000 });
         Assert.False(result.TraversalComplete); Assert.Contains(problem, result.Problems); Assert.Empty(result.Observations);
+        if (mode == "http-error") Assert.Equal(429, result.HttpStatusCode);
     }
 
     [Theory]

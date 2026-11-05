@@ -6,8 +6,11 @@ using TradeOps.Domain.Oms;
 
 namespace TradeOps.Connectors.Deribit;
 
-internal sealed class DeribitRecoveryQueryException(DeribitRecoveryQueryProblem problem) : Exception("Recovery query refused.")
-{ internal DeribitRecoveryQueryProblem Problem { get; } = problem; }
+internal sealed class DeribitRecoveryQueryException(DeribitRecoveryQueryProblem problem, int? httpStatusCode = null) : Exception("Recovery query refused.")
+{
+    internal DeribitRecoveryQueryProblem Problem { get; } = problem;
+    internal int? HttpStatusCode { get; } = httpStatusCode;
+}
 
 // Fixed-origin, read-only allowlist; no retries, credentials in URLs or redirect support.
 internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environment)
@@ -31,7 +34,7 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token ?? throw new InvalidOperationException());
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode || response.RequestMessage?.RequestUri != request.RequestUri)
-            throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Transport);
+            throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Transport, (int)response.StatusCode);
         if (response.Content.Headers.ContentLength > 524288)
             throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Capacity);
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
