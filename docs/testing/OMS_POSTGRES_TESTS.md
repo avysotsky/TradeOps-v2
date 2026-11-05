@@ -25,6 +25,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-manifest
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-assessment
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-unified
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-terminal
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -178,9 +179,21 @@ and account connectors use scripted HTTP; the PG cases read an actual retained
 terminal order and an actual integrity incident. Counts remain unchanged, expired
 terminal orders are not looked up again and incident evidence suppresses private
 reads. The Windows wrapper additionally runs `Test-AccountRecoveryDiagnostics.ps1`:
-25 real-validator cases, with no vault/venue/process entry. This is offline/DB-only
+30 real-validator cases, with no vault/venue/process entry. This is offline/DB-only
 verification of the [unified host](../architecture/DERIBIT_UNIFIED_READONLY_ASSESSMENT.md);
 a real read-only qualification is a separate explicit invocation.
+
+`b4-terminal` selects 521 cases: the prior 471 (updated to the explicit retained
+terminal policy) plus 50 rule/gate/PG cases. They cover zero/partial/full native
+quantities, missing/extra/late fills, dedup across snapshots/queries, immutable
+execution collisions, wrong binding/snapshot/source, report conflicts, fee omissions,
+overflow, multiple own order legs and preservation of every global recovery gate.
+Three actual PG cases derive proof from the production reader for zero fill, complete
+fills and missing fills without journal changes or another expired order lookup.
+The Windows diagnostics-validator suite has 30 cases, including v2 schema and
+validated-terminal count/blocker consistency. This qualifies the
+[retained evidence policy](../architecture/DERIBIT_RETAINED_TERMINAL_EVIDENCE.md),
+not a full execution ledger, current venue state or READY.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

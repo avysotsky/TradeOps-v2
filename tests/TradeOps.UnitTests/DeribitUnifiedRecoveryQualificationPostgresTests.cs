@@ -41,7 +41,8 @@ public sealed class DeribitUnifiedRecoveryQualificationPostgresTests
         {
             Assert.Equal(1, result.RetainedFacts); Assert.Equal(1, result.KnownOrders); Assert.Equal(1, result.RetentionExpiredOrders);
             Assert.True(result.ScopedAccountObservationsValidated); Assert.Equal(1, result.AcceptedPositionRows);
-            Assert.Contains("KnownOrderRetentionExpired", result.Blockers); Assert.Equal(13, venue.Methods.Count);
+            Assert.Equal(1, result.RetainedTerminalOrdersValidated);
+            Assert.DoesNotContain("KnownOrderRetentionExpired", result.Blockers); Assert.Equal(13, venue.Methods.Count);
         }
         DeribitUnifiedRecoveryQualificationTests.AssertSafe(result);
     }

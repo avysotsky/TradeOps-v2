@@ -12,7 +12,7 @@ public enum DeribitRecoveryEvidenceBlocker
     BufferedReplayInvalid, BufferedReplayDrainTimedOut,
     AccountObservationsUnavailable, AccountReadFailed, AccountReadSkipped, AccountBindingInvalid,
     AccountCoverageInvalid, AccountObservationInvalid, AccountObservationStale,
-    AccountSnapshotCoherenceUnproven, AccountWideCoverageUnproven
+    AccountSnapshotCoherenceUnproven, AccountWideCoverageUnproven, RetainedTerminalEvidenceInsufficient
 }
 
 /// <summary>Trusted instrument units/currency, never derived from a bare symbol or returned facts.</summary>
@@ -22,7 +22,8 @@ public sealed record DeribitRecoveryGateRequest(DeribitRecoveryQuery Query, stri
 public sealed record DeribitRecoveryGateAssessment(AccountKey Scope, Guid Epoch, Guid SnapshotId,
     string NativeInstrument, DateTimeOffset FromUtc, DateTimeOffset ThroughUtc,
     DateTimeOffset AssessedAtUtc, int RetainedFacts, int EnumeratedFacts, int KnownOrders,
-    int AddressedOrders, int RetentionExpiredOrders, IReadOnlyList<DeribitRecoveryEvidenceBlocker> Blockers)
+    int AddressedOrders, int RetentionExpiredOrders, IReadOnlyList<DeribitRecoveryEvidenceBlocker> Blockers,
+    int RetainedTerminalOrdersValidated = 0)
 {
     public bool CanRebuildOrders => Blockers.Count == 0;
     public bool AccountReady => false;
@@ -49,7 +50,7 @@ public sealed partial class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReade
             DeribitRecoveryEvidenceBlocker.ExecutionLedgerCoverageUnproven };
         ct.ThrowIfCancellationRequested();
         var snapshot = await retainedReader.ReadAsync(q.Scope, cancellationToken: ct);
-        var retainedCount = 0; var enumeratedCount = 0; var knownCount = 0; var addressedCount = 0; var expired = 0;
+        var retainedCount = 0; var enumeratedCount = 0; var knownCount = 0; var addressedCount = 0; var expired = 0; var retainedTerminal = 0;
         if (!snapshot.IsUsable) blockers.Add(DeribitRecoveryEvidenceBlocker.SnapshotUnusable);
         if (snapshot.Scope != q.Scope || snapshot.SnapshotId == Guid.Empty || !Utc(snapshot.ReadAtUtc) ||
             snapshot.ReadAtUtc < started.AddSeconds(-5) || snapshot.ReadAtUtc > time.GetUtcNow().AddSeconds(5))
@@ -120,6 +121,8 @@ public sealed partial class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReade
         var seedKeys = seeds?.Orders.Select(Key).ToHashSet() ?? [];
         if (current.Any(x => !seedKeys.Contains(Key(x.Facts)))) blockers.Add(DeribitRecoveryEvidenceBlocker.ExternalOrderEvidence);
         if (seeds is null) return Finish();
+        var terminalEvidence = DeribitRetainedTerminalEvidence.Assess(snapshot with { Observations = retained }, seeds,
+            batch with { Observations = current }, time.GetUtcNow());
         var pending = new List<OmsPrivateVenueFacts>();
         foreach (var seed in seeds.Orders)
         {
@@ -130,7 +133,11 @@ public sealed partial class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReade
             { blockers.Add(DeribitRecoveryEvidenceBlocker.QueryEvidenceInvalid); return Finish(); }
             if (Terminal(seed.OrderState) && seed.VenueTimestampUtc <= time.GetUtcNow().AddMinutes(-30))
             {
-                expired++; blockers.Add(DeribitRecoveryEvidenceBlocker.KnownOrderRetentionExpired);
+                expired++;
+                if (terminalEvidence.Orders.Any(x => x.Currency == seed.Currency && x.ExchangeOrderId == seed.ExchangeOrderId && x.IsSufficient))
+                { retainedTerminal++; continue; }
+                blockers.Add(DeribitRecoveryEvidenceBlocker.RetainedTerminalEvidenceInsufficient);
+                blockers.Add(DeribitRecoveryEvidenceBlocker.KnownOrderRetentionExpired);
                 blockers.Add(DeribitRecoveryEvidenceBlocker.KnownOrderUnavailable); continue;
             }
             pending.Add(seed);
@@ -161,7 +168,7 @@ public sealed partial class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReade
             ct.ThrowIfCancellationRequested();
             return new(q.Scope, q.Epoch, snapshot.SnapshotId, q.NativeInstrument, q.FromUtc, q.ThroughUtc,
                 time.GetUtcNow(), retainedCount, enumeratedCount, knownCount, addressedCount, expired,
-                Array.AsReadOnly(blockers.Order().ToArray()));
+                Array.AsReadOnly(blockers.Order().ToArray()), retainedTerminal);
         }
         bool BadRetained() => blockers.Any(x => x is DeribitRecoveryEvidenceBlocker.SnapshotUnusable or
             DeribitRecoveryEvidenceBlocker.SnapshotBindingInvalid or DeribitRecoveryEvidenceBlocker.RetainedEvidenceInvalid);

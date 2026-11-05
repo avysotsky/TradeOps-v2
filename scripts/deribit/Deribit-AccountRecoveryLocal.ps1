@@ -12,7 +12,7 @@ function ConvertTo-SafeAccountRecovery {
         'ScopedAccountObservationsValidated','AcceptedPositionRows','BalanceObserved','RetainedFacts','EnumeratedFacts','KnownOrders',
         'AddressedOrders','RetentionExpiredOrders','FromUtc','ThroughUtc','AssessedAtUtc','AccountProblems','Blockers','SchemaVersion',
         'OrderInstrument','ManifestPolicy','Currency','Kind','AccountWideCoverage','VenueCoherent','AccountReady','DurableProjectionPublished',
-        'TradingReady','DurableWrites','MutatingCalls')
+        'TradingReady','DurableWrites','MutatingCalls','RetainedTerminalOrdersValidated')
     if($raw -isnot [PSCustomObject] -or @($raw.PSObject.Properties).Count -ne $keys.Count -or
         @($raw.PSObject.Properties.Name|Where-Object {$_ -cnotin $keys}).Count){throw 'DIAGNOSTICS_SCHEMA_REFUSED'}
     $safe=[ordered]@{};foreach($key in $keys){$safe[$key]=$raw.$key}
@@ -20,7 +20,7 @@ function ConvertTo-SafeAccountRecovery {
         if($safe[$key] -isnot [string]){throw 'DIAGNOSTICS_TYPE_REFUSED'}
     }
     foreach($key in @('RequestedInstruments','AcceptedPositionRows','RetainedFacts','EnumeratedFacts','KnownOrders','AddressedOrders',
-        'RetentionExpiredOrders','SchemaVersion','DurableWrites','MutatingCalls')){
+        'RetentionExpiredOrders','SchemaVersion','DurableWrites','MutatingCalls','RetainedTerminalOrdersValidated')){
         if($safe[$key] -isnot [long] -and $safe[$key] -isnot [int]){throw 'DIAGNOSTICS_TYPE_REFUSED'}
         if($safe[$key] -lt 0 -or $safe[$key] -gt 10000){throw 'DIAGNOSTICS_COUNT_REFUSED'}
     }
@@ -28,9 +28,10 @@ function ConvertTo-SafeAccountRecovery {
         'BalanceObserved','AccountWideCoverage','VenueCoherent','AccountReady','DurableProjectionPublished','TradingReady')){
         if($safe[$key] -isnot [bool]){throw 'DIAGNOSTICS_TYPE_REFUSED'}
     }
-    if($safe.SchemaVersion -ne 1 -or $safe.OrderInstrument -cne 'ETH-PERPETUAL' -or $safe.ManifestPolicy -cne 'EthActiveInverseFuturesV1' -or
+    if($safe.SchemaVersion -ne 2 -or $safe.OrderInstrument -cne 'ETH-PERPETUAL' -or $safe.ManifestPolicy -cne 'EthActiveInverseFuturesV1' -or
         $safe.Currency -cne 'ETH' -or $safe.Kind -cne 'future' -or $safe.RequestedInstruments -gt 256 -or
         $safe.AcceptedPositionRows -gt $safe.RequestedInstruments -or $safe.AddressedOrders -gt 32 -or
+        $safe.RetainedTerminalOrdersValidated -gt $safe.RetentionExpiredOrders -or
         $safe.AddressedOrders+$safe.RetentionExpiredOrders -gt $safe.KnownOrders -or
         $safe.AccountWideCoverage -or $safe.VenueCoherent -or $safe.AccountReady -or $safe.DurableProjectionPublished -or
         $safe.TradingReady -or $safe.DurableWrites -ne 0 -or $safe.MutatingCalls -ne 0){throw 'DIAGNOSTICS_AUTHORITY_REFUSED'}
@@ -44,7 +45,7 @@ function ConvertTo-SafeAccountRecovery {
         'KnownOrderRetentionExpired','KnownOrderUnavailable','KnownReadFailed','KnownReadBindingInvalid','KnownReadEvidenceInvalid',
         'BufferedReplayInvalid','BufferedReplayDrainTimedOut','AccountObservationsUnavailable','AccountReadFailed','AccountReadSkipped',
         'AccountBindingInvalid','AccountCoverageInvalid','AccountObservationInvalid','AccountObservationStale',
-        'AccountSnapshotCoherenceUnproven','AccountWideCoverageUnproven')
+        'AccountSnapshotCoherenceUnproven','AccountWideCoverageUnproven','RetainedTerminalEvidenceInsufficient')
     foreach($key in @('AccountProblems','Blockers')){
         $allowed=if($key -ceq 'AccountProblems'){$accountProblems}else{$blockers}
         if($safe[$key] -isnot [array] -or @($safe[$key]).Count -gt $allowed.Count -or
@@ -67,6 +68,11 @@ function ConvertTo-SafeAccountRecovery {
         foreach($required in @('CoherentCutUnavailable','BufferedReplayUnavailable','ExecutionLedgerCoverageUnproven','AccountSnapshotCoherenceUnproven','AccountWideCoverageUnproven')){
             if($required -cnotin $safe.Blockers){throw 'DIAGNOSTICS_GATES_REFUSED'}
         }
+        if($safe.RetentionExpiredOrders -gt $safe.RetainedTerminalOrdersValidated){
+            foreach($required in @('KnownOrderRetentionExpired','KnownOrderUnavailable','RetainedTerminalEvidenceInsufficient')){
+                if($required -cnotin $safe.Blockers){throw 'DIAGNOSTICS_TERMINAL_REFUSED'}
+            }
+        }elseif('KnownOrderRetentionExpired' -cin $safe.Blockers -or 'RetainedTerminalEvidenceInsufficient' -cin $safe.Blockers){throw 'DIAGNOSTICS_TERMINAL_REFUSED'}
         if($safe.ScopedAccountObservationsValidated){
             if(!$safe.BalanceObserved -or $safe.AccountProblems.Count -or 'AccountObservationsUnavailable' -cin $safe.Blockers){throw 'DIAGNOSTICS_ACCOUNT_REFUSED'}
         }elseif($safe.BalanceObserved -or $safe.AcceptedPositionRows -ne 0 -or !$safe.AccountProblems.Count -or
@@ -74,7 +80,7 @@ function ConvertTo-SafeAccountRecovery {
     }else{
         if($toolExit -eq 0 -or $safe.Status -cne 'RECOVERY_ACCOUNT_ASSESSMENT_REFUSED' -or $safe.Stage -cnotin @('Input','Metadata','Store','Assessment') -or
             $safe.ScopedAccountObservationsValidated -or $safe.BalanceObserved -or $safe.AcceptedPositionRows -or $safe.RetainedFacts -or
-            $safe.EnumeratedFacts -or $safe.KnownOrders -or $safe.AddressedOrders -or $safe.RetentionExpiredOrders -or
+            $safe.EnumeratedFacts -or $safe.KnownOrders -or $safe.AddressedOrders -or $safe.RetentionExpiredOrders -or $safe.RetainedTerminalOrdersValidated -or
             $safe.AccountProblems.Count -or $safe.Blockers.Count){throw 'DIAGNOSTICS_REFUSAL_REFUSED'}
     }
     return $safe

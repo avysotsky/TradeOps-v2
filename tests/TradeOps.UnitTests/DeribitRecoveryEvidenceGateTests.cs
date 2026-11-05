@@ -30,12 +30,14 @@ public sealed class DeribitRecoveryEvidenceGateTests
     }
 
     [Fact]
-    public async Task ExpiredTerminalReferenceBlocksWithoutRepeatingUnavailableLookup()
+    public async Task RetainedZeroFillTerminalReferenceNeedsNoUnavailableLookup()
     {
         var p = new Ports(expired: true); var result = await p.Gate().AssessAsync(Request());
         Assert.Equal(1, result.RetentionExpiredOrders); Assert.Equal(0, result.AddressedOrders); Assert.Equal(0, p.KnownCalls);
-        Assert.Contains(DeribitRecoveryEvidenceBlocker.KnownOrderRetentionExpired, result.Blockers);
-        Assert.Contains(DeribitRecoveryEvidenceBlocker.KnownOrderUnavailable, result.Blockers);
+        Assert.Equal(1, result.RetainedTerminalOrdersValidated);
+        Assert.DoesNotContain(DeribitRecoveryEvidenceBlocker.KnownOrderRetentionExpired, result.Blockers);
+        Assert.DoesNotContain(DeribitRecoveryEvidenceBlocker.KnownOrderUnavailable, result.Blockers);
+        Assert.Contains(DeribitRecoveryEvidenceBlocker.ExecutionLedgerCoverageUnproven, result.Blockers);
         Assert.Equal("cancelled", p.Snapshot.Observations[0].Envelope.Facts.OrderState);
     }
 

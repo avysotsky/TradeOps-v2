@@ -33,9 +33,9 @@ internal static class AccountRecoveryQualification
         bool AssessmentCompleted, int RequestedInstruments, bool ScopedAccountObservationsValidated, int AcceptedPositionRows,
         bool BalanceObserved, int RetainedFacts, int EnumeratedFacts, int KnownOrders, int AddressedOrders, int RetentionExpiredOrders,
         DateTimeOffset? FromUtc, DateTimeOffset? ThroughUtc, DateTimeOffset AssessedAtUtc,
-        IReadOnlyList<string> AccountProblems, IReadOnlyList<string> Blockers)
+        IReadOnlyList<string> AccountProblems, IReadOnlyList<string> Blockers, int RetainedTerminalOrdersValidated = 0)
     {
-        public int SchemaVersion => 1;
+        public int SchemaVersion => 2;
         public string OrderInstrument => "ETH-PERPETUAL";
         public string ManifestPolicy => "EthActiveInverseFuturesV1";
         public string Currency => "ETH";
@@ -113,7 +113,8 @@ internal static class AccountRecoveryQualification
             return new("RECOVERY_ACCOUNT_EVIDENCE_BLOCKED", "Completed", true, true, true, true, count,
                 result.ScopedAccountObservationsValidated, result.AcceptedPositionRows, result.BalanceObserved,
                 e.RetainedFacts, e.EnumeratedFacts, e.KnownOrders, e.AddressedOrders, e.RetentionExpiredOrders,
-                from, through, e.AssessedAtUtc, result.AccountProblems.Select(x => x.ToString()).ToArray(), e.Blockers.Select(x => x.ToString()).ToArray());
+                from, through, e.AssessedAtUtc, result.AccountProblems.Select(x => x.ToString()).ToArray(), e.Blockers.Select(x => x.ToString()).ToArray(),
+                e.RetainedTerminalOrdersValidated);
         }
         catch
         {

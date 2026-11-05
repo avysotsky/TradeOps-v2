@@ -15,7 +15,7 @@ function Fixture {
         RetainedFacts=2;EnumeratedFacts=0;KnownOrders=1;AddressedOrders=0;RetentionExpiredOrders=1;FromUtc=[DateTimeOffset]::UtcNow.AddDays(-1).ToString('o');
         ThroughUtc=[DateTimeOffset]::UtcNow.AddSeconds(-5).ToString('o');AssessedAtUtc=[DateTimeOffset]::UtcNow.ToString('o');AccountProblems=@();
         Blockers=@('CoherentCutUnavailable','BufferedReplayUnavailable','ExecutionLedgerCoverageUnproven','AccountSnapshotCoherenceUnproven','AccountWideCoverageUnproven');
-        SchemaVersion=1;OrderInstrument='ETH-PERPETUAL';ManifestPolicy='EthActiveInverseFuturesV1';Currency='ETH';Kind='future';
+        SchemaVersion=2;RetainedTerminalOrdersValidated=1;OrderInstrument='ETH-PERPETUAL';ManifestPolicy='EthActiveInverseFuturesV1';Currency='ETH';Kind='future';
         AccountWideCoverage=$false;VenueCoherent=$false;AccountReady=$false;DurableProjectionPublished=$false;TradingReady=$false;DurableWrites=0;MutatingCalls=0}
 }
 function Check([object]$value,[int]$exitCode,[bool]$accept,[string]$name) {
@@ -34,7 +34,7 @@ $v.AccountProblems=@('ReadFailed');$v.Blockers+=@('AccountObservationsUnavailabl
 Check $v 0 $true 'account-unavailable'
 $v=Fixture;$v.Status='RECOVERY_ACCOUNT_ASSESSMENT_REFUSED';$v.Stage='Input';$v.MetadataValidated=$false;$v.DatabaseUsed=$false;$v.SelectOnly=$false
 $v.AssessmentCompleted=$false;$v.RequestedInstruments=0;$v.ScopedAccountObservationsValidated=$false;$v.AcceptedPositionRows=0;$v.BalanceObserved=$false
-$v.RetainedFacts=0;$v.KnownOrders=0;$v.RetentionExpiredOrders=0;$v.FromUtc=$null;$v.ThroughUtc=$null;$v.Blockers=@()
+$v.RetainedFacts=0;$v.KnownOrders=0;$v.RetentionExpiredOrders=0;$v.RetainedTerminalOrdersValidated=0;$v.FromUtc=$null;$v.ThroughUtc=$null;$v.Blockers=@()
 Check $v 1 $true 'input-refused'
 foreach($mode in @('extra','problem-text','blocker-text','nested','ready','writes','scope','policy','schema','count-string','bool-string',
     'missing','missing-gate','empty-manifest','too-many-rows','too-many-addressed','failed-exit','false-completion','future-time','stale-time','large','invalid-json')){
@@ -48,7 +48,7 @@ foreach($mode in @('extra','problem-text','blocker-text','nested','ready','write
         'writes' {$v.DurableWrites=1}
         'scope' {$v.Currency='BTC'}
         'policy' {$v.ManifestPolicy='EthPerpetualV1'}
-        'schema' {$v.SchemaVersion=2}
+        'schema' {$v.SchemaVersion=1}
         'count-string' {$v.RetainedFacts='synthetic-private-leak'}
         'bool-string' {$v.SelectOnly='true'}
         'missing' {$v.Remove('Blockers')}
@@ -65,4 +65,14 @@ foreach($mode in @('extra','problem-text','blocker-text','nested','ready','write
     }
     Check $v $exitCode $false $mode
 }
+$v=Fixture;$v.RetainedTerminalOrdersValidated=1
+Check $v 0 $true 'retained-terminal-validated'
+$v.RetainedTerminalOrdersValidated=2
+Check $v 0 $false 'retained-terminal-overcount'
+$v=Fixture;$v.RetainedTerminalOrdersValidated='synthetic-private-leak'
+Check $v 0 $false 'retained-terminal-type'
+$v=Fixture;$v.RetainedTerminalOrdersValidated=0
+Check $v 0 $false 'missing-terminal-blockers'
+$v.Blockers+=@('KnownOrderRetentionExpired','KnownOrderUnavailable','RetainedTerminalEvidenceInsufficient')
+Check $v 0 $true 'unresolved-terminal-blockers'
 [ordered]@{Status='PASS';Cases=$script:passed;VaultUsed=$false;VenueUsed=$false}|ConvertTo-Json -Compress
