@@ -11,6 +11,8 @@ internal static class MainnetEthEntryPoint
         try
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(150));
+            if (args.SequenceEqual(new[] { "--owner-bounded-oms" }))
+                return await BoundedOmsScenario.RunFromStdinAsync(deadline.Token);
             if (args.SequenceEqual(new[] { "--assess-account-recovery" }))
                 return await AccountRecoveryQualification.RunAsync(deadline.Token);
             if (args.SequenceEqual(new[] { "--read-eth-future-snapshot" }))

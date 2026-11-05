@@ -3,11 +3,16 @@
 # Keeps a separate bounded test server across invocations; never uses dev-infra-postgres.
 set -Eeuo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-suite=${1:-b2}
+suite=${1:-targeted}
 live_inbox=false
 tool_project=TradeOps.DeribitLiveInboxQualification
 stream_filter='FullyQualifiedName~DeribitPrivateCaptureTests|FullyQualifiedName~DeribitPrivateCaptureParserTests|FullyQualifiedName~OmsPrivateCaptureCoordinatorTests|FullyQualifiedName~DeribitPrivateSocketTests|FullyQualifiedName~DeribitPrivateStreamPostgresTests|FullyQualifiedName~DeribitAdapterTests|FullyQualifiedName~DeribitWebSocketMessageParserTests|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_SelectsDeribitTestnetFromConfiguration|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_DeribitProductionBaseUrlIsRejectedOnResolution'
 case "$suite" in
+  targeted)
+    filter=${2:?Targeted checks require a test filter}
+    expected=${3:?Targeted checks require an expected test count}
+    [[ -n "$filter" && "$expected" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid targeted test scope'; exit 2; }
+    ;;
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
   b3) filter='FullyQualifiedName~OmsPrivateEventContractTests|FullyQualifiedName~OmsPrivateCapturePostgresTests'; expected=28 ;;
   b3-stream) filter=$stream_filter; expected=52 ;;
@@ -36,6 +41,7 @@ case "$suite" in
   b4-terminal) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate|FullyQualifiedName~DeribitAccountSnapshot|FullyQualifiedName~DeribitAccountQualification|FullyQualifiedName~DeribitEthFutureManifest|FullyQualifiedName~DeribitRecoveryAccountAssessment|FullyQualifiedName~DeribitUnifiedRecoveryQualification|FullyQualifiedName~DeribitTerminalEvidence"; expected=521 ;;
   b4-ledger) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate|FullyQualifiedName~DeribitAccountSnapshot|FullyQualifiedName~DeribitAccountQualification|FullyQualifiedName~DeribitEthFutureManifest|FullyQualifiedName~DeribitRecoveryAccountAssessment|FullyQualifiedName~DeribitUnifiedRecoveryQualification|FullyQualifiedName~DeribitTerminalEvidence|FullyQualifiedName~OmsRecoveryLedger|FullyQualifiedName~DeribitRecoveryLedgerAssessment|FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests"; expected=596 ;;
   b4-receipts) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate|FullyQualifiedName~DeribitAccountSnapshot|FullyQualifiedName~DeribitAccountQualification|FullyQualifiedName~DeribitEthFutureManifest|FullyQualifiedName~DeribitRecoveryAccountAssessment|FullyQualifiedName~DeribitUnifiedRecoveryQualification|FullyQualifiedName~DeribitTerminalEvidence|FullyQualifiedName~OmsRecoveryLedger|FullyQualifiedName~DeribitRecoveryLedgerAssessment|FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests|FullyQualifiedName~DeribitCommandReceipt"; expected=687 ;;
+  b4-bounded) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate|FullyQualifiedName~DeribitAccountSnapshot|FullyQualifiedName~DeribitAccountQualification|FullyQualifiedName~DeribitEthFutureManifest|FullyQualifiedName~DeribitRecoveryAccountAssessment|FullyQualifiedName~DeribitUnifiedRecoveryQualification|FullyQualifiedName~DeribitTerminalEvidence|FullyQualifiedName~OmsRecoveryLedger|FullyQualifiedName~DeribitRecoveryLedgerAssessment|FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests|FullyQualifiedName~DeribitCommandReceipt|FullyQualifiedName~DeribitBoundedOms"; expected=729 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|b3-testnet-order|b3-mainnet-eth|b4-order|b4-order-reducer|b4-reader|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
@@ -182,6 +188,7 @@ capture_paths=(
   scripts/deribit/Deribit-KnownOrderRecoveryLocal.ps1
   scripts/deribit/Deribit-RecoveryAssessmentLocal.ps1
   scripts/deribit/Deribit-AccountRecoveryLocal.ps1
+  scripts/deribit/Deribit-BoundedOmsLocal.ps1
   scripts/deribit/Deribit-TestnetOrderLocal.ps1
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj

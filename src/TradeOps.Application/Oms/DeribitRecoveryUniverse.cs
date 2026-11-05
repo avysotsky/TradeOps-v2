@@ -1,0 +1,94 @@
+using TradeOps.Domain.Oms;
+
+namespace TradeOps.Application.Oms;
+
+/// <summary>Server-owned terms from native public metadata. Never reconstruct these from the instrument name.</summary>
+public sealed record DeribitRecoveryInstrument(string NativeInstrument, string Currency, string Kind,
+    OmsPrivateAmountUnit AmountUnit, string AmountCurrency);
+public enum DeribitRecoveryUniverseProblem { InvalidInventory = 1, StaleInventory, InvalidJournal,
+    InvalidManifest, UnmappedInstrument, UnsupportedCurrency, Capacity, CurrencyHistoryUnavailable }
+public sealed record DeribitRecoveryUniverseIssue(DeribitRecoveryUniverseProblem Problem, string? NativeInstrument = null, string? Currency = null);
+public sealed record DeribitRecoveryUniverse(AccountKey Scope, Guid Epoch, Guid SnapshotId,
+    IReadOnlyList<string> RequiredInstruments, IReadOnlyList<string> RequiredCurrencies,
+    IReadOnlyList<DeribitRecoveryUniverseIssue> Issues)
+{
+    public bool UniverseResolved => Issues.Count == 0;
+    public bool AccountReady => false;
+}
+
+public static class DeribitRecoveryUniverseBuilder
+{
+    public static DeribitRecoveryUniverse Build(AccountKey scope, Guid epoch, OmsRecoveryLedgerSnapshot ledger,
+        DeribitAccountInventoryResult inventory, IReadOnlyList<DeribitRecoveryInstrument> trustedManifest, DateTimeOffset now)
+    {
+        var issues = new HashSet<DeribitRecoveryUniverseIssue>();
+        var symbols = new HashSet<string>(StringComparer.Ordinal); var currencies = new HashSet<string>(StringComparer.Ordinal);
+        if (scope.Venue.Value != "DERIBIT" || scope.Environment is not (OmsEnvironment.Mainnet or OmsEnvironment.Testnet) || epoch == Guid.Empty || now.Offset != TimeSpan.Zero ||
+            inventory.Scope != scope || inventory.Epoch != epoch || !inventory.QueriesCompleted ||
+            inventory.StartedAtUtc.Offset != TimeSpan.Zero || inventory.CompletedAtUtc.Offset != TimeSpan.Zero ||
+            inventory.CompletedAtUtc < inventory.StartedAtUtc || inventory.CompletedAtUtc > now ||
+            inventory.MaximumObservationSpan < TimeSpan.FromSeconds(1) || inventory.MaximumObservationSpan > TimeSpan.FromSeconds(60) ||
+            inventory.Balances.Count is < 1 or > 32 || inventory.Positions.Count > 4096 || inventory.OpenOrders.Count > 4096)
+        { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidInventory)); return Finish(); }
+        if (!inventory.IsFreshAt(now)) { issues.Add(new(DeribitRecoveryUniverseProblem.StaleInventory)); return Finish(); }
+        if (!ledger.IsUsable || ledger.Private.Scope != scope || ledger.Private.SnapshotId == Guid.Empty ||
+            ledger.Private.ReadAtUtc.Offset != TimeSpan.Zero || ledger.Private.ReadAtUtc > now ||
+            ledger.Commands.Count > 10000 || ledger.Private.Observations.Count > 10000)
+        { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidJournal)); return Finish(); }
+        if (trustedManifest.Count > 4096 || trustedManifest.Any(x => x is null || !Opaque(x.NativeInstrument, 160) ||
+            !Token(x.Currency) || !Token(x.AmountCurrency) || x.Kind is not ("future" or "option") || !Enum.IsDefined(x.AmountUnit) ||
+            x.AmountUnit == OmsPrivateAmountUnit.Usd && x.AmountCurrency != "USD") ||
+            trustedManifest.Select(x => x.NativeInstrument).Distinct(StringComparer.Ordinal).Count() != trustedManifest.Count)
+        { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidManifest)); return Finish(); }
+        var metadata = trustedManifest.ToDictionary(x => x.NativeInstrument, StringComparer.Ordinal);
+        try
+        {
+            foreach (var command in ledger.Commands) command.Validate(scope);
+            if (ledger.Commands.Select(x => x.Request.CommandId).Distinct().Count() != ledger.Commands.Count) throw new ArgumentException();
+            DeribitCommandReceiptSet.Validate(scope, ledger.Commands, ledger.Receipts, ledger.Private.ReadAtUtc);
+            foreach (var row in ledger.Private.Observations)
+            {
+                row.Envelope.Validate();
+                if (row.Envelope.Scope != scope || row.Disposition is not (OmsPrivateCaptureResult.Inserted or OmsPrivateCaptureResult.Duplicate) ||
+                    row.Envelope.Observation.ReceivedAtUtc > ledger.Private.ReadAtUtc || row.Envelope.Facts.VenueTimestampUtc > ledger.Private.ReadAtUtc)
+                    throw new ArgumentException();
+            }
+        }
+        catch (ArgumentException) { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidJournal)); return Finish(); }
+        if (inventory.Balances.Any(x => !Token(x.Currency)) ||
+            inventory.Balances.Any(x => x.Window is null || x.Window.RequestedAtUtc.Offset != TimeSpan.Zero ||
+                x.Window.ReceivedAtUtc.Offset != TimeSpan.Zero || x.Window.RequestedAtUtc < inventory.StartedAtUtc ||
+                x.Window.ReceivedAtUtc < x.Window.RequestedAtUtc || x.Window.ReceivedAtUtc > inventory.CompletedAtUtc) ||
+            inventory.Balances.Select(x => x.Currency).Distinct(StringComparer.Ordinal).Count() != inventory.Balances.Count ||
+            inventory.Positions.Any(x => !Opaque(x.NativeInstrument, 160) || !Opaque(x.Kind, 32)) ||
+            inventory.Positions.Select(x => x.NativeInstrument).Distinct(StringComparer.Ordinal).Count() != inventory.Positions.Count ||
+            inventory.OpenOrders.Any(x => !Opaque(x.NativeInstrument, 160) || !Opaque(x.ExchangeOrderId, 160) ||
+                x.NativeState is not ("open" or "untriggered" or "triggered") || !Opaque(x.NativeOrderType, 32)))
+        { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidInventory)); return Finish(); }
+        foreach (var balance in inventory.Balances) currencies.Add(balance.Currency); // Includes zero balances: outage activity is not inferred from today's holdings.
+        foreach (var position in inventory.Positions)
+        {
+            symbols.Add(position.NativeInstrument);
+            if (metadata.TryGetValue(position.NativeInstrument, out var m) && m.Kind != position.Kind)
+                issues.Add(new(DeribitRecoveryUniverseProblem.InvalidManifest, position.NativeInstrument));
+        }
+        foreach (var order in inventory.OpenOrders) symbols.Add(order.NativeInstrument);
+        foreach (var command in ledger.Commands) symbols.Add(command.Request.Payload.Instrument); // Includes unsent and unresolved commands.
+        foreach (var row in ledger.Private.Observations)
+        { symbols.Add(row.Envelope.Facts.NativeInstrument); currencies.Add(row.Envelope.Facts.Currency); }
+        foreach (var symbol in symbols)
+            if (metadata.TryGetValue(symbol, out var m)) currencies.Add(m.Currency);
+            else issues.Add(new(DeribitRecoveryUniverseProblem.UnmappedInstrument, symbol));
+        foreach (var currency in currencies)
+            if (currency is not ("BTC" or "ETH" or "USDC" or "USDT" or "EURR"))
+                issues.Add(new(DeribitRecoveryUniverseProblem.UnsupportedCurrency, Currency: currency));
+        if (symbols.Count > 4096) issues.Add(new(DeribitRecoveryUniverseProblem.Capacity));
+        return Finish();
+
+        DeribitRecoveryUniverse Finish() => new(scope, epoch, ledger.Private.SnapshotId,
+            symbols.Order(StringComparer.Ordinal).ToArray(), currencies.Order(StringComparer.Ordinal).ToArray(),
+            issues.OrderBy(x => x.Problem).ThenBy(x => x.NativeInstrument, StringComparer.Ordinal).ThenBy(x => x.Currency, StringComparer.Ordinal).ToArray());
+    }
+    private static bool Opaque(string? value, int max) => value is { Length: > 0 } && value.Length <= max && value == value.Trim() && !value.Any(char.IsControl);
+    private static bool Token(string? value) => Opaque(value, 32) && value!.All(x => char.IsAsciiLetterUpper(x) || char.IsAsciiDigit(x) || x == '_');
+}

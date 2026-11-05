@@ -23,7 +23,9 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
     {
         ct.ThrowIfCancellationRequested();
         if (method is not ("public/auth" or "private/get_account_summary" or "private/get_open_orders_by_instrument" or
-            "private/get_order_history_by_instrument" or "private/get_user_trades_by_instrument" or "private/get_order_state" or "private/get_positions"))
+            "private/get_order_history_by_instrument" or "private/get_user_trades_by_instrument" or "private/get_order_state" or "private/get_positions" or
+            "private/get_open_orders_by_currency" or "private/get_order_history_by_currency" or "private/get_user_trades_by_currency" or
+            "private/get_account_summaries" or "private/get_open_orders"))
             throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Protocol);
         if (id != 0) await Task.Delay(TimeSpan.FromMilliseconds(150), ct);
         var requestId = ++id;

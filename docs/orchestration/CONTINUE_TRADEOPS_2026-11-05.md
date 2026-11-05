@@ -1,5 +1,19 @@
 # Продолжение TradeOps-v2 — B4, журнал команд и исходы отправок
 
+## Приоритетное решение владельца: закончить весь B4
+
+2026-11-05: единица текущей разработки и завершения — весь B4. Внутри этапа запускать только проверки изменённого поведения и непосредственно затронутых компонентов. Полный набор — один раз перед закрытием B4; повтор только после исправления выявленного финального сбоя. Внутренние части не объявлять завершёнными этапами. Это решение заменяет прежнюю практику широких прогонов после каждой небольшой правки.
+
+Незавершённая работа находится в рабочей ветке, а не в main: ограниченный owner-launched OMS-сценарий; сохранение recovery runs/причин блокировки; объединение ledger/account/active replay в один цикл. Это пока не закрытый B4 и не разрешение READY. До завершения остаются доказанная область покрытия и согласованность биржевых данных, публикация восстановленной модели и привязка runtime gate.
+
+Рабочая ветка: `TradeOps/B4-recovery-completion`. Адресные проверки сохранения recovery runs и затронутого ledger gate: **38/38 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T203612-targeted-14687/`. Поздняя проверка истечения котировки: **1/1 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T202224-targeted-25134/`.
+
+Модель и архив actual query responses добавлены в тот же recovery result: five model cases + actual PostgreSQL roundtrip, **6/6 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T215100-targeted-27877/`. Candidate не опубликован как рабочее состояние; coverage/replay gaps остаются явными. Следующая текущая работа — сбор по валютной группе вместо одного инструмента и полный relevant universe, затем общая согласованность и runtime publication/gate. Новый currency collector пока не подключён к account engine и не является account-wide proof.
+
+Обновление 2026-11-06: currency collector проверен адресно **8/8 PASS**, `.tradeops/postgres-reuse/20261105T215818-targeted-6832/`. Добавлены account inventory без фильтра по manifest, union с полным journal и optional `DeribitRecoveryUniverseSources` внутри реального replay window; required currency histories читаются с kind any, inventory повторно проверяется на свежесть после drain. **19/19 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T221408-targeted-20733/`. Эти actual inputs и issues сохраняются в одном recovery result; неизвестные инструменты не получают выдуманных units, zero-balance currencies не исключаются. По умолчанию в существующий host не подключено, native calls и permanent migrations/grants не запускались. Далее — общая candidate-модель по currency evidence, настоящая проверка согласованности/coverage и атомарная publication/runtime gate. Полный набор до завершения B4 не запускать.
+
+Полный прогон `.tradeops/postgres-reuse/20261105T201154-b4-bounded-24116/` отменён по решению владельца; это не результат квалификации. Его cleanup/guard проверены, peers неизменны. Предыдущий завершённый прогон 728/728: `.tradeops/postgres-reuse/20261105T195904-b4-bounded-3449/`, до поздних изменений. Не повторять полный набор до завершения B4.
+
 ## Новое решение владельца о mainnet-проверках, 2026-11-05
 
 Согласованы ETH-PERPETUAL, максимум 1 USD на заявку, одна активная заявка,
@@ -481,5 +495,5 @@ attempt marker сохраняется. Новая публикация кода 
 Точные результаты/TRX/source hashes находятся в `.tradeops/`; последний проверенный
 reader suite — `.tradeops/postgres-reuse/20261105T081630-b4-reader-10972/`, 87 PASS.
 
-Завершить каждую следующую итерацию обновлением актуальных notes roadmap и отдельным
-workstream report. Обновлять эту точку передачи, если по ней ещё продолжают работу.
+Обновлять актуальную часть этой точки передачи по ходу B4; проверять только
+изменённое поведение, без отдельных отчётов и широких прогонов на каждую правку.

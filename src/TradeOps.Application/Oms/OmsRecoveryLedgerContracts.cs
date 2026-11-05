@@ -56,3 +56,10 @@ public sealed record DeribitRecoveryLedgerAssessment(DeribitRecoveryGateAssessme
     public bool AccountReady => false;
     public bool DurableProjectionPublished => false;
 }
+
+public sealed record DeribitRecoveryAccountLedgerAssessment(DeribitRecoveryAccountAssessment Account,
+    DeribitRecoveryLedgerAssessment Ledger)
+{
+    public bool AccountReady => false;
+    public bool DurableProjectionPublished => false;
+}

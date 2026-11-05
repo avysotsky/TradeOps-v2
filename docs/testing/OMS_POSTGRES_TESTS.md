@@ -1,5 +1,19 @@
 # Isolated reusable OMS PostgreSQL 17 acceptance
 
+Owner decision, 2026-11-05: during B4 development, run only affected behavior.
+The complete acceptance is reserved for completion of the whole B4 stage. The older
+suite commands below describe historical scopes, not a sequence to rerun after edits.
+
+```powershell
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite targeted `
+    -Filter 'FullyQualifiedName~DeribitRecoveryRun|FullyQualifiedName~DeribitRecoveryLedgerAssessmentTests' `
+    -ExpectedTests 38
+```
+
+`targeted` is the default and requires an explicit filter and expected count. It
+keeps the same owned disposable databases, resource guards, exact TRX count checks
+and cleanup checks as acceptance. A filter is passed as an argument, never shell code.
+
 Windows PowerShell, from the repository:
 
 ```powershell
