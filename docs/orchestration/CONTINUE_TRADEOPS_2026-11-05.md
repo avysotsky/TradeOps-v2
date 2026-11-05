@@ -10,7 +10,36 @@
 не управляет, запуск остаётся за владельцем. Старый одноразовый marker не сбрасывать;
 новый повторяемый runner ещё не реализован. Нового live run это решение не подтверждает.
 
-## Последний проверенный результат: общий журнал, 2026-11-05
+## Последний проверенный результат: native receipts v1, 2026-11-05
+
+Код `1f60a1512a174f6f81b757138be02f57ccfe9397`:
+[отчёт](workstreams/B4_NATIVE_RECEIPTS_2026-11-05.md),
+[контракт и доверенный producer](../architecture/DERIBIT_NATIVE_COMMAND_RECEIPTS_V1.md).
+**687/687 + 30/30 PASS**, final environment/cleanup PASS, 348 source hashes совпали.
+Additive schema/table receipt v1 связывает actual original command/attempt/RPC
+context с прямым native success response. Новые writer/reader/gate проверяют
+hashes/terms/scope, collisions и Cancel ancestry/progression. Gate требует matching
+accepted private report и снимает только конкретные command issues. Persisted
+dispatch/outbox state и global history/ledger/replay/coherence/coverage не меняются.
+Command v1/private v2/capture v1 и incident category formats сохранены.
+
+Это **offline/DB-only**. Ни mainnet migration/grants, ни live/trading run не было.
+Старый mainnet-host ещё не производит receipts. Для действительно неполученного
+venue ответа нельзя выдумать receipt; lost-ACK tests относятся к DB commit ACK.
+Legacy ACK не backfill-ятся по label: нужна отдельная аудируемая resolution policy.
+V1 поддерживает initial Place и addressed Cancel для unmodified limit/GTC inverse
+BTC/ETH futures с native USD; replace/FIX/other units/outcomes остаются unsupported.
+
+**Следующий результат:** actual per-call receipt/capture/recovery integration в
+ограниченном сценарии с запуском владельцем и отдельно проверенный read-only
+store/role binding. Новый сценарий должен сохранять оригинальный request/session
+context, не сбрасывать старый marker, соблюдать согласованные mainnet limits.
+Mainnet migration не запускать автоматически и не использовать writer/admin fallback.
+Затем общий history/capture basis, persisted recovered state и full B4 lifecycle;
+READY/publication=false, B5 и обязательный QuickFIX/n остаются открытыми по
+[крупному плану](B4_TO_QUICKFIX_PLAN_2026-11-05.md).
+
+## Предыдущий проверенный результат: общий журнал, 2026-11-05
 
 Код `d985a4ee21ce6c7456b5092a81d8690007e0f638`:
 [отчёт](workstreams/B4_COMMAND_LEDGER_2026-11-05.md),

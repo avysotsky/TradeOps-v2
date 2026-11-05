@@ -23,6 +23,11 @@
   больше не скрываются за пустым inbox; для них выдаётся конкретная нерешённая
   проблема. Новый путь проверен на изолированных БД (**596/596 PASS**); mainnet-host пока использует
   прежний reader и не получает дополнительных прав.
+- **Реализован native receipt v1:** исходная команда, RPC correlation и прямой
+  native ответ сохраняются отдельно и читаются в общем снимке. Gate сверяет связь
+  с private reports; повтор записи после lost DB commit ACK не создаёт вторую связь.
+  **687/687 + 30/30 PASS**, environment/cleanup PASS. Это пока DB-only путь;
+  старый mainnet-host ещё не производит новые receipts.
 
 Это ещё не завершённый B4: восстановленная рабочая модель счёта не публикуется,
 переход в READY не разрешён. Ордера/сделки в этом прогоне охватывают ETH-PERPETUAL,
@@ -51,9 +56,12 @@ roadmap задаёт зависимость B1+B2 → B6 с интеграцие
 Работа идёт над пунктом **1 — полнота и согласованность данных**.
 Достаточность фактов для отдельных terminal orders реализована; добавлен общий
 снимок команд/попыток/outbox/private events и выявление незавершённых отправок.
-Следующий конкретный результат — версионированная сохранённая связь команды с
-native order/outcome и сверка выявленных проблем. ACK, label и совпадение количества
-не заменяют эту связь. Затем — охват поддерживаемых инструментов/валют,
+Добавлен versioned durable native receipt v1 и его сверка с private reports.
+Следующий конкретный результат — подключить ограниченный OMS-сценарий с запуском
+владельцем к actual per-call receipt/capture/recovery lifecycle и квалифицировать
+read-only binding постоянного журнала. Старые ACK требуют отдельной аудируемой
+legacy-resolution процедуры: их нельзя превратить в direct receipt по label или
+совпадению количества. Затем — охват поддерживаемых инструментов/валют,
 временные границы и общий history/capture basis.
 Отдельно — доказательство actual capture/replay в общем recovery lifecycle.
 
@@ -65,5 +73,6 @@ native order/outcome и сверка выявленных проблем. ACK, l
 Проверенный текущий результат: [единый pipeline](workstreams/B4_05E_UNIFIED_ASSESSMENT_2026-11-05.md).
 Предыдущее дополнение: [достаточность terminal evidence](workstreams/B4_TERMINAL_EVIDENCE_2026-11-05.md).
 Новый проверенный шаг: [общий снимок команд и private events](workstreams/B4_COMMAND_LEDGER_2026-11-05.md).
+Native binding: [receipt v1 и его квалификация](workstreams/B4_NATIVE_RECEIPTS_2026-11-05.md).
 Источники требований: [master roadmap](INSTITUTIONAL_PLATFORM_MASTER_ROADMAP_2026-10-25.md),
 [целевая архитектура](../architecture/TARGET_PLATFORM_ARCHITECTURE.md).

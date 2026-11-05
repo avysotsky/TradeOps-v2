@@ -26,6 +26,8 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-assessment
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-unified
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-terminal
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-ledger
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-receipts
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 

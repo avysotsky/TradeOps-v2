@@ -1,5 +1,10 @@
 # B4: durable command universe in recovery
 
+Дополнение 2026-11-05: [native receipt v1](DERIBIT_NATIVE_COMMAND_RECEIPTS_V1.md)
+добавляет фактическую direct-response связь для новых поддерживаемых команд.
+Описанный ниже результат без receipts сохраняет свои blockers; исторические
+команды не backfill-ятся по label. Mainnet-host остаётся на прежнем пути.
+
 2026-11-05. Read-side extension; no durable schema migration or change to existing
 command v1 / native event v2 / capture observation v1 canonical encodings.
 
