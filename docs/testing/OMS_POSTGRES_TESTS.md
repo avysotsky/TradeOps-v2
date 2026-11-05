@@ -18,6 +18,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-collector
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-known-orders
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-gate
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -107,6 +108,16 @@ and cancellation. They assert that found/exhausted data does not imply coherent
 recovery, account READY or durable publication. Existing PG tests still use owned
 clones only. The [separate live assessment](../architecture/DERIBIT_RECOVERY_EVIDENCE_GATE.md)
 records typed BLOCKED reasons through the existing SELECT-only persistent reader.
+
+`b4-replay` selects 275 cases: the 209 gate/recovery cases, 41 additional stream
+cases (11 parser cases overlap the 52 stream cases), and 25 new replay cases.
+The 22 pure replay cases exercise receipt/commit prefix semantics, pending queue,
+bounds, stale binding/runner/epoch and fail-closed lifecycle. Three actual PG cases
+verify durable duplicate observations, lost ACK after real commit without resend,
+and the opt-in scripted adapter queue into the capture port. All venue traffic is
+scripted/loopback and PG resources are owned disposable clones. This qualifies a
+[local replay cut](../architecture/OMS_PRIVATE_CAPTURE_REPLAY.md), not venue coherence,
+live events, production binding, durable checkpoints or READY.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

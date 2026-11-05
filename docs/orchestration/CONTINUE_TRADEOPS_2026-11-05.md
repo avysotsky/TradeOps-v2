@@ -1,4 +1,29 @@
-# Продолжение TradeOps-v2 после B4-04a
+# Продолжение TradeOps-v2 после B4-04b
+
+## Последнее дополнение 2026-11-05 — B4-04b local capture cut/replay
+
+Код `e304917`: [отчёт](workstreams/B4_04B_CAPTURE_REPLAY_2026-11-05.md),
+[контракт](../architecture/OMS_PRIVATE_CAPTURE_REPLAY.md). **275/275 PASS**,
+environment/cleanup PASS, 308 source hashes совпали. Opt-in replay limits в coordinator;
+по умолчанию tracking disabled. Deribit adapter регистрирует receipts до queue,
+не ожидая DB commit; active scope/epoch/runner identity проверяются, empty epoch запрещён.
+Begin включает pending overlap, seal фиксирует received prefix, read до полного commit
+не выдаёт фактов; gap/overflow/lost-ACK/stale binding/reuse/supersession/expiry блокируют.
+
+Три новых настоящих PG cases: committed Inserted/Duplicate prefix сверяется production
+reader; lost ACK после настоящего commit не вызывает resend и блокирует replay;
+scripted adapter/parser/receipt→PG path проверен. **Это offline/DB-only**, не новый live
+event/recovery/READY. Mainnet store/vault/venue не использовались; launchSettings прежний.
+Local CanReplay не означает VenueCoherent/AccountReady и не является durable checkpoint.
+Текущий evidence gate пока сохраняет BufferedReplayUnavailable/CoherentCutUnavailable.
+
+**Следующий increment B4-04c:** active window/cut lifecycle в evidence-gate orchestration,
+bounded drain и финальная token/scope/epoch revalidation. Разделять local prefix и
+venue snapshot/history coherence; не подменять proof caller-флагами и не сдвигать
+query cutoff на receive time. Затем complete ledger, positions/balances, durable
+projection/gate; B4/READY, B5 fencing и #73 незавершены. Торговое разрешение не расширено.
+
+Указание B4-04b как «следующего шага» ниже заменено этим последним дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-04a evidence gate
 

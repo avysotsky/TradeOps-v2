@@ -98,4 +98,6 @@ B4-03c: [адресное чтение известных retained orders](DERIB
 
 B4-04a: [application recovery evidence gate](DERIBIT_RECOVERY_EVIDENCE_GATE.md) связывает scoped reader, bounded queries и known-order port, проверяет bindings/window/provenance и явно блокирует retention/coverage/coherence/replay/ledger gaps. Старый terminal order вне retention не опрашивается повторно; сохранённые факты не меняются. Реальный assessment — BLOCKED, без projection/READY. Далее нужны квалифицированные coherent cut/buffered replay, ledger, positions/balances и durable gates, а не дополнительные caller complete flags.
 
+B4-04b: [opt-in local receipt cut и bounded capture replay](OMS_PRIVATE_CAPTURE_REPLAY.md) добавлены в coordinator и очередь Deribit capture. Pending queue/commit не выдаются за drained replay; gap/overflow/uncertain commit/stale scope/epoch/runner блокируют выдачу фактов. PostgreSQL и scripted adapter квалифицированы, но local prefix не означает venue-coherent snapshot, restart checkpoint или READY. Далее — интеграция active cut с evidence gate и отдельное доказательство venue coherence/coverage.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.
