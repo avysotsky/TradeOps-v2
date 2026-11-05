@@ -13,6 +13,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b3-mainnet-eth
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order-reducer
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-reader
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -64,6 +65,12 @@ requests and never changes the retained mainnet qualification store. The
 describes the boundary and remaining account recovery work.
 `b4-order-reducer` selects the 47 recovery cases alone for changes confined to
 the reducer/result contract; it uses the same marked test server and cleanup guards.
+`b4-reader` selects 87 cases: those 47 plus 15 composition and 25 actual PostgreSQL
+reader cases, including corruption injection, scoped incidents and a blocked
+in-flight capture. RLS policies prove the SELECT-only reader actually uses a
+read-only repeatable-read transaction. All injection is confined to disposable
+clones; no live DB or exchange is used. See the
+[reader contract](../architecture/OMS_PRIVATE_RECOVERY_READER.md).
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.

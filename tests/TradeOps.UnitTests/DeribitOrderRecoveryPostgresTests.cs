@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Npgsql;
 using TradeOps.Application.Oms;
 using TradeOps.Infrastructure.Persistence.Oms;
@@ -10,7 +9,6 @@ namespace TradeOps.UnitTests;
 
 public sealed class DeribitOrderRecoveryPostgresTests
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     [Fact]
     public async Task FreshConnection_ReplaysCommittedObservationsAndOverlapWithoutLegacyWrites()
@@ -61,26 +59,13 @@ public sealed class DeribitOrderRecoveryPostgresTests
 
     private static async Task<OmsPrivateEventEnvelope[]> Read(string connectionString)
     {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        // Test-only decoder. Production read-side scope, hash/version checks and checkpoints
-        // are a separate adapter; do not register this unfiltered fixture query in a host.
-        await using var command = new NpgsqlCommand(
-            "SELECT observation_json::text FROM oms_private_capture_observations ORDER BY capture_id", connection);
-        await using var reader = await command.ExecuteReaderAsync();
-        var result = new List<OmsPrivateEventEnvelope>();
-        while (await reader.ReadAsync())
-        {
-            using var json = JsonDocument.Parse(reader.GetString(0));
-            var root = json.RootElement;
-            Assert.Equal(1, root.GetProperty("captureSchemaVersion").GetInt32());
-            var venue = root.GetProperty("venueEvent");
-            Assert.Equal(2, venue.GetProperty("schemaVersion").GetInt32());
-            Assert.Equal(Account.Account.Value, venue.GetProperty("account").GetString());
-            result.Add(new(Account, venue.GetProperty("facts").Deserialize<OmsPrivateVenueFacts>(Json)!,
-                root.GetProperty("observation").Deserialize<OmsPrivateObservation>(Json)!));
-        }
-        return result.ToArray();
+        await using var source = NpgsqlDataSource.Create(connectionString);
+        var snapshot = await new OmsPostgresPrivateRecoveryReader(source).ReadAsync(Account);
+        // This diagnostic replay test deliberately inspects quarantined facts. The application
+        // composition refuses to project any unusable snapshot, tested separately.
+        Assert.All(snapshot.Problems, x => Assert.True(x is OmsPrivateRecoveryReadProblem.QuarantinedObservation
+            or OmsPrivateRecoveryReadProblem.IntegrityIncident));
+        return snapshot.Observations.Select(x => x.Envelope).ToArray();
     }
 
     private static async Task AssertCounts(string connectionString, long inbox, long observations, long incidents)

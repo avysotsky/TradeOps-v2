@@ -55,7 +55,10 @@ trading state. All blocking issues must remain visible to the caller. Retained
 integrity incidents and quarantined alternative facts must not be discarded by a
 future reader merely because the primary inbox contains one accepted execution.
 
-This iteration does not implement the production reader/checkpoint adapter,
+The subsequent [B4-02 durable reader](OMS_PRIVATE_RECOVERY_READER.md) implements
+validated snapshot reads and refuses projection when retained incidents/quarantine
+make evidence unusable. Its full reread is deliberately not a resumable checkpoint.
+The original B4-01 iteration did not implement the reader/checkpoint adapter,
 paginated recovery queries, coherent positions/balances, local intent/label linking,
 durable issue/projection publication, recovery orchestration or physical sender
 fencing. Hosts and execution flags are unchanged. A production reader must validate
