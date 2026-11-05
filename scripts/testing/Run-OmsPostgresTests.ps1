@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('b2', 'b3', 'b3-stream', 'b3-host', 'b3-session', 'b3-inbox', 'b3-testnet-order', 'b3-mainnet-eth', 'b4-order', 'b4-order-reducer', 'b4-reader', 'b4-binding', 'b4-collector', 'b4-known-orders', 'b4-gate', 'b4-replay', 'b4-replay-gate', 'b4-account', 'fixture')][string]$Suite = 'b2',
+    [ValidateSet('b2', 'b3', 'b3-stream', 'b3-host', 'b3-session', 'b3-inbox', 'b3-testnet-order', 'b3-mainnet-eth', 'b4-order', 'b4-order-reducer', 'b4-reader', 'b4-binding', 'b4-collector', 'b4-known-orders', 'b4-gate', 'b4-replay', 'b4-replay-gate', 'b4-account', 'b4-account-host', 'fixture')][string]$Suite = 'b2',
     [string]$Dotnet = 'D:\DotNet\dotnet.exe'
 )
 $ErrorActionPreference = 'Stop'
@@ -15,6 +15,7 @@ try {
     $buildResult = $LASTEXITCODE
     Get-Content -LiteralPath $log -Tail 20
     if ($buildResult -ne 0) { throw "Build failed: $log" }
+    if ($Suite -eq 'b4-account-host') { & (Join-Path $PSScriptRoot 'Test-AccountSnapshotDiagnostics.ps1') }
     $script = Join-Path $PSScriptRoot 'oms-postgres.sh'
     $linuxScript = & wsl.exe -d Ubuntu --exec wslpath -a $script
     if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve runner path in Ubuntu.' }

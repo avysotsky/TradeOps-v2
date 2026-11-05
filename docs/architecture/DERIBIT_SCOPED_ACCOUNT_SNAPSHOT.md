@@ -73,6 +73,38 @@ private events, order history or the execution ledger. Consumers must not log or
 serialize these private in-memory values into public evidence. A future opt-in live
 host should publish only approved anonymous diagnostics.
 
+## B4-05b opt-in qualification host
+
+The qualification executable accepts the exact `--read-account-snapshot` mode before
+the order/store paths. `Deribit-AccountSnapshotLocal.ps1` supplies a purpose-bound
+stdin envelope using the existing saved Windows-DPAPI key and encrypted native pin;
+the credential ID fingerprint must match. Nothing sensitive is passed in arguments,
+environment variables, stdout, stderr evidence or files. Both normal execution
+switches are false in the child. The script requires PowerShell 7.5 or newer.
+
+This mode validates active ETH-PERPETUAL metadata against the public ETH/future
+catalog before private authentication. The explicit manifest remains one instrument;
+another ETH future position would produce incomplete coverage, not silent filtering
+or automatic expansion of the account scope. It then uses the production reader's
+native identity bracket and 30-second freshness bound. Host deadline is 75 seconds;
+the wrapper waits at most 90 seconds and cleans up only its own child on timeout.
+There is no retry, database opener, capture session or trading call in this mode.
+
+The host emits a dedicated diagnostics type only: constant currency/kind, counts,
+metadata/native-binding/query/freshness flags, a local assessment time and typed
+problems. Neither private records nor exception text are serialized. The wrapper
+validates exact keys, primitive types, allowed values and status/exit consistency
+before saving a rebuilt report with source commit and assembly hashes. Raw child
+output and stderr are never persisted. Reports are historical observations at
+`AssessedAtUtc`; `FreshAtAssessment` is not a continuing freshness lease.
+
+The wrapper requires committed source, permits only the owner's untracked launch
+configuration, and rechecks source/binary stability. Local evidence stays in ignored
+`.tradeops/account-snapshot/`. A successful report says only
+`ACCOUNT_SNAPSHOT_SCOPED_PASS`: account-wide coverage, venue coherence, account READY,
+durable publication and trading readiness remain false. The existing recovery gate
+is not changed or automatically composed with this qualification host.
+
 ## Qualification boundary
 
 `b4-account` extends the B4 replay/gate acceptance set with scripted HTTP cases for

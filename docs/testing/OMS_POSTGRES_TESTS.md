@@ -21,6 +21,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay-gate
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-host
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -139,6 +140,15 @@ fields, bounds, read-only grants and cancellation. No vault or real venue is use
 the existing PG cases still run only in owned disposable clones. This qualifies the
 [scoped observation reader](../architecture/DERIBIT_SCOPED_ACCOUNT_SNAPSHOT.md), not
 live positions, account-wide coverage, coherent recovery, publication or READY.
+
+`b4-account-host` selects 364 cases: those 336 plus 28 qualification-host cases.
+They check metadata-before-auth, native subaccount binding, output redaction,
+incomplete/empty results, read-only request allowlists, invalid inputs, cancellation
+and freshness revalidation at diagnostics construction. All venue results are
+scripted. The Windows wrapper also runs `Test-AccountSnapshotDiagnostics.ps1`:
+22 cases execute only the real output-validator function, without the vault/process
+entry, covering approved pass/incomplete/refused reports and malicious or malformed
+payload rejection. Neither suite is a live account qualification.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

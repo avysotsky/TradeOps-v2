@@ -29,6 +29,7 @@ case "$suite" in
   b4-replay) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay"; expected=275 ;;
   b4-replay-gate) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate"; expected=294 ;;
   b4-account) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate|FullyQualifiedName~DeribitAccountSnapshot"; expected=336 ;;
+  b4-account-host) filter="$stream_filter|FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding|FullyQualifiedName~DeribitRecoveryQuery|FullyQualifiedName~DeribitKnownOrderRead|FullyQualifiedName~DeribitRecoveryEvidenceGate|FullyQualifiedName~OmsPrivateCaptureReplay|FullyQualifiedName~DeribitRecoveryReplayGate|FullyQualifiedName~DeribitAccountSnapshot|FullyQualifiedName~DeribitAccountQualification"; expected=364 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|b3-testnet-order|b3-mainnet-eth|b4-order|b4-order-reducer|b4-reader|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }
@@ -171,6 +172,7 @@ capture_paths=(
   tools/TradeOps.DeribitMainnetEthQualification
   scripts/deribit/Deribit-MainnetEthLocal.ps1
   scripts/deribit/Deribit-RecoveryCollectionLocal.ps1
+  scripts/deribit/Deribit-AccountSnapshotLocal.ps1
   scripts/deribit/Deribit-KnownOrderRecoveryLocal.ps1
   scripts/deribit/Deribit-RecoveryAssessmentLocal.ps1
   scripts/deribit/Deribit-TestnetOrderLocal.ps1
