@@ -82,7 +82,8 @@ public sealed partial class DeribitPrivateWebSocketStream
         DeribitPrivateCapturePlan plan, OmsPrivateCaptureCoordinator coordinator,
         OmsPrivateCaptureSession session, Guid epoch, TimeProvider clock, DeribitPrivateCaptureDiagnostics? diagnostics)
     {
-        private readonly Channel<OmsPrivateEventEnvelope> queue = Channel.CreateBounded<OmsPrivateEventEnvelope>(
+        private sealed record Delivery(OmsPrivateEventEnvelope Envelope, OmsPrivateCaptureReceipt? Receipt);
+        private readonly Channel<Delivery> queue = Channel.CreateBounded<Delivery>(
             new BoundedChannelOptions(plan.Limits.BufferCapacity)
             { SingleWriter = true, SingleReader = true, AllowSynchronousContinuations = false, FullMode = BoundedChannelFullMode.Wait });
         private readonly TaskCompletionSource verified = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -156,12 +157,14 @@ public sealed partial class DeribitPrivateWebSocketStream
         private async Task ConsumeAsync(CancellationToken ct)
         {
             await verified.Task.WaitAsync(ct);
-            await foreach (var envelope in queue.Reader.ReadAllAsync(ct))
+            await foreach (var delivery in queue.Reader.ReadAllAsync(ct))
             {
                 try
                 {
                     using var deadline = Deadline(ct, plan.Limits.CaptureTimeout);
-                    var result = await coordinator.TryCaptureAsync(session, epoch, envelope, deadline.Token);
+                    var result = delivery.Receipt is null
+                        ? await coordinator.TryCaptureAsync(session, epoch, delivery.Envelope, deadline.Token)
+                        : await coordinator.TryCaptureReceiptAsync(delivery.Receipt, deadline.Token);
                     if (!result.HasValue) throw new OperationCanceledException(ct);
                     diagnostics?.CaptureReturned();
                     if (result == OmsPrivateCaptureResult.Collision)
@@ -249,7 +252,9 @@ public sealed partial class DeribitPrivateWebSocketStream
                     foreach (var envelope in DeribitWebSocketMessageParser.ParseCaptureEvents(root, plan, session.Scope, epoch, clock.GetUtcNow()))
                     {
                         diagnostics?.Event();
-                        if (!queue.Writer.TryWrite(envelope)) throw new DeribitCaptureException(OmsPrivateStreamProblem.BufferOverflow);
+                        var receipt = coordinator.ReplayTrackingEnabled
+                            ? await coordinator.RegisterReceiptAsync(session, epoch, envelope, ct) : null;
+                        if (!queue.Writer.TryWrite(new(envelope, receipt))) throw new DeribitCaptureException(OmsPrivateStreamProblem.BufferOverflow);
                     }
                     return null;
                 default: throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
