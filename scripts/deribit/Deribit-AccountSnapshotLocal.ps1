@@ -1,23 +1,25 @@
 #requires -Version 7.5
 [CmdletBinding()]
-param()
+param([ValidateSet('EthPerpetual','EthInverseFutures')][string]$Manifest='EthPerpetual')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 function ConvertTo-SafeAccountSnapshot {
-    param([string]$rawText,[int]$toolExit,[DateTimeOffset]$invoked)
+    param([string]$rawText,[int]$toolExit,[DateTimeOffset]$invoked,
+        [ValidateSet('EthPerpetualV1','EthActiveInverseFuturesV1')][string]$expectedManifest='EthPerpetualV1')
     if($rawText.Length -gt 16384){throw 'DIAGNOSTICS_BOUND_REFUSED'}
     $raw=$rawText|ConvertFrom-Json -Depth 8 -DateKind String
     $keys=@('Status','Stage','MetadataValidated','QueriesCompleted','NativeBindingVerified','FreshAtAssessment','PositionCount',
         'BalanceObserved','AssessedAtUtc','Problems','Currency','Kind','RequestedInstrumentCount','AccountWideCoverage',
-        'VenueCoherent','AccountReady','DurableProjectionPublished','TradingReady','DatabaseUsed','DurableWrites','MutatingCalls')
+        'VenueCoherent','AccountReady','DurableProjectionPublished','TradingReady','DatabaseUsed','DurableWrites','MutatingCalls',
+        'SchemaVersion','ManifestPolicy')
     if($raw -isnot [PSCustomObject] -or @($raw.PSObject.Properties).Count -ne $keys.Count -or
         @($raw.PSObject.Properties.Name|Where-Object {$_ -cnotin $keys}).Count){throw 'DIAGNOSTICS_SCHEMA_REFUSED'}
     $safe=[ordered]@{}
     foreach($key in $keys){$safe[$key]=$raw.$key}
-    foreach($key in @('Status','Stage','Currency','Kind')){
+    foreach($key in @('Status','Stage','Currency','Kind','ManifestPolicy')){
         if($safe[$key] -isnot [string]){throw 'DIAGNOSTICS_TYPE_REFUSED'}
     }
-    foreach($key in @('PositionCount','RequestedInstrumentCount','DurableWrites','MutatingCalls')){
+    foreach($key in @('PositionCount','RequestedInstrumentCount','DurableWrites','MutatingCalls','SchemaVersion')){
         if($safe[$key] -isnot [long] -and $safe[$key] -isnot [int]){throw 'DIAGNOSTICS_TYPE_REFUSED'}
     }
     foreach($key in @('MetadataValidated','QueriesCompleted','NativeBindingVerified','FreshAtAssessment','BalanceObserved',
@@ -26,10 +28,16 @@ function ConvertTo-SafeAccountSnapshot {
     }
     if($safe.Status -cnotin @('ACCOUNT_SNAPSHOT_SCOPED_PASS','ACCOUNT_SNAPSHOT_INCOMPLETE','ACCOUNT_SNAPSHOT_REFUSED') -or
         $safe.Stage -cnotin @('Input','Metadata','AccountQueries','Completed') -or $safe.Currency -cne 'ETH' -or $safe.Kind -cne 'future' -or
-        $safe.RequestedInstrumentCount -ne 1 -or
+        $safe.SchemaVersion -ne 2 -or $safe.ManifestPolicy -cne $expectedManifest -or
+        $safe.RequestedInstrumentCount -lt 0 -or $safe.RequestedInstrumentCount -gt 256 -or
         $safe.PositionCount -lt 0 -or $safe.PositionCount -gt 256 -or
         $safe.AccountWideCoverage -or $safe.VenueCoherent -or $safe.AccountReady -or $safe.DurableProjectionPublished -or
         $safe.TradingReady -or $safe.DatabaseUsed -or $safe.DurableWrites -ne 0 -or $safe.MutatingCalls -ne 0){throw 'DIAGNOSTICS_AUTHORITY_REFUSED'}
+    if($expectedManifest -ceq 'EthPerpetualV1'){
+        if($safe.RequestedInstrumentCount -ne 1){throw 'DIAGNOSTICS_MANIFEST_REFUSED'}
+    }elseif(($safe.MetadataValidated -and $safe.RequestedInstrumentCount -lt 1) -or
+        (!$safe.MetadataValidated -and $safe.RequestedInstrumentCount -ne 0)){throw 'DIAGNOSTICS_MANIFEST_REFUSED'}
+    if($safe.PositionCount -gt $safe.RequestedInstrumentCount){throw 'DIAGNOSTICS_MANIFEST_REFUSED'}
     if($safe.AssessedAtUtc -isnot [string] -or $safe.AssessedAtUtc.Length -gt 64){throw 'DIAGNOSTICS_TIME_REFUSED'}
     $assessed=[DateTimeOffset]::Parse($safe.AssessedAtUtc,[Globalization.CultureInfo]::InvariantCulture)
     if($assessed.Offset -ne [TimeSpan]::Zero -or $assessed -lt $invoked.AddSeconds(-1) -or $assessed -gt [DateTimeOffset]::UtcNow.AddSeconds(5)){throw 'DIAGNOSTICS_TIME_REFUSED'}
@@ -66,6 +74,10 @@ foreach($name in @('TradeOps.DeribitMainnetEthQualification','TradeOps.Connector
     $hashes[$name]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
 }
 $invoked=[DateTimeOffset]::UtcNow
+$group=$Manifest -ceq 'EthInverseFutures'
+$policy=if($group){'EthActiveInverseFuturesV1'}else{'EthPerpetualV1'}
+$purpose=if($group){'READ_ONLY_ETH_INVERSE_FUTURES_V1'}else{'READ_ONLY_ETH_ACCOUNT_SNAPSHOT_V1'}
+$mode=if($group){'--read-eth-future-snapshot'}else{'--read-account-snapshot'}
 $payload=$null;$idSecure=$null;$secretSecure=$null;$pinSecure=$null;$process=$null;$safe=$null;$toolExit=1;$started=$false
 try{
     $vault=Join-Path $env:LOCALAPPDATA 'TradeOps/Credentials/Deribit.Mainnet.ReadOnly.dpapi.json'
@@ -84,11 +96,11 @@ try{
     $pin=([Management.Automation.PSCredential]::new('local',$pinSecure)).GetNetworkCredential().Password|ConvertFrom-Json
     $fingerprint=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($id))).ToLowerInvariant()
     if($pin.environment -cne 'Mainnet' -or $pin.expectedAccountId -le 0 -or $pin.accountType -cnotin @('main','subaccount') -or $pin.credentialIdSha256 -cne $fingerprint){throw 'NATIVE_PIN_REFUSED'}
-    $payload=@{Purpose='READ_ONLY_ETH_ACCOUNT_SNAPSHOT_V1';Environment='Mainnet';ClientId=$id;ClientSecret=$secret;
+    $payload=@{Purpose=$purpose;Environment='Mainnet';ClientId=$id;ClientSecret=$secret;
         ExpectedAccountId=$pin.expectedAccountId;AccountType=$pin.accountType}|ConvertTo-Json -Compress
     $process=[Diagnostics.Process]::new()
     $process.StartInfo=[Diagnostics.ProcessStartInfo]::new('D:\DotNet\dotnet.exe')
-    $process.StartInfo.ArgumentList.Add($assembly);$process.StartInfo.ArgumentList.Add('--read-account-snapshot')
+    $process.StartInfo.ArgumentList.Add($assembly);$process.StartInfo.ArgumentList.Add($mode)
     $process.StartInfo.UseShellExecute=$false;$process.StartInfo.CreateNoWindow=$true
     $process.StartInfo.RedirectStandardInput=$true;$process.StartInfo.RedirectStandardOutput=$true;$process.StartInfo.RedirectStandardError=$true
     $process.StartInfo.Environment['DeribitTerminal__ExecutionEnabled']='false'
@@ -107,7 +119,7 @@ try{
     $null=$stderr.GetAwaiter().GetResult() # Never print or persist raw stderr.
     $rawText=$stdout.GetAwaiter().GetResult()
     if($rawText.Length -gt 16384){throw 'DIAGNOSTICS_BOUND_REFUSED'}
-    $safe=ConvertTo-SafeAccountSnapshot -rawText $rawText -toolExit $toolExit -invoked $invoked
+    $safe=ConvertTo-SafeAccountSnapshot -rawText $rawText -toolExit $toolExit -invoked $invoked -expectedManifest $policy
     # Rebuild a validated payload only; unknown child fields cannot enter evidence.
     foreach($name in $hashes.Keys){
         $path=Join-Path ([IO.Path]::GetDirectoryName($assembly)) ($name+'.dll')

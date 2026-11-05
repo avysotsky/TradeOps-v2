@@ -22,6 +22,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay-gate
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-host
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account-manifest
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -146,9 +147,17 @@ They check metadata-before-auth, native subaccount binding, output redaction,
 incomplete/empty results, read-only request allowlists, invalid inputs, cancellation
 and freshness revalidation at diagnostics construction. All venue results are
 scripted. The Windows wrapper also runs `Test-AccountSnapshotDiagnostics.ps1`:
-22 cases execute only the real output-validator function, without the vault/process
+32 cases execute only the real output-validator function, without the vault/process
 entry, covering approved pass/incomplete/refused reports and malicious or malformed
 payload rejection. Neither suite is a live account qualification.
+
+`b4-account-manifest` selects 394 cases: those 364 plus 30 explicit ETH/future
+manifest cases. They cover dated future observations, pre-auth public metadata
+validation, bounds/age/environment/native units, inactive/expired/unmapped refusal,
+mode/purpose isolation, native identity and private output suppression. The 32
+PowerShell validator cases include v2 schema/policy/count binding and legacy single
+mode compatibility. Venue responses remain scripted; only owned disposable PG
+clones are used. Live account qualification requires a separate explicit invocation.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

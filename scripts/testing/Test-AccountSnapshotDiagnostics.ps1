@@ -15,13 +15,13 @@ function Fixture {
         NativeBindingVerified=$true;FreshAtAssessment=$true;PositionCount=1;BalanceObserved=$true;
         AssessedAtUtc=[DateTimeOffset]::UtcNow.ToString('o');Problems=@();Currency='ETH';Kind='future';RequestedInstrumentCount=1;
         AccountWideCoverage=$false;VenueCoherent=$false;AccountReady=$false;DurableProjectionPublished=$false;
-        TradingReady=$false;DatabaseUsed=$false;DurableWrites=0;MutatingCalls=0}
+        TradingReady=$false;DatabaseUsed=$false;DurableWrites=0;MutatingCalls=0;SchemaVersion=2;ManifestPolicy='EthPerpetualV1'}
 }
-function Check([object]$value,[int]$code,[bool]$accept,[string]$name) {
+function Check([object]$value,[int]$code,[bool]$accept,[string]$name,[string]$policy='EthPerpetualV1') {
     $json=if($value -is [string]){$value}else{$value|ConvertTo-Json -Depth 8 -Compress}
     $accepted=$false
     try{
-        $safe=ConvertTo-SafeAccountSnapshot $json $code ([DateTimeOffset]::UtcNow.AddSeconds(-1))
+        $safe=ConvertTo-SafeAccountSnapshot $json $code ([DateTimeOffset]::UtcNow.AddSeconds(-1)) $policy
         $accepted=$true
         if(($safe|ConvertTo-Json -Depth 8 -Compress).Contains('synthetic-private-leak')){throw 'PRIVATE_OUTPUT'}
     }catch{if($accepted){throw 'VALIDATOR_LEAKED'}}
@@ -61,5 +61,25 @@ foreach($mode in @('extra','unknown-problem','nested-problem','count-string','bo
         'invalid-json' {$v='{synthetic-private-leak'}
     }
     Check $v $code $false $mode
+}
+$v=Fixture;$v.ManifestPolicy='EthActiveInverseFuturesV1';$v.RequestedInstrumentCount=9;$v.PositionCount=2
+Check $v 0 $true 'group-pass' 'EthActiveInverseFuturesV1'
+Check $v 0 $false 'group-wrong-mode'
+$v.FreshAtAssessment=$false;$v.BalanceObserved=$false;$v.QueriesCompleted=$false;$v.NativeBindingVerified=$false
+$v.PositionCount=0;$v.Status='ACCOUNT_SNAPSHOT_INCOMPLETE';$v.Problems=@('UnmappedInstrument')
+Check $v 1 $true 'group-incomplete' 'EthActiveInverseFuturesV1'
+$v.Status='ACCOUNT_SNAPSHOT_REFUSED';$v.Stage='Metadata';$v.MetadataValidated=$false;$v.RequestedInstrumentCount=0;$v.Problems=@()
+Check $v 1 $true 'group-metadata-refused' 'EthActiveInverseFuturesV1'
+foreach($mode in @('old-schema','missing-schema','zero-manifest','large-manifest','fractional-manifest','excess-positions')){
+    $v=Fixture;$v.ManifestPolicy='EthActiveInverseFuturesV1';$v.RequestedInstrumentCount=9
+    switch($mode){
+        'old-schema' {$v.SchemaVersion=1}
+        'missing-schema' {$v.Remove('SchemaVersion')}
+        'zero-manifest' {$v.RequestedInstrumentCount=0}
+        'large-manifest' {$v.RequestedInstrumentCount=257}
+        'fractional-manifest' {$v.RequestedInstrumentCount=1.5}
+        'excess-positions' {$v.PositionCount=10}
+    }
+    Check $v 0 $false $mode 'EthActiveInverseFuturesV1'
 }
 [ordered]@{Status='PASS';Cases=$script:passed;VaultUsed=$false;VenueUsed=$false}|ConvertTo-Json -Compress

@@ -105,15 +105,52 @@ configuration, and rechecks source/binary stability. Local evidence stays in ign
 durable publication and trading readiness remain false. The existing recovery gate
 is not changed or automatically composed with this qualification host.
 
+## B4-05c explicit ETH inverse futures manifest
+
+The legacy ETH-PERPETUAL mode above stays explicit. A separate
+`--read-eth-future-snapshot` entry requires purpose
+`READ_ONLY_ETH_INVERSE_FUTURES_V1`; the wrapper selects it only with
+`-Manifest EthInverseFutures` (default remains `EthPerpetual`). A purpose for one
+mode is refused in the other before any network request. The native pinned account,
+currency ETH and kind future remain the same; no `any` query or new account selection
+is introduced.
+
+`DeribitEthFutureAccountManifest.Create` constructs policy
+`EthActiveInverseFuturesV1` solely from the public ETH/future catalog, before private
+authentication. The locally received catalog must match environment/currency/kind,
+have UTC bounds and an age of at most 30 seconds. It must have unique names; the
+selected active set must contain ETH-PERPETUAL and 1–256 instruments. Every selected
+row must have future/reversed/ETH base/USD quote/ETH settlement and native USD units.
+One unsupported active row refuses the entire manifest. The selected list is sorted
+and read-only; it cannot grow in response to private rows.
+
+Inactive public rows are excluded by this named policy. Any returned position for
+an inactive, expired or absent instrument still causes UnmappedInstrument, with all
+private values withheld and no per-name metadata fallback or retry. The policy is
+coverage of supported active instruments, not historical or account-wide coverage.
+
+[Deribit documents](https://docs.deribit.com/api-reference/market-data/public-get_instruments)
+that `expired=false` can include inactive instruments and the endpoint is cached for
+about a minute. The 30-second check bounds local receipt age, not the venue's cache
+age. Neither `is_active` nor local freshness proves an open/tradable book or venue
+coherence. This reader cannot authorize execution.
+
+Diagnostics now carry **SchemaVersion=2**, a constant ManifestPolicy per selected
+entry and the actual RequestedInstrumentCount. The group count is zero before
+successful metadata validation and 1–256 afterwards; the legacy count remains one.
+The wrapper checks schema, exact selected policy and count/metadata consistency,
+plus position count within manifest capacity. Older unversioned reports remain
+historical files and are not accepted as current v2 diagnostics. This is an explicit
+local diagnostics change; durable event encoding and DB schemas are unchanged.
+
 ## Qualification boundary
 
 The single B4-05b live attempt returned **UnmappedInstrument / INCOMPLETE** because
 the ETH/future response included an instrument outside the one-instrument manifest.
 No partial values were exposed and no retry or automatic manifest expansion occurred.
 This proves the coverage refusal path, not a complete live positions/balance snapshot.
-Accepted zero rows do not mean zero holdings. Before another qualification, define
-the intended supported ETH/future manifest explicitly from trusted public metadata;
-unavailable/expired metadata must remain a blocker. See the
+Accepted zero rows do not mean zero holdings. B4-05c adds the explicit active-group
+policy above; unavailable/expired metadata remains a blocker. See the
 [actual result](../orchestration/workstreams/B4_05B_ACCOUNT_QUALIFICATION_2026-11-05.md).
 
 `b4-account` extends the B4 replay/gate acceptance set with scripted HTTP cases for
