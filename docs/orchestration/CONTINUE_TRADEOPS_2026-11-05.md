@@ -1,4 +1,30 @@
-# Продолжение TradeOps-v2 после B4-04c
+# Продолжение TradeOps-v2 после B4-05a
+
+## Последнее дополнение 2026-11-05 — B4-05a scoped account reader
+
+Код `04a2762343d77b3dd8036a410607ca72016a7c9d`:
+[отчёт](workstreams/B4_05A_SCOPED_ACCOUNT_SNAPSHOT_2026-11-05.md),
+[контракт](../architecture/DERIBIT_SCOPED_ACCOUNT_SNAPSHOT.md). **336/336 PASS**,
+environment/cleanup PASS, 314 source hashes совпали. Application port + независимый
+connector читают один BTC/ETH currency/kind group: inverse futures в USD с отдельным
+base size, options в base coin; cash balance/equity выбранной валюты и margin flags.
+Native identity до/после и на position rows, явный manifest, row/byte/time bounds,
+observation windows и проверка свежести при использовании. Unknown rows/ошибки/
+stale очищают весь private result; пустой массив не создаёт zero positions.
+
+Это **offline/DB-only**, без vault/mainnet store/live venue/trades. Account-wide
+coverage, venue coherence, AccountReady и durable publication всегда false.
+Reader пока не подключён к application gate/host и не меняет его blockers.
+
+**Следующий increment B4-05b:** opt-in read-only host/wrapper с существующим saved key
+и encrypted native pin; public catalog validation и только анонимные diagnostics
+охвата/свежести/статуса. Не публиковать позиции/балансы/native IDs; не повторять старый
+placement/cancel harness и lookup terminal order. Затем integration с assessment,
+отдельно venue snapshot/history coherence и полный relevant execution ledger,
+durable projection/gates. B4/READY, B5 fencing и #73 остаются открытыми.
+Новое торговое действие этим этапом не разрешается.
+
+Указание scoped reader как «следующего шага» ниже заменено этим дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-04c active replay gate lifecycle
 

@@ -20,6 +20,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-gate
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-replay-gate
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-account
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -129,6 +130,15 @@ buffered events and lost ACK after commit without resend. All venue results rema
 scripted/loopback; only owned disposable clones are used. This qualifies the
 [active local replay gate](../architecture/DERIBIT_ACTIVE_REPLAY_GATE.md), not venue
 coherence, live events, durable publication or READY.
+
+`b4-account` selects 336 cases: the prior 294 plus 42 scripted account-snapshot
+cases. They check native position units/signs, negative cash balance, currency/product
+scope, empty scoped arrays without synthesized zeros, consumption-time freshness,
+backward/slow observations, changed native identity, unmapped/duplicate rows, malformed
+fields, bounds, read-only grants and cancellation. No vault or real venue is used;
+the existing PG cases still run only in owned disposable clones. This qualifies the
+[scoped observation reader](../architecture/DERIBIT_SCOPED_ACCOUNT_SNAPSHOT.md), not
+live positions, account-wide coverage, coherent recovery, publication or READY.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
