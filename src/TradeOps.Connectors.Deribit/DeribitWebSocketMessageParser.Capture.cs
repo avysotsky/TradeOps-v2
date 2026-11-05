@@ -29,22 +29,7 @@ internal static partial class DeribitWebSocketMessageParser
                 var expectedChannel = execution ? $"user.trades.{metadata.Kind}.{metadata.Currency}.100ms"
                     : $"user.orders.{metadata.Kind}.{metadata.Currency}.raw";
                 if (channel != expectedChannel) throw new FormatException();
-                var price = OptionalNumber(item, "price");
-                var priceKind = item.TryGetProperty("price", out var rawPrice) && rawPrice.ValueKind == JsonValueKind.String &&
-                    rawPrice.GetString() == "market_price" ? OmsPrivatePriceKind.Market : price.HasValue
-                    ? OmsPrivatePriceKind.Numeric : OmsPrivatePriceKind.Unknown;
-                var timestamp = item.GetProperty(execution ? "timestamp" : "last_update_timestamp").GetInt64();
-                var facts = new OmsPrivateVenueFacts(execution ? OmsJournalEventKind.Execution : OmsJournalEventKind.Order,
-                    metadata.Currency, instrument, item.GetProperty("order_id").GetString()!,
-                    MapSide(item.GetProperty("direction").GetString()!), item.GetProperty("amount").GetDecimal(),
-                    metadata.AmountUnit, metadata.AmountCurrency, DateTimeOffset.FromUnixTimeMilliseconds(timestamp),
-                    ExchangeTradeId: execution ? item.GetProperty("trade_id").GetString() : null,
-                    OrderState: execution ? null : item.GetProperty("order_state").GetString(),
-                    FilledNativeAmount: execution ? null : OptionalNumber(item, "filled_amount"),
-                    PriceKind: priceKind, Price: price, AveragePrice: execution ? null : OptionalNumber(item, "average_price"),
-                    Fee: execution ? OptionalNumber(item, "fee") : null,
-                    FeeCurrency: execution ? OptionalText(item, "fee_currency") : null,
-                    Contracts: OptionalNumber(item, "contracts"), ClientLabel: OptionalText(item, "label"));
+                var facts = ParsePrivateFacts(item, metadata, execution);
                 var envelope = new OmsPrivateEventEnvelope(scope, facts,
                     new(Guid.NewGuid(), epoch, received, OmsPrivateCaptureSource.WebSocket, channel));
                 envelope.Validate();
@@ -55,6 +40,28 @@ internal static partial class DeribitWebSocketMessageParser
         catch (DeribitCaptureException) { throw; }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or ArgumentException or FormatException or OverflowException)
         { throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation); }
+    }
+
+    // Shared WS/recovery normalization preserves the existing durable v2 encoding.
+    internal static OmsPrivateVenueFacts ParsePrivateFacts(JsonElement item, DeribitPrivateInstrument metadata, bool execution)
+    {
+        if (item.GetProperty("instrument_name").GetString() != metadata.Name) throw new FormatException();
+        var price = OptionalNumber(item, "price");
+        var priceKind = item.TryGetProperty("price", out var rawPrice) && rawPrice.ValueKind == JsonValueKind.String &&
+            rawPrice.GetString() == "market_price" ? OmsPrivatePriceKind.Market : price.HasValue
+            ? OmsPrivatePriceKind.Numeric : OmsPrivatePriceKind.Unknown;
+        var timestamp = item.GetProperty(execution ? "timestamp" : "last_update_timestamp").GetInt64();
+        return new OmsPrivateVenueFacts(execution ? OmsJournalEventKind.Execution : OmsJournalEventKind.Order,
+            metadata.Currency, metadata.Name, item.GetProperty("order_id").GetString()!,
+            MapSide(item.GetProperty("direction").GetString()!), item.GetProperty("amount").GetDecimal(),
+            metadata.AmountUnit, metadata.AmountCurrency, DateTimeOffset.FromUnixTimeMilliseconds(timestamp),
+            ExchangeTradeId: execution ? item.GetProperty("trade_id").GetString() : null,
+            OrderState: execution ? null : item.GetProperty("order_state").GetString(),
+            FilledNativeAmount: execution ? null : OptionalNumber(item, "filled_amount"),
+            PriceKind: priceKind, Price: price, AveragePrice: execution ? null : OptionalNumber(item, "average_price"),
+            Fee: execution ? OptionalNumber(item, "fee") : null,
+            FeeCurrency: execution ? OptionalText(item, "fee_currency") : null,
+            Contracts: OptionalNumber(item, "contracts"), ClientLabel: OptionalText(item, "label"));
     }
 
     private static decimal? OptionalNumber(JsonElement item, string name)
