@@ -8,7 +8,8 @@ public enum DeribitRecoveryEvidenceBlocker
     QueryFailed, QueryBindingInvalid, QueryWindowInvalid, QuerySourcesInvalid, QueryEvidenceInvalid,
     HistoricalUnfilledCoverageGap, OrderHistoryIncomplete, CoherentCutUnavailable, BufferedReplayUnavailable,
     ExecutionLedgerCoverageUnproven, ExternalOrderEvidence, KnownOrderRetentionExpired,
-    KnownOrderUnavailable, KnownReadFailed, KnownReadBindingInvalid, KnownReadEvidenceInvalid
+    KnownOrderUnavailable, KnownReadFailed, KnownReadBindingInvalid, KnownReadEvidenceInvalid,
+    BufferedReplayInvalid, BufferedReplayDrainTimedOut
 }
 
 /// <summary>Trusted instrument units/currency, never derived from a bare symbol or returned facts.</summary>
@@ -29,7 +30,7 @@ public sealed record DeribitRecoveryGateAssessment(AccountKey Scope, Guid Epoch,
 /// Read-side evidence orchestration only. No writes, reducer invocation, readiness transition or sender.
 /// Current query ports cannot establish a coherent replay cut or complete historical coverage.
 /// </summary>
-public sealed class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReader retainedReader,
+public sealed partial class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReader retainedReader,
     IDeribitRecoveryQueries queries, IDeribitKnownOrderReader knownReader, TimeProvider? clock = null)
 {
     private readonly TimeProvider time = clock ?? TimeProvider.System;
@@ -38,18 +39,8 @@ public sealed class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReader retain
 
     public async Task<DeribitRecoveryGateAssessment> AssessAsync(DeribitRecoveryGateRequest request, CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        var q = request.Query ?? throw new ArgumentException("Recovery query required.");
         var started = time.GetUtcNow();
-        if (q.Scope.Venue.Value != "DERIBIT" || q.Scope.Environment is not (OmsEnvironment.Mainnet or OmsEnvironment.Testnet) ||
-            q.Epoch == Guid.Empty || !Utc(q.FromUtc) || !Utc(q.ThroughUtc) || q.FromUtc > q.ThroughUtc ||
-            q.ThroughUtc > started || q.FromUtc <= DateTimeOffset.UnixEpoch.AddHours(1) || q.ThroughUtc-q.FromUtc > TimeSpan.FromDays(7) ||
-            q.Overlap < TimeSpan.FromMilliseconds(1) || q.Overlap > TimeSpan.FromHours(1) ||
-            q.PageSize is < 1 or > 1000 || q.MaximumPagesPerSource is < 1 or > 20 || q.MaximumFacts is < 1 or > 10000 ||
-            string.IsNullOrWhiteSpace(q.NativeInstrument) || q.NativeInstrument.Length > 160 || q.NativeInstrument.Any(char.IsControl) ||
-            !Token(request.Currency) || !Token(request.AmountCurrency) || !Enum.IsDefined(request.AmountUnit) ||
-            request.AmountUnit == OmsPrivateAmountUnit.Usd && request.AmountCurrency != "USD")
-            throw new ArgumentException("Invalid trusted recovery gate request.");
+        var q = ValidateRequest(request, started);
         var blockers = new HashSet<DeribitRecoveryEvidenceBlocker> {
             DeribitRecoveryEvidenceBlocker.CoherentCutUnavailable, DeribitRecoveryEvidenceBlocker.BufferedReplayUnavailable,
             DeribitRecoveryEvidenceBlocker.ExecutionLedgerCoverageUnproven };
@@ -183,6 +174,22 @@ public sealed class DeribitRecoveryEvidenceGate(IOmsPrivateRecoveryReader retain
                 envelope.Observation.ReceivedAtUtc <= receivedThrough && (!receivedFrom.HasValue || envelope.Observation.ReceivedAtUtc >= receivedFrom) &&
                 (!recovery || envelope.Observation.StreamEpoch == q.Epoch && envelope.Observation.Source == OmsPrivateCaptureSource.RecoveryQuery);
         }
+    }
+
+    private static DeribitRecoveryQuery ValidateRequest(DeribitRecoveryGateRequest request, DateTimeOffset started)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var q = request.Query ?? throw new ArgumentException("Recovery query required.");
+        if (q.Scope.Venue.Value != "DERIBIT" || q.Scope.Environment is not (OmsEnvironment.Mainnet or OmsEnvironment.Testnet) ||
+            q.Epoch == Guid.Empty || !Utc(q.FromUtc) || !Utc(q.ThroughUtc) || q.FromUtc > q.ThroughUtc ||
+            q.ThroughUtc > started || q.FromUtc <= DateTimeOffset.UnixEpoch.AddHours(1) || q.ThroughUtc-q.FromUtc > TimeSpan.FromDays(7) ||
+            q.Overlap < TimeSpan.FromMilliseconds(1) || q.Overlap > TimeSpan.FromHours(1) ||
+            q.PageSize is < 1 or > 1000 || q.MaximumPagesPerSource is < 1 or > 20 || q.MaximumFacts is < 1 or > 10000 ||
+            string.IsNullOrWhiteSpace(q.NativeInstrument) || q.NativeInstrument.Length > 160 || q.NativeInstrument.Any(char.IsControl) ||
+            !Token(request.Currency) || !Token(request.AmountCurrency) || !Enum.IsDefined(request.AmountUnit) ||
+            request.AmountUnit == OmsPrivateAmountUnit.Usd && request.AmountCurrency != "USD")
+            throw new ArgumentException("Invalid trusted recovery gate request.");
+        return q;
     }
 
     private static bool Utc(DateTimeOffset value) => value.Offset == TimeSpan.Zero && value > DateTimeOffset.UnixEpoch;
