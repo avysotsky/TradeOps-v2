@@ -48,7 +48,8 @@ internal static class RecoveryCollection
             Console.WriteLine(JsonSerializer.Serialize(new {
                 Status = result.TraversalComplete ? "RECOVERY_QUERY_TRAVERSAL_PASS" : "RECOVERY_QUERY_INCOMPLETE",
                 Instrument = instrument.Name, result.QueryFromUtc, result.ThroughUtc, result.StartedAtUtc, result.CompletedAtUtc,
-                result.TraversalComplete, result.CoherentRecovery, result.Sources,
+                result.TraversalComplete, result.CoherentRecovery, result.HistoricalUnfilledOrdersCovered,
+                result.OrderHistoryComplete, result.Sources,
                 FactCount = result.Observations.Count,
                 OrderReports = result.Observations.Count(x => x.Facts.Kind == OmsJournalEventKind.Order),
                 Executions = result.Observations.Count(x => x.Facts.Kind == OmsJournalEventKind.Execution),

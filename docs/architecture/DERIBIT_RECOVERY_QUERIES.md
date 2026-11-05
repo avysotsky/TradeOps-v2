@@ -38,7 +38,8 @@ Five sources are collected separately:
 
 - Current open orders: bounded unpaginated response. Old last-update timestamps
   are retained because an order can remain open throughout the outage.
-- Recent and historical order history: `include_old=true`, `include_unfilled=true`,
+- Recent and historical order history: `include_old=true`, recent `include_unfilled=true`
+  and historical `include_unfilled=false`,
   documented offset/count pagination to a short/empty page. The endpoint has no
   documented interval filter; all pages are scanned within the budget, then order
   updates are filtered locally by venue timestamp. Repeated included pages are
@@ -58,8 +59,16 @@ records, including fills without an own order ID, block rather than disappear.
 
 ## What exhaustion does and does not establish
 
-`TraversalComplete` means all five bounded API enumerations exhausted without a
-detected problem. **`CoherentRecovery` is always false.** Recent/historical indexing
+Live API qualification established that `historical=true` with `include_unfilled=true`
+is rejected with HTTP 400 / -32602 on `include_unfilled` (the venue reports these
+flags cannot both be true). The connector does not retry that rejected combination.
+It explicitly queries the supported historical subset, with
+**`HistoricalUnfilledOrdersCovered=false` and `OrderHistoryComplete=false`** in every
+result. Retained known orders need additional addressed evidence; this collector
+cannot prove historical absence or recover every fully unfilled cancelled order.
+
+`TraversalComplete` means all five bounded API enumerations of the supported subsets
+exhausted without a detected problem. **`CoherentRecovery` is always false.** Recent/historical indexing
 overlap, offset-page changes, mutable order snapshots and stream replay are not
 fenced by these sequential REST calls. Open-order absence never manufactures a
 cancellation. Historical indexing has no verified completion watermark. The result

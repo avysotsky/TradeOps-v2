@@ -15,6 +15,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order-reducer
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-reader
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-binding
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-collector
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -77,6 +78,16 @@ cases, 99 total. Provisioning and privilege injection use disposable clones only
 this suite never opens the persistent store, decrypts a vault or requests the venue.
 The separate [retained-store qualification](../architecture/DERIBIT_RETAINED_RECOVERY_READER.md)
 uses the existing marked persistent database without migrations or trading.
+
+`b4-collector` selects the 99 reader/binding cases, 11 existing shared private parser
+cases and 27 collector cases, 137 total. Collector HTTP is scripted: fixed read-only
+origins/methods/grants, account checks before/after, recent/historical subsets,
+offset and trade-sequence pagination (including equal timestamps), dedup/collision,
+explicit historical-unfilled coverage gap, bounds, protocol/transport/status errors,
+caller cancellation and incomplete-batch clearing. Only the existing PG cases open
+owned test clones. Vaults, live venues and the persistent store are not used by the suite.
+See the [query contract](../architecture/DERIBIT_RECOVERY_QUERIES.md) for the separate
+live enumeration and its coverage limitations.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

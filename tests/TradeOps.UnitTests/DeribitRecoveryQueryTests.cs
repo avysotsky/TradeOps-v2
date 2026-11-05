@@ -23,6 +23,7 @@ public sealed class DeribitRecoveryQueryTests
         using var venue = new Venue(); using var http = new HttpClient(venue);
         var query = Query(); var result = await Collector(http).CollectAsync(query);
         Assert.True(result.TraversalComplete); Assert.False(result.CoherentRecovery);
+        Assert.False(result.HistoricalUnfilledOrdersCovered); Assert.False(result.OrderHistoryComplete);
         Assert.Equal(5, result.Sources.Count); Assert.Equal(8, venue.Calls);
         Assert.Empty(result.Observations); Assert.Equal(Scope, result.Scope); Assert.Equal(query.Epoch, result.Epoch);
         Assert.Equal((query.FromUtc-query.Overlap).ToUnixTimeMilliseconds(), result.QueryFromUtc.ToUnixTimeMilliseconds());
@@ -132,7 +133,8 @@ public sealed class DeribitRecoveryQueryTests
                             : Mode == "fact-limit" ? new[] { Order("open"), Order("open") } : Array.Empty<object>();
                     else if (method == "private/get_order_history_by_instrument")
                     {
-                        Assert.True(p.GetProperty("include_old").GetBoolean()); Assert.True(p.GetProperty("include_unfilled").GetBoolean());
+                        Assert.True(p.GetProperty("include_old").GetBoolean());
+                        Assert.Equal(!p.GetProperty("historical").GetBoolean(), p.GetProperty("include_unfilled").GetBoolean());
                         var offset = p.GetProperty("offset").GetInt32();
                         result = pages && (offset == 0 || Mode == "repeated-page")
                             ? new[] { Order("open"), Order("cancelled") } : Array.Empty<object>();

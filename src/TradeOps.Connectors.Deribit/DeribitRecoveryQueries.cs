@@ -90,7 +90,10 @@ public sealed class DeribitRecoveryQueries(DeribitPrivateCaptureBinding binding,
                     parameters["historical"] = historical; parameters["count"] = query.PageSize;
                     if (orders)
                     {
-                        parameters["include_old"] = true; parameters["include_unfilled"] = true;
+                        parameters["include_old"] = true;
+                        // Historical API rejects inclusion of fully unfilled orders (-32602).
+                        // Enumerate its supported subset and expose the coverage hole explicitly.
+                        parameters["include_unfilled"] = !historical;
                         parameters["offset"] = (page - 1) * query.PageSize;
                     }
                     else

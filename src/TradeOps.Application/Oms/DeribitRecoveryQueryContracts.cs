@@ -22,6 +22,9 @@ public sealed record DeribitRecoveryQueryResult(AccountKey Scope, Guid Epoch, st
     int? HttpStatusCode = null)
 {
     public bool TraversalComplete => Problems.Count == 0 && Sources.Count == 5 && Sources.All(x => x.Exhausted);
+    // Deribit rejects historical=true together with include_unfilled=true.
+    public bool HistoricalUnfilledOrdersCovered => false;
+    public bool OrderHistoryComplete => false;
     // Sequential REST reads plus delayed historical indexing do not establish a coherent cut.
     public bool CoherentRecovery => false;
 }
