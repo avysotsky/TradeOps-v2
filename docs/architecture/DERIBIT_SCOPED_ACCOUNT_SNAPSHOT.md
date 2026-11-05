@@ -145,6 +145,10 @@ local diagnostics change; durable event encoding and DB schemas are unchanged.
 
 ## Qualification boundary
 
+B4-05d adds explicit [Application assessment composition](DERIBIT_RECOVERY_ACCOUNT_ASSESSMENT.md)
+with validation at use after replay drain. That integration is offline/DB-only;
+the standalone live hosts below are unchanged and do not automatically use it.
+
 B4-05c's separate active-group invocation returned **SCOPED_PASS**: public manifest
 13, accepted position rows 2, balance observed, native identity verified and fresh at
 assessment. No private values were published. This is a qualified scoped read at

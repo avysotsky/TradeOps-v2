@@ -32,6 +32,8 @@ The plain entry assesses order evidence, then reads the account port once. The a
 entry reuses the existing owned begin/seal/drain/final-validation/cleanup path, with
 the additional account read **after order assessment and before seal**. Thus capture
 receipts overlapping the account RPCs are inside the same local replay window.
+Port/caller deadlines govern account I/O; the existing bounded drain budget starts
+after that read. Local replay expiry can still block a slow overall assessment.
 
 Unusable or wrongly bound retained snapshots and invalid retained/known selection
 evidence skip the account read. Other existing order blockers are preserved. Caller

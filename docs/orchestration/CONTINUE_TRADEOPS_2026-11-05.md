@@ -1,4 +1,36 @@
-# Продолжение TradeOps-v2 после B4-05c (scoped live PASS)
+# Продолжение TradeOps-v2 после B4-05d (Application assessment)
+
+## Последнее дополнение 2026-11-05 — B4-05d account assessment integration
+
+Код `c13f02a2760ca1474b5f9bad7599471d06c6e375`:
+[отчёт](workstreams/B4_05D_ACCOUNT_ASSESSMENT_2026-11-05.md),
+[контракт](../architecture/DERIBIT_RECOVERY_ACCOUNT_ASSESSMENT.md).
+**445/445 PASS**, environment/cleanup PASS, 323 source hashes совпали.
+Explicit `AssessAccountAsync` / `AssessAccountWithReplayAsync` связывают actual
+account port с Application gate; active window включает account read до seal.
+Trusted expected manifest и raw collections копируются до awaited lifecycle;
+scope/epoch/currency/kind/native units/window/freshness проверяются при финальном
+использовании после drain. Partial/stale/foreign/malformed закрываются с typed
+blockers; invalid retained evidence пропускает account read. Exceptions/cancellation
+не удаляют newer superseding window, stale active epoch/session закрывает acceptance.
+
+Два actual PG cases: production account reader через scripted HTTP, commit во время
+positions RPC; success и lost ACK после реального commit без resend. Это **offline/
+DB-only**, без vault/live account/mainnet journal/trades. Private amounts/rows не
+выдаются и не публикуются. Account availability и local replay не снимают venue/
+ledger/history blockers; AccountSnapshotCoherenceUnproven и AccountWideCoverageUnproven
+добавляются всегда. AccountReady/publication=false; durable encoding прежний.
+Старый B4-05c live PASS не обновлялся. Existing live hosts пока не используют новые entries.
+
+**Следующий increment B4-05e:** bounded opt-in read-only host/qualification
+`AssessAccountAsync`: existing saved native pin/key, public ETH/future expectations,
+retained SELECT-only reader, только approved anonymous counts/typed blockers.
+Не повторять placement/cancel harness или terminal lookup вне retention. Active
+replay требует actual server-owned capture session, не caller flags. Далее venue
+coherence/full relevant execution ledger, account-wide coverage, durable projection/
+gates; B4/READY, B5 fencing и #73 открыты. Новое торговое действие не разрешено.
+
+Указание B4-05d как «следующего шага» ниже заменено этим дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-05c explicit ETH/future manifest
 
