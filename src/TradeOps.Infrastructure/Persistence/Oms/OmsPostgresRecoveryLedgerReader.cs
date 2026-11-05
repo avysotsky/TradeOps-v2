@@ -43,6 +43,7 @@ c.tenant_id=@tenant AND c.venue_id=@venue AND c.environment=@environment
         var retained = await OmsPostgresPrivateRecoveryReader.ReadSnapshotAsync(db, tx, scope,
             maximumRows, snapshotId, readAt, cancellationToken);
         var commands = new List<OmsRecoveryCommand>();
+        var receipts = new List<DeribitJsonRpcCommandReceipt>();
         var problems = new HashSet<OmsRecoveryLedgerProblem>();
         var aggregateVersions = new Dictionary<OmsLocalOrderId, long>();
         var bytes = 0;
@@ -128,12 +129,49 @@ SELECT EXISTS(SELECT 1 FROM oms_intents c WHERE {ScopeWhere} AND NOT EXISTS(
             Bind(orphans);
             if (await orphans.ExecuteScalarAsync(cancellationToken) is true)
                 throw new ArgumentException("Orphaned intent or versioned aggregate.");
+            var byCommand = commands.ToDictionary(x => x.Request.CommandId.Value);
+            await using var responseQuery = new NpgsqlCommand($"""
+SELECT c.command_id,c.aggregate_id,c.attempt_number,c.schema_version,c.command_kind,c.session_id,
+ c.rpc_request_id,c.currency,c.native_order_id,c.native_instrument,c.command_sha256,c.receipt_sha256,
+ CASE WHEN octet_length(c.receipt_json::text)<=32768 THEN c.receipt_json::text END,c.recorded_at,t.started_at
+FROM oms_deribit_command_receipts_v1 c
+LEFT JOIN oms_attempts t USING (tenant_id,venue_id,environment,account_id,subaccount_id,command_id,attempt_number)
+WHERE {ScopeWhere} ORDER BY c.command_id LIMIT @limit
+""", db, tx);
+            Bind(responseQuery);
+            await using (var rows = await responseQuery.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await rows.ReadAsync(cancellationToken))
+                {
+                    if (receipts.Count >= maximumRows || rows.IsDBNull(12))
+                        throw new LedgerFailure(OmsRecoveryLedgerProblem.CapacityExceeded);
+                    if (rows.GetInt32(3) != DeribitCommandReceiptCanonical.Version)
+                        throw new LedgerFailure(OmsRecoveryLedgerProblem.UnsupportedSchema);
+                    if (!byCommand.TryGetValue(rows.GetGuid(0), out var owner))
+                        throw new ArgumentException("Receipt has no scoped command.");
+                    var raw = rows.GetString(12);
+                    bytes = checked(bytes + Encoding.UTF8.GetByteCount(raw));
+                    if (bytes > 16 * 1024 * 1024) throw new LedgerFailure(OmsRecoveryLedgerProblem.CapacityExceeded);
+                    var receipt = DeribitCommandReceiptCanonical.Decode(raw, owner.Request);
+                    if (rows.GetGuid(1) != owner.Request.LocalOrderId.Value || rows.GetInt32(2) != receipt.AttemptNumber ||
+                        rows.GetString(4) != owner.Request.Payload.Kind.ToString() || rows.GetGuid(5) != receipt.SessionId ||
+                        rows.GetInt64(6) != receipt.RpcRequestId || rows.GetString(7) != receipt.Order.Currency ||
+                        rows.GetString(8) != receipt.Order.ExchangeOrderId || rows.GetString(9) != receipt.Order.NativeInstrument ||
+                        !CryptographicOperations.FixedTimeEquals(rows.GetFieldValue<byte[]>(10), OmsJournalCanonical.EncodeCommand(owner.Request).Sha256) ||
+                        !CryptographicOperations.FixedTimeEquals(rows.GetFieldValue<byte[]>(11), DeribitCommandReceiptCanonical.Encode(receipt).Sha256) ||
+                        rows.GetDateTime(13) > readAt.UtcDateTime || rows.IsDBNull(14) ||
+                        receipt.SentAtUtc < new DateTimeOffset(rows.GetDateTime(14)).AddSeconds(-5))
+                        throw new ArgumentException("Invalid persisted receipt binding/hash/chronology.");
+                    receipts.Add(receipt);
+                }
+            }
+            DeribitCommandReceiptSet.Validate(scope, commands, receipts, readAt);
         }
-        catch (LedgerFailure failure) { problems.Add(failure.Problem); commands.Clear(); }
+        catch (LedgerFailure failure) { problems.Add(failure.Problem); commands.Clear(); receipts.Clear(); }
         catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or OverflowException or KeyNotFoundException)
-        { problems.Add(OmsRecoveryLedgerProblem.InvalidRecord); commands.Clear(); }
+        { problems.Add(OmsRecoveryLedgerProblem.InvalidRecord); commands.Clear(); receipts.Clear(); }
         await tx.CommitAsync(cancellationToken);
-        return new(retained, commands.AsReadOnly(), problems.Order().ToArray());
+        return new(retained, commands.AsReadOnly(), problems.Order().ToArray(), receipts.AsReadOnly());
 
         void Bind(NpgsqlCommand command)
         {

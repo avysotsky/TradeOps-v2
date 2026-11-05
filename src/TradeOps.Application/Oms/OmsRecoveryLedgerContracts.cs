@@ -29,9 +29,11 @@ public sealed record OmsRecoveryCommand(OmsJournalCommandRequest Request, long A
 
 /// <summary>Commands, attempts, outbox and private facts from ONE database snapshot.</summary>
 public sealed record OmsRecoveryLedgerSnapshot(OmsPrivateRecoveryReadResult Private,
-    IReadOnlyList<OmsRecoveryCommand> Commands, IReadOnlyList<OmsRecoveryLedgerProblem> Problems)
+    IReadOnlyList<OmsRecoveryCommand> Commands, IReadOnlyList<OmsRecoveryLedgerProblem> Problems,
+    IReadOnlyList<DeribitJsonRpcCommandReceipt>? CommandReceipts = null)
 {
     public bool IsUsable => Private.IsUsable && Problems.Count == 0;
+    public IReadOnlyList<DeribitJsonRpcCommandReceipt> Receipts => CommandReceipts ?? Array.Empty<DeribitJsonRpcCommandReceipt>();
 }
 
 public interface IOmsRecoveryLedgerReader
@@ -43,12 +45,13 @@ public interface IOmsRecoveryLedgerReader
 public enum DeribitCommandRecoveryProblem
 {
     InstrumentOutsideRecoveryScope, UnresolvedDispatch, PlacementIdentityUnproven, MutationOutcomeUnproven,
-    RejectionNotReconciled
+    RejectionNotReconciled, BoundOrderEvidenceUnavailable, BoundOrderEvidenceMismatch
 }
 
 public sealed record DeribitCommandRecoveryIssue(OmsCommandId CommandId, DeribitCommandRecoveryProblem Problem);
 public sealed record DeribitRecoveryLedgerAssessment(DeribitRecoveryGateAssessment Orders,
-    int JournalCommands, int UnsentCommands, IReadOnlyList<DeribitCommandRecoveryIssue> CommandIssues)
+    int JournalCommands, int UnsentCommands, IReadOnlyList<DeribitCommandRecoveryIssue> CommandIssues,
+    int BoundCommands = 0)
 {
     public bool AccountReady => false;
     public bool DurableProjectionPublished => false;

@@ -204,7 +204,7 @@ COMMENT ON ROLE "{role}" IS 'tradeops-tests:role:v1:{db.Name}';
 GRANT CONNECT ON DATABASE "{db.Name}" TO "{role}";
 GRANT USAGE ON SCHEMA public TO "{role}";
 GRANT SELECT ON oms_commands,oms_attempts,oms_outbox,oms_intents,oms_aggregates,
- oms_inbox,oms_private_capture_observations,oms_integrity_incidents TO "{role}";
+ oms_inbox,oms_private_capture_observations,oms_integrity_incidents,oms_deribit_command_receipts_v1 TO "{role}";
 ALTER TABLE oms_commands ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oms_inbox ENABLE ROW LEVEL SECURITY;
 CREATE POLICY fixture_read ON oms_commands FOR SELECT TO "{role}" USING

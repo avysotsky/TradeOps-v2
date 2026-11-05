@@ -52,7 +52,7 @@ SELECT NOT EXISTS (
   (c.relname IN ('oms_inbox','oms_private_capture_observations','oms_integrity_incidents')
    AND has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')) OR
   (c.relname='oms_integrity_incidents' AND has_table_privilege(current_user,c.oid,'UPDATE')) OR
-  (c.relname IN ('Orders','Fills','oms_intents','oms_commands','oms_outbox','oms_attempts','oms_aggregates','oms_account_leases')
+  (c.relname IN ('Orders','Fills','oms_intents','oms_commands','oms_outbox','oms_attempts','oms_aggregates','oms_account_leases','oms_deribit_command_receipts_v1')
    AND has_table_privilege(current_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE'))))
  AND has_sequence_privilege(current_user,'public.oms_integrity_incidents_incident_id_seq','USAGE')
 """, db);
