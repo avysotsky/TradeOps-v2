@@ -1,6 +1,34 @@
-# Продолжение TradeOps-v2 — полнота B4, retained terminal evidence
+# Продолжение TradeOps-v2 — B4, журнал команд и исходы отправок
 
-## Последний проверенный результат, 2026-11-05
+## Последний проверенный результат: общий журнал, 2026-11-05
+
+Код `d985a4ee21ce6c7456b5092a81d8690007e0f638`:
+[отчёт](workstreams/B4_COMMAND_LEDGER_2026-11-05.md),
+[правило](../architecture/DERIBIT_COMMAND_RECOVERY_LEDGER.md).
+**596/596 + 30/30 PASS**, final environment/cleanup PASS, 337 source hashes совпали.
+Новый `OmsPostgresRecoveryLedgerReader` читает account-wide commands/attempts/outbox/
+intents/aggregate links и private events в одном REPEATABLE READ / READ ONLY снимке.
+`AssessWithLedgerAsync` использует этот actual snapshot без второго private read;
+invalid journal блокирует venue IO. Неотправленные команды отделены от начатых/
+неоднозначных; ACK, label и явный target не считаются доказанным native outcome.
+Нерешённые команды и другие инструменты имеют конкретные проблемы и blockers.
+
+Это **offline/DB-only**. Mainnet-host и diagnostics v2 пока используют прежний
+private-only reader. Постоянная роль не получила новых grants; старый live run ниже
+не обновлялся. Global ledger/history/replay/coherence/coverage requirements,
+READY/publication=false сохранены. Durable command v1/private v2/capture v1 не менялись.
+
+**Следующий конкретный результат:** versioned durable связь команды с native order/
+outcome и reconciliation перечисленных команд. Журнал v1 не содержит доказанной
+placement identity; не выводить её из label/количества/пустого venue ответа.
+После этого общий history/capture basis, persisted recovered state и full B4 lifecycle
+по [плану до QuickFIX/n](B4_TO_QUICKFIX_PLAN_2026-11-05.md).
+Не активировать combined reader в mainnet через writer/admin fallback: потребуется
+отдельно проверенная read-only role/store binding и интеграция account/capture lifecycle.
+Не повторять live-запросы без новой проверяемой цели. Старый terminal lookup/placement
+harness не запускать; разрешённый единичный торговый сценарий уже выполнен.
+
+## Предыдущий проверенный результат: terminal evidence, 2026-11-05
 
 Код `15cd9e605e871aba833ae65a586032309cb966fb`:
 [отчёт](workstreams/B4_TERMINAL_EVIDENCE_2026-11-05.md),
