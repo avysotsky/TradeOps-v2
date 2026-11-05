@@ -90,4 +90,6 @@ flowchart TD
 
 Следующий B4 slice реализован: [чтение durable private snapshot](OMS_PRIVATE_RECOVERY_READER.md) через application port и PostgreSQL adapter, проверка scope/schema/canonical SHA, inbox/observations и blocking incidents/quarantine, затем вызов reducer. Используется полный bounded snapshot в read-only repeatable-read транзакции; timestamp/sequence не объявлены безопасным checkpoint. Production binding/права, coherent venue queries, позиции/балансы и durable projection/gates остаются следующими этапами.
 
+B4-03a: [отдельное opt-in чтение постоянного qualification store](DERIBIT_RETAINED_RECOVERY_READER.md) проверено через SELECT-only роль и сохранённый encrypted native pin: два retained open/cancel факта, без запросов биржи. Provisioning отделён от чтения и не запускает migrations/торговый harness. Это исторический DB snapshot; bounded venue collector и остальные recovery gates ещё не завершены.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.

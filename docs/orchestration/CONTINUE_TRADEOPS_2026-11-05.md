@@ -1,4 +1,26 @@
-# Продолжение TradeOps-v2 после B4-02
+# Продолжение TradeOps-v2 после B4-03a
+
+## Актуальное дополнение 2026-11-05 — B4-03a проверен
+
+Код `9465a608db2070cff52caba3be2c6ed4905178d7`: отдельные `--provision-reader`
+и `--read-snapshot`, без вызова старого migrating opener/торгового runner.
+[Отчёт B4-03a](workstreams/B4_03A_RETAINED_READER_2026-11-05.md): **99/99 PASS**,
+environment/cleanup PASS. Новый reader реально прочитал постоянный store через
+SELECT-only роль: retained open/cancel facts/observations/problems **2/2/0**.
+Journal commands/attempts **2/2** не изменён, venue requests **0**. Native binding
+взят из прежнего encrypted pin; секреты/IDs не публиковались. Provisioning выполнен,
+повторять его для обычного чтения не нужно. Reader запускается отдельно через
+`scripts/deribit/Deribit-RecoveryReaderLocal.ps1 -Action ReadSnapshot` после bounded build.
+
+**Следующий increment B4-03b:** bounded read-only collection открытых ордеров,
+истории и отдельных fills за явный outage interval с overlap, pagination и явной
+неполнотой. Использовать существующие key и native pin, без новых торговых действий.
+Позиции/балансы, coherent replay, durable projection/recovery gate и fencing остаются.
+Историческое чтение store не означает свежую сверку с биржей или B4/READY.
+
+Ниже сохранена исходная точка передачи после B4-02 для истории; её утверждения
+«B4-03 ещё не реализован» и первые три пункта ближайшего задания заменены этим
+дополнением. Текущий Git и roadmap проверять перед продолжением.
 
 Точка передачи от 2026-11-05. Источник текущих решений — [AGENTS.md](../../AGENTS.md),
 [целевая архитектура](../architecture/TARGET_PLATFORM_ARCHITECTURE.md) и актуальные

@@ -14,6 +14,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-order-reducer
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-reader
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-binding
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -71,6 +72,12 @@ in-flight capture. RLS policies prove the SELECT-only reader actually uses a
 read-only repeatable-read transaction. All injection is confined to disposable
 clones; no live DB or exchange is used. See the
 [reader contract](../architecture/OMS_PRIVATE_RECOVERY_READER.md).
+`b4-binding` selects the 87 reader/recovery cases plus 12 retained-store binding
+cases, 99 total. Provisioning and privilege injection use disposable clones only;
+this suite never opens the persistent store, decrypts a vault or requests the venue.
+The separate [retained-store qualification](../architecture/DERIBIT_RETAINED_RECOVERY_READER.md)
+uses the existing marked persistent database without migrations or trading.
+
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,
 fresh migration preparation, ownership refusal, crash remnants and stale templates.
