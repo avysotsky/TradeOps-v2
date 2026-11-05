@@ -16,6 +16,7 @@ Windows PowerShell, from the repository:
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-reader
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-binding
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-collector
+./scripts/testing/Run-OmsPostgresTests.ps1 -Suite b4-known-orders
 ./scripts/testing/Run-OmsPostgresTests.ps1 -Suite fixture
 ```
 
@@ -88,6 +89,14 @@ caller cancellation and incomplete-batch clearing. Only the existing PG cases op
 owned test clones. Vaults, live venues and the persistent store are not used by the suite.
 See the [query contract](../architecture/DERIBIT_RECOVERY_QUERIES.md) for the separate
 live enumeration and its coverage limitations.
+
+`b4-known-orders` selects those 137 cases plus 36 retained-reference selection and
+addressed-read cases, 173 total. Scripted venue tests cover found/missing/unsupported,
+identity/term/time/quantity checks, partial-set clearing and failures/cancellation.
+It never decrypts a vault or requests a live account. The separate
+[known-order qualification](../architecture/DERIBIT_KNOWN_ORDER_READS.md) uses the
+existing SELECT-only persistent reader and one addressed request per retained seed;
+a completed negative lookup is not recovered state or READY.
 
 `fixture` checks four additional integration cases
 covering committed cross-connection visibility, clone isolation/pool disposal,

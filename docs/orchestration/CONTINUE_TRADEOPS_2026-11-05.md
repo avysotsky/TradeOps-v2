@@ -1,4 +1,30 @@
-# Продолжение TradeOps-v2 после B4-03b
+# Продолжение TradeOps-v2 после B4-03c
+
+## Последнее дополнение 2026-11-05 — B4-03c и unavailable evidence
+
+Код `2dafd818b24d7b57b76b59019bb7ef49222021cf`:
+[отчёт](workstreams/B4_03C_KNOWN_ORDER_READS_2026-11-05.md),
+[контракт](../architecture/DERIBIT_KNOWN_ORDER_READS.md). **173/173 PASS**,
+environment/cleanup PASS, 302 source hashes совпали. Application selector из scoped
+durable snapshot и отдельный connector port для 1–32 адресных known orders.
+Live `Deribit-KnownOrderRecoveryLocal.ps1` выбрал из постоянного SELECT-only snapshot
+один известный ордер; один get_order_state дал **10004/Missing**. QueriesCompleted=true,
+AllOrdersFound=false, CurrentFacts=0, RetainedFacts=2. Это **KNOWN_ORDERS_UNRESOLVED**,
+не успешное восстановление текущего статуса. Native IDs/секреты не публиковались.
+Audit commands/attempts **2/2**, inbox/observations/incidents **2/2/0** неизменен,
+guards/peers PASS. Новый ордер, повтор старого harness или запись в БД не выполнялись.
+
+У `get_order_state` нет historical flag и закрытые ордера доступны лишь 30 минут.
+Старый cancel остаётся сохранённым фактом, Missing не означает свежую отмену,
+absence или zero fills. Повторный запрос старого ордера не исправит retention gap.
+
+**Следующий increment:** application recovery orchestration/gating с явными
+unavailable-evidence, retention/coverage/coherence blockers и scope/epoch binding.
+Не объявлять query exhaustion coherent recovery. Затем полный relevant execution
+ledger, buffered replay, позиции/балансы и durable projection/recovery gate;
+B5 physical sender fencing остаётся. B4/READY и #73 не закрывать преждевременно.
+
+Указание B4-03c как «следующего шага» ниже заменено этим последним дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-03b проверен с coverage limitation
 

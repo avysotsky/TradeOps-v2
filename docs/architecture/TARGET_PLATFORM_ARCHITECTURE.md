@@ -94,4 +94,6 @@ B4-03a: [отдельное opt-in чтение постоянного qualifica
 
 B4-03b: [bounded read-only collector](DERIBIT_RECOVERY_QUERIES.md) реализован в коннекторе через application port: open orders, recent/historical history и fills, overlap, pagination и явные bounds. Live API запрещает historical + include_unfilled одновременно; поддерживаемые выборки перечислены, но `OrderHistoryComplete=false` и coherent recovery/READY не заявляются. Далее — адресные read-only факты для известных retained orders и coherent orchestration.
 
+B4-03c: [адресное чтение известных retained orders](DERIBIT_KNOWN_ORDER_READS.md) добавлено через отдельный application port и connector. Live old-order lookup дал Missing/10004 при сохранённых двух фактах: свежий статус не выдуман, store не изменён. У get_order_state есть 30-минутное окно для закрытых ордеров; оно не закрывает historical-unfilled gap. Следующий orchestrator/gate должен явно блокировать unavailable evidence, неподтверждённые coverage/coherence и сохранять retained terminal facts.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.
