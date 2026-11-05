@@ -11,6 +11,9 @@ internal static class MainnetEthEntryPoint
         try
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(150));
+            // Explicit read-side modes never enter the order runner or migrating store opener.
+            if (args.SequenceEqual(new[] { "--read-snapshot" }) || args.SequenceEqual(new[] { "--provision-reader" }))
+                return await RecoveryStore.RunAsync(args[0], deadline.Token);
             if (args.SequenceEqual(new[] { "--store-check" }))
             {
                 await using var database = await QualificationDatabase.OpenAsync(true, deadline.Token);

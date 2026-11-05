@@ -22,6 +22,7 @@ case "$suite" in
   fixture) filter='FullyQualifiedName~OmsPostgresFixtureTests'; expected=4 ;;
   b4-order-reducer) filter='FullyQualifiedName~DeribitOrderRecovery'; expected=47 ;;
   b4-reader) filter='FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader'; expected=87 ;;
+  b4-binding) filter='FullyQualifiedName~DeribitOrderRecovery|FullyQualifiedName~OmsPrivateRecoveryReader|FullyQualifiedName~OmsRecoveryStoreBinding'; expected=99 ;;
   *) echo 'Usage: oms-postgres.sh [b2|b3|b3-stream|b3-host|b3-session|b3-inbox|b3-live-inbox|b3-testnet-order|b3-mainnet-eth|b4-order|b4-order-reducer|b4-reader|fixture]'; exit 2 ;;
 esac
 [[ $(id -u) == 0 ]] || { echo 'Run with wsl.exe -d Ubuntu -u root -- bash <script>'; exit 2; }

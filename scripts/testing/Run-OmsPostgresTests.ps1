@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('b2', 'b3', 'b3-stream', 'b3-host', 'b3-session', 'b3-inbox', 'b3-testnet-order', 'b3-mainnet-eth', 'b4-order', 'b4-order-reducer', 'b4-reader', 'fixture')][string]$Suite = 'b2',
+    [ValidateSet('b2', 'b3', 'b3-stream', 'b3-host', 'b3-session', 'b3-inbox', 'b3-testnet-order', 'b3-mainnet-eth', 'b4-order', 'b4-order-reducer', 'b4-reader', 'b4-binding', 'fixture')][string]$Suite = 'b2',
     [string]$Dotnet = 'D:\DotNet\dotnet.exe'
 )
 $ErrorActionPreference = 'Stop'
