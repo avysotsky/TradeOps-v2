@@ -33,12 +33,6 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
         if (scope.Venue.Value != "DERIBIT" || scope.Environment is not (OmsEnvironment.Mainnet or OmsEnvironment.Testnet))
             throw new ArgumentException("A trusted Deribit account scope is required.");
         if (maximumRows is < 1 or > 10000) throw new ArgumentOutOfRangeException(nameof(maximumRows));
-        var snapshot = Guid.NewGuid();
-        var problems = new HashSet<OmsPrivateRecoveryReadProblem>();
-        var observations = new List<OmsPrivateRecoveryObservation>();
-        var inbox = new Dictionary<(string Namespace, string Id), InboxRow>();
-        var witnessed = new HashSet<(string Namespace, string Id)>();
-        var bytes = 0;
         await using var connection = await source.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         await using (var mode = new NpgsqlCommand("SET TRANSACTION READ ONLY", connection, tx))
@@ -50,6 +44,21 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
                 throw new InvalidOperationException("Recovery snapshot timestamp unavailable.");
             readAt = new(instant);
         }
+        var result = await ReadSnapshotAsync(connection, tx, scope, maximumRows, Guid.NewGuid(), readAt, cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    // The caller owns the read-only repeatable-read transaction and its snapshot identity.
+    internal static async Task<OmsPrivateRecoveryReadResult> ReadSnapshotAsync(NpgsqlConnection connection,
+        NpgsqlTransaction tx, AccountKey scope, int maximumRows, Guid snapshot, DateTimeOffset readAt,
+        CancellationToken cancellationToken)
+    {
+        var problems = new HashSet<OmsPrivateRecoveryReadProblem>();
+        var observations = new List<OmsPrivateRecoveryObservation>();
+        var inbox = new Dictionary<(string Namespace, string Id), InboxRow>();
+        var witnessed = new HashSet<(string Namespace, string Id)>();
+        var bytes = 0;
         try
         {
             await using (var command = Command($"""
@@ -130,7 +139,6 @@ ORDER BY capture_id,observation_sha256 LIMIT @limit
         { problems.Add(failure.Problem); observations.Clear(); inbox.Clear(); }
         catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or OverflowException or KeyNotFoundException)
         { problems.Add(OmsPrivateRecoveryReadProblem.InvalidRecord); observations.Clear(); inbox.Clear(); }
-        await tx.CommitAsync(cancellationToken);
         return new(scope, snapshot, readAt, inbox.Count, observations.AsReadOnly(),
             problems.OrderBy(x => x).ToList().AsReadOnly());
 

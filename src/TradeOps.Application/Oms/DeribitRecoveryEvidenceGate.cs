@@ -12,7 +12,8 @@ public enum DeribitRecoveryEvidenceBlocker
     BufferedReplayInvalid, BufferedReplayDrainTimedOut,
     AccountObservationsUnavailable, AccountReadFailed, AccountReadSkipped, AccountBindingInvalid,
     AccountCoverageInvalid, AccountObservationInvalid, AccountObservationStale,
-    AccountSnapshotCoherenceUnproven, AccountWideCoverageUnproven, RetainedTerminalEvidenceInsufficient
+    AccountSnapshotCoherenceUnproven, AccountWideCoverageUnproven, RetainedTerminalEvidenceInsufficient,
+    CommandLedgerInvalid, CommandRecoveryUnresolved
 }
 
 /// <summary>Trusted instrument units/currency, never derived from a bare symbol or returned facts.</summary>
