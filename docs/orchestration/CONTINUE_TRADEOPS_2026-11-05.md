@@ -1,4 +1,29 @@
-# Продолжение TradeOps-v2 после B4-03a
+# Продолжение TradeOps-v2 после B4-03b
+
+## Последнее дополнение 2026-11-05 — B4-03b проверен с coverage limitation
+
+Код `39161395cad009c57bbb192a0298ea1c3b7951d0`:
+[отчёт](workstreams/B4_03B_RECOVERY_QUERIES_2026-11-05.md),
+[контракт](../architecture/DERIBIT_RECOVERY_QUERIES.md). **137/137 PASS**,
+environment/cleanup PASS. Opt-in `--collect-recovery` и отдельный Windows wrapper
+`scripts/deribit/Deribit-RecoveryCollectionLocal.ps1`; scope ETH-PERPETUAL,
+прежний encrypted pin/key, read-only REST session, без DB/trading и повторных ордеров.
+Живое перечисление пяти поддерживаемых выборок завершилось, facts **0**, quiet case.
+Постоянный reader после этого: **2/2/0**, journal commands/attempts **2/2** неизменен.
+
+**Ограничение, подтверждённое API:** `historical=true` вместе с `include_unfilled=true`
+запрещены (HTTP 400, -32602, параметр include_unfilled). Collector читает supported
+historical subset с include_unfilled=false и всегда сохраняет
+**HistoricalUnfilledOrdersCovered=false, OrderHistoryComplete=false,
+CoherentRecovery=false**. Полноту account/recovery/READY не заявлять.
+
+**Следующий increment B4-03c:** адресные read-only запросы фактов для известных
+retained orders, отсутствующих в history subsets; не терять unfilled cancel case,
+явно обрабатывать unsupported/missing. Затем coherent outage + buffered replay,
+полный relevant execution ledger, позиции/балансы и durable projection/recovery gate.
+Торговое разрешение не расширялось; завершённый B3 harness/marker не повторять.
+
+Указание B4-03b как «следующего шага» ниже заменено этим последним дополнением.
 
 ## Актуальное дополнение 2026-11-05 — B4-03a проверен
 

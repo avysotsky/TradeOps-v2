@@ -92,4 +92,6 @@ flowchart TD
 
 B4-03a: [отдельное opt-in чтение постоянного qualification store](DERIBIT_RETAINED_RECOVERY_READER.md) проверено через SELECT-only роль и сохранённый encrypted native pin: два retained open/cancel факта, без запросов биржи. Provisioning отделён от чтения и не запускает migrations/торговый harness. Это исторический DB snapshot; bounded venue collector и остальные recovery gates ещё не завершены.
 
+B4-03b: [bounded read-only collector](DERIBIT_RECOVERY_QUERIES.md) реализован в коннекторе через application port: open orders, recent/historical history и fills, overlap, pagination и явные bounds. Live API запрещает historical + include_unfilled одновременно; поддерживаемые выборки перечислены, но `OrderHistoryComplete=false` и coherent recovery/READY не заявляются. Далее — адресные read-only факты для известных retained orders и coherent orchestration.
+
 Изменения этого решения отмечать здесь и в актуальной части roadmap. Проверенные результаты отдельных итераций хранить в workstream reports; не заменять архитектурный документ архивом чата.
