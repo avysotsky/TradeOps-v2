@@ -70,8 +70,8 @@ include venue error payloads or private values.
 `VenueCoherent`, `AccountReady` and `DurableProjectionPublished` remain false even
 for fresh completed scoped queries. There is no reconciliation with buffered
 private events, order history or the execution ledger. Consumers must not log or
-serialize these private in-memory values into public evidence. A future opt-in live
-host should publish only approved anonymous diagnostics.
+serialize these private in-memory values into public evidence. The opt-in host below
+publishes only approved anonymous diagnostics.
 
 ## B4-05b opt-in qualification host
 
@@ -106,6 +106,15 @@ durable publication and trading readiness remain false. The existing recovery ga
 is not changed or automatically composed with this qualification host.
 
 ## Qualification boundary
+
+The single B4-05b live attempt returned **UnmappedInstrument / INCOMPLETE** because
+the ETH/future response included an instrument outside the one-instrument manifest.
+No partial values were exposed and no retry or automatic manifest expansion occurred.
+This proves the coverage refusal path, not a complete live positions/balance snapshot.
+Accepted zero rows do not mean zero holdings. Before another qualification, define
+the intended supported ETH/future manifest explicitly from trusted public metadata;
+unavailable/expired metadata must remain a blocker. See the
+[actual result](../orchestration/workstreams/B4_05B_ACCOUNT_QUALIFICATION_2026-11-05.md).
 
 `b4-account` extends the B4 replay/gate acceptance set with scripted HTTP cases for
 native units/signs, negative balance, scoped empty results, time boundaries,

@@ -1,4 +1,33 @@
-# Продолжение TradeOps-v2 после B4-05a
+# Продолжение TradeOps-v2 после B4-05b (live INCOMPLETE)
+
+## Последнее дополнение 2026-11-05 — B4-05b read-only qualification host
+
+Код `a8e79832b70775fb6fef83fe7310747ca121a56e`:
+[отчёт](workstreams/B4_05B_ACCOUNT_QUALIFICATION_2026-11-05.md).
+**364/364 PASS**, дополнительно **22/22** Windows diagnostics-validator cases;
+environment/cleanup PASS, 318 source hashes совпали. Explicit
+`--read-account-snapshot` и `Deribit-AccountSnapshotLocal.ps1`: saved DPAPI key/native
+pin, active public ETH-PERPETUAL metadata validation до auth, production reader,
+только whitelist diagnostics; без DB/capture/trading path, execution switches false.
+
+Один live mainnet-запуск: **ACCOUNT_SNAPSHOT_INCOMPLETE / UnmappedInstrument**,
+MetadataValidated=true, exit 1. В ETH/future ответе есть инструмент вне manifest
+ETH-PERPETUAL; private значения и имя не публиковались. Принятых rows=0 и
+BalanceObserved=false означают отказ от выдачи всего набора, не нулевой счёт.
+QueriesCompleted/NativeBindingVerified/FreshAtAssessment=false; account-wide
+coverage/coherence/READY/publication=false. DatabaseUsed=false, writes/mutating
+calls=0. Повтора, автоматического расширения manifest, старого order harness или
+terminal lookup не было; постоянный mainnet journal в этом этапе не открывался.
+
+**Следующий increment B4-05c:** явно задать поддерживаемый ETH/future manifest из
+trusted public metadata до следующего opt-in чтения. Не фильтровать unknown row,
+не выводить units из имени и не расширять запрос на другой account/currency/any.
+Unavailable/expired metadata оставлять blocker. После квалификации coverage —
+account port в Application assessment. Venue coherence/full execution ledger,
+durable projection/gates, B4/READY, B5 fencing и #73 остаются открытыми.
+Новое торговое действие этим кодовым этапом не разрешается.
+
+Указание B4-05b как «следующего шага» ниже заменено этим дополнением.
 
 ## Последнее дополнение 2026-11-05 — B4-05a scoped account reader
 
