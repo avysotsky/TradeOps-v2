@@ -11,7 +11,7 @@ public sealed class OmsPostgresRiskAdmission(NpgsqlDataSource source, IOmsRiskIn
     TimeProvider? clock = null)
 {
     private const string Where = "tenant_id=@tenant AND venue_id=@venue AND environment=@environment AND account_id=@account AND subaccount_id=@subaccount";
-    private static NpgsqlCommand Query(NpgsqlConnection db, NpgsqlTransaction tx, AccountKey scope, string sql)
+    private static NpgsqlCommand Query(NpgsqlConnection db, NpgsqlTransaction? tx, AccountKey scope, string sql)
     {
         var q = new NpgsqlCommand(sql, db, tx);
         q.Parameters.AddWithValue("tenant", scope.Tenant.Value); q.Parameters.AddWithValue("venue", scope.Venue.Value);
@@ -26,20 +26,33 @@ public sealed class OmsPostgresRiskAdmission(NpgsqlDataSource source, IOmsRiskIn
         if (qualified.Start != publication.Token.Start || qualified.Start.Scope != command.Scope ||
             publication.StateSha256 != Convert.ToHexString(qualified.StateSha256) ||
             publication.EvidenceVersion < qualified.ExpectedEvidenceVersion || !qualified.IsCurrent)
+        {
+            await using var rejected = await source.OpenConnectionAsync(ct);
+            await AuditAsync(rejected, null, command, publication, qualified, OmsRiskAdmissionResult.StaleBaseline, ct);
             return OmsRiskAdmissionResult.StaleBaseline;
+        }
         await using var db = await source.OpenConnectionAsync(ct); await using var tx = await db.BeginTransactionAsync(ct);
+        async Task<OmsRiskAdmissionResult> Reject(OmsRiskAdmissionResult result)
+        {
+            // CAS may have tentatively changed aggregates. Roll everything back before recording a denial.
+            await tx.RollbackAsync(ct);
+            await AuditAsync(db, null, command, publication, qualified, result, ct);
+            return result;
+        }
+        var controls = await OmsPostgresRiskControls.LockAndReadAsync(db, tx, command.Scope, ct);
+        if (controls.Blocked) return await Reject(OmsRiskAdmissionResult.ControlBlocked);
         await OmsPostgresJournal.LockIdAsync(db, tx, command.Scope, "Command", command.CommandId.Value, ct);
         await OmsPostgresJournal.LockIdAsync(db, tx, command.Scope, "Intent", command.IntentId.Value, ct);
         await using (var duplicate = Query(db, tx, command.Scope, $"SELECT command_sha256 FROM oms_risk_reservations_v1 WHERE {Where} AND command_id=@command"))
         {
             duplicate.Parameters.AddWithValue("command", command.CommandId.Value);
             if (await duplicate.ExecuteScalarAsync(ct) is byte[] hash)
-                return hash.SequenceEqual(encoded.Sha256) ? OmsRiskAdmissionResult.Duplicate : OmsRiskAdmissionResult.Collision;
+                return await Reject(hash.SequenceEqual(encoded.Sha256) ? OmsRiskAdmissionResult.Duplicate : OmsRiskAdmissionResult.Collision);
         }
         // Same account head lock as recovery publication. Account admissions are serialized before summing reservations.
         await using (var head = Query(db, tx, command.Scope, $"SELECT run_id FROM oms_recovery_heads_v1 WHERE {Where} AND state='Ready' FOR UPDATE"))
             if (await head.ExecuteScalarAsync(ct) is not Guid run || run != publication.Token.Start.RunId)
-                return OmsRiskAdmissionResult.StaleBaseline;
+                return await Reject(OmsRiskAdmissionResult.StaleBaseline);
         await using (var rows = Query(db, tx, command.Scope, $"SELECT command_id FROM oms_commands WHERE {Where} ORDER BY command_id FOR UPDATE"))
         { await using var r = await rows.ExecuteReaderAsync(ct); while (await r.ReadAsync(ct)) { } }
         long before;
@@ -63,7 +76,7 @@ SELECT EXISTS(SELECT 1 FROM oms_recovered_account_states_v1 p JOIN oms_recovery_
             binding.Parameters.AddWithValue("run", publication.Token.Start.RunId); binding.Parameters.AddWithValue("generation", publication.Token.Generation);
             binding.Parameters.AddWithValue("sha", qualified.StateSha256); binding.Parameters.AddWithValue("version", publication.EvidenceVersion);
             if (before != expected || await binding.ExecuteScalarAsync(ct) is not true || !qualified.IsCurrent)
-                return OmsRiskAdmissionResult.StaleBaseline;
+                return await Reject(OmsRiskAdmissionResult.StaleBaseline);
         }
         var baseline = OmsRecoveryRunCodec.Decode<OmsRecoveredAccountStateV1>(qualified.StateJson, qualified.StateSha256);
         var risk = await inputs.ReadAsync(command, baseline, ct);
@@ -71,10 +84,10 @@ SELECT EXISTS(SELECT 1 FROM oms_recovered_account_states_v1 p JOIN oms_recovery_
         await using (var sum = Query(db, tx, command.Scope, $"SELECT COALESCE(sum(reserved_usd),0),COALESCE(sum(margin_usd),0),count(*) FROM oms_risk_reservations_v1 WHERE {Where}"))
         { await using var r = await sum.ExecuteReaderAsync(ct); await r.ReadAsync(ct); pending = r.GetDecimal(0); margin = r.GetDecimal(1); count = r.GetInt64(2); }
         if (risk is null || !OmsRiskLimitsV1.Allows(command, publication.StateSha256, risk, pending, margin, count,
-            (clock ?? TimeProvider.System).GetUtcNow())) return OmsRiskAdmissionResult.Denied;
+            (clock ?? TimeProvider.System).GetUtcNow())) return await Reject(OmsRiskAdmissionResult.Denied);
         var write = await OmsPostgresJournal.PersistInTransactionAsync(db, tx, command, null, ct);
-        if (write != OmsJournalWriteResult.Created) return write == OmsJournalWriteResult.StaleVersion
-            ? OmsRiskAdmissionResult.StaleOrderVersion : OmsRiskAdmissionResult.Collision;
+        if (write != OmsJournalWriteResult.Created) return await Reject(write == OmsJournalWriteResult.StaleVersion
+            ? OmsRiskAdmissionResult.StaleOrderVersion : OmsRiskAdmissionResult.Collision);
         long after;
         await using (var counter = Query(db, tx, command.Scope, $"SELECT version FROM oms_evidence_versions_v1 WHERE {Where}"))
             after = (long)(await counter.ExecuteScalarAsync(ct))!;
@@ -93,9 +106,25 @@ VALUES(@tenant,@venue,@environment,@account,@subaccount,@command,@run,@generatio
             await reserve.ExecuteNonQueryAsync(ct);
         }
         if (!qualified.IsCurrent || !OmsRiskLimitsV1.Allows(command, publication.StateSha256, risk, pending, margin, count,
-            (clock ?? TimeProvider.System).GetUtcNow())) return OmsRiskAdmissionResult.StaleBaseline;
+            (clock ?? TimeProvider.System).GetUtcNow())) return await Reject(OmsRiskAdmissionResult.StaleBaseline);
+        await OmsPostgresRiskControls.BindAdmissionAsync(db, tx, command.CommandId, controls.Stamp, ct);
+        await AuditAsync(db, tx, command, publication, qualified, OmsRiskAdmissionResult.Reserved, ct);
         await tx.CommitAsync(ct);
         // Ingress concurrent with COMMIT invalidates the live capability; this result never authorizes a send.
         return OmsRiskAdmissionResult.Reserved;
+    }
+
+    private static async Task AuditAsync(NpgsqlConnection db, NpgsqlTransaction? tx, OmsJournalCommandRequest command,
+        OmsRecoveryPublication publication, OmsQualifiedRecovery qualified, OmsRiskAdmissionResult result, CancellationToken ct)
+    {
+        await using var q = Query(db, tx, command.Scope, """
+INSERT INTO oms_risk_admission_audit_v1(audit_id,schema_version,tenant_id,venue_id,environment,account_id,subaccount_id,
+ command_id,command_sha256,result,baseline_run_id,state_sha256,actor_role)
+VALUES(@audit,1,@tenant,@venue,@environment,@account,@subaccount,@command,@digest,@result,@run,@sha,current_user)
+""");
+        q.Parameters.AddWithValue("audit", Guid.NewGuid()); q.Parameters.AddWithValue("command", command.CommandId.Value);
+        q.Parameters.AddWithValue("digest", OmsJournalCanonical.EncodeCommand(command).Sha256);
+        q.Parameters.AddWithValue("result", (short)result); q.Parameters.AddWithValue("run", publication.Token.Start.RunId);
+        q.Parameters.AddWithValue("sha", qualified.StateSha256); await q.ExecuteNonQueryAsync(ct);
     }
 }

@@ -24,7 +24,7 @@ public interface IOmsRiskInputsReader
         OmsRecoveredAccountStateV1 baseline, CancellationToken ct = default);
 }
 
-public enum OmsRiskAdmissionResult { Reserved = 1, Duplicate, Collision, Denied, StaleBaseline, StaleOrderVersion }
+public enum OmsRiskAdmissionResult { Reserved = 1, Duplicate, Collision, Denied, StaleBaseline, StaleOrderVersion, ControlBlocked }
 
 /// <summary>Conservative pending upper bounds: never net opposite orders and never release on ACK.
 /// A future proven settlement path may retire reservations; v1 intentionally retains all of them.</summary>

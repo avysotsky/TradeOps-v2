@@ -41,8 +41,8 @@ native quantity; generic RiskSettings и лимит тестового сцен�
 проверяется до commit; saved JSON не восстанавливает live capability.
 
 Остаток B5: production policy/valuation provider и композиция с recovery host,
-settlement с partial-fill dedup, audited denials, durable account/venue/global
-breakers и kill switch/RBAC, обязательный physical owner для WS/FIX и закрытие
+settlement с partial-fill dedup, operational wiring автоматических breaker triggers,
+обязательный physical owner для WS/FIX и закрытие
 всех legacy/direct bypass paths. Результат `Reserved` не должен использоваться
 как разрешение на сетевую отправку; отдельная send boundary ещё не реализована.
 Обычные execution switches остаются false. Постоянная БД/роли не мигрируются.
@@ -73,3 +73,66 @@ breakers и kill switch/RBAC, обязательный physical owner для WS/
 summary общий `environment_status=FAIL` наследует nonzero status тестов; отдельные
 guard/cleanup файлы проверены. Первоначальный FAIL остаётся в evidence.
 Mainnet, private store и пользовательский launchSettings не изменены.
+
+## Durable controls и аудит admission
+
+Продолжение B5 добавляет отдельные versioned tables/functions v1, не меняя старые
+encodings. `OmsPostgresRiskControls` сохраняет kill switch и circuit breaker как
+два независимых журнала-защёлки. Global применяется ко всем tenant/environment;
+venue — к конкретным tenant/venue/environment; account дополнительно включает
+account/subaccount. Новая recovery или создание нового экземпляра сервиса не
+сбрасывают остановку. Снятие одного вида блокировки не снимает другой.
+Все уровни относятся к одной authoritative risk БД. Данные global control не
+федерируются между разными БД; будущая host-композиция обязана использовать один
+и тот же authority store для всех обслуживаемых scopes. Эта реализация не
+заявляет глобальную остановку процессов, подключённых к другим хранилищам.
+
+Изменение требует exact scoped permission и настоящей роли БД. Реестр прав
+настраивает только владелец БД; host не выдаёт прав и не выполняет migrations.
+Возможны раздельные activate-only и clear permissions. При retry сравнивается
+decision ID, предыдущая revision, действие, reason и actual actor; другой payload
+не становится новым решением. Снятие по старой revision отвергается CAS.
+Audit events нельзя UPDATE/DELETE/TRUNCATE. Migration Down отказывается удалять
+непустые журналы и настройки прав.
+
+Admission берёт shared transaction locks global → venue → account до journal
+locks. Control writer берёт exclusive lock одного scope. Writer ждёт завершения
+уже выполняющейся admission; после успешного commit остановки новая admission
+возвращает `ControlBlocked`, не создавая команду/резерв. Это граница **резервирования**,
+не доказательство остановки физического sender или отмены ранее созданных заявок.
+
+В той же admission-транзакции сохраняется immutable sidecar со всеми шестью
+control revisions. Любая смена revision, включая цикл activate → clear, делает
+старый stamp неактуальным. Старые reservations без sidecar не получают stamp
+при migration. `IsReservationControlCurrentAsync` проверяет только эту часть
+состояния, никогда не является send permission и не заменяет live B4/owner gate.
+
+Каждый возвращаемый результат валидной admission-заявки теперь имеет immutable
+audit row: scope, exact command hash, результат, baseline run/state hash, actual DB
+actor и timestamp. Success audit входит в транзакцию команды/резерва/stamp.
+При отказе сначала откатываются tentative CAS/command writes, затем отдельно
+фиксируется denial. Если аудит недоступен, операция завершится ошибкой, без
+возврата одобрения и без молчаливого исчезновения отказа. Некорректные DTO и
+исключения до получения классифицированного результата не выдаются за admission.
+
+Политика stop v1: **block new risk, retain pending, no automatic cancel/flatten**.
+Нет cancel-all, RPC побочных эффектов, освобождения резерва по ACK или прямого
+operator override B4/risk blockers. Cancel/flatten требует отдельного безопасного
+потока и recovery неизвестных исходов. Runtime/provider ещё не подключены;
+автоматические triggers и физическая остановка sender остаются в B5.
+
+Адресная проверка продолжения, 2026-11-06:
+
+- `.tradeops/postgres-reuse/20261106T115905-targeted-13881/`: **47/47 PASS**,
+  0 skipped, exit 0. 19 новых PostgreSQL control/audit/race cases и 28 затронутых
+  admission/limit cases. Обе очередности commit race проверены через настоящий
+  PostgreSQL advisory wait, без подмены транзакций моками.
+- `.tradeops/postgres-reuse/20261106T120248-targeted-27318/`: **2/2 PASS**,
+  0 skipped, exit 0. Actual migration downgrade/upgrade сохраняет прежнюю
+  reservation без выдуманного control stamp; downgrade после audit отказывается
+  уничтожать историю. Использован `FreshMigrations`, а не только template clone.
+
+TRX проверены независимо от stdout. Нормализованные source hashes совпали с
+manifest обоих запусков, новые исходники были staged до capture manifest.
+Guard до/после, environment/cleanup и peer container diff PASS. Полный набор не
+запускался. Это 49 адресных cases продолжения B5, а не закрытие всего этапа.

@@ -10,7 +10,7 @@ namespace TradeOps.UnitTests;
 
 public sealed class OmsRiskAdmissionPostgresTests
 {
-    private sealed class FrozenClock : TimeProvider
+    internal sealed class FrozenClock : TimeProvider
     {
         private readonly DateTimeOffset now = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => now;
