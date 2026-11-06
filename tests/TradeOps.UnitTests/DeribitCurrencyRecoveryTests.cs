@@ -42,6 +42,7 @@ public sealed class DeribitCurrencyRecoveryTests
         using var venue = new Venue { Mode = mode }; using var http = new HttpClient(venue);
         var result = await Reader(http).CollectAsync(Query());
         Assert.False(result.TraversalComplete); Assert.Contains(expected, result.Problems); Assert.Empty(result.Observations);
+        if (mode == "unknown") Assert.Equal(new[] { "UNMAPPED-NATIVE" }, result.UnmappedInstruments);
     }
 
     [Fact]

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace TradeOps.Application.Oms;
 
 public sealed record DeribitReplayDrainOptions(TimeSpan? MaximumWait = null, TimeSpan? PollInterval = null)
@@ -15,7 +17,9 @@ public sealed record DeribitReplayDrainOptions(TimeSpan? MaximumWait = null, Tim
 /// <summary>Diagnostic assessment only; no reusable cut or private replay payload escapes the owned lifecycle.</summary>
 public sealed record DeribitRecoveryReplayAssessment(DeribitRecoveryGateAssessment Evidence, Guid ReplayWindowId,
     bool LocalReplayValidated, int BufferedObservations, int SelectedInstrumentObservations,
-    IReadOnlyList<OmsPrivateReplayProblem> ReplayProblems);
+    IReadOnlyList<OmsPrivateReplayProblem> ReplayProblems,
+    DateTimeOffset? BeganAtUtc = null, DateTimeOffset? SealedAtUtc = null, long? AfterReceipt = null, long? ThroughReceipt = null,
+    [property: JsonIgnore] OmsPrivateAccountRevision? Revision = null);
 
 public sealed partial class DeribitRecoveryEvidenceGate
 {
@@ -37,15 +41,18 @@ public sealed partial class DeribitRecoveryEvidenceGate
         var window = await coordinator.BeginReplayAsync(session, q.Epoch, ct);
         try
         {
+            var subscriptions = coordinator.ReadAccountSubscriptions(session, q.Epoch);
             var evidence = await AssessAsync(request, ct);
             if (additionalRead is not null) await additionalRead(evidence, ct);
             var replayProblems = new HashSet<OmsPrivateReplayProblem>();
             var valid = false; var count = 0; var selected = 0;
+            DateTimeOffset? sealedAt = null; long? throughReceipt = null; OmsPrivateAccountRevision? revision = null;
             using var drain = CancellationTokenSource.CreateLinkedTokenSource(ct);
             drain.CancelAfter(options.Wait);
             try
             {
                 var cut = await coordinator.SealReplayAsync(window, drain.Token);
+                sealedAt = cut.SealedAtUtc; throughReceipt = cut.ThroughReceipt;
                 while (true)
                 {
                     var replay = await coordinator.ReadReplayAsync(cut, drain.Token);
@@ -78,6 +85,7 @@ public sealed partial class DeribitRecoveryEvidenceGate
                     if (!final.CanReplay) { replayProblems.UnionWith(final.Problems); break; }
                     valid = true; count = final.Entries.Count;
                     selected = final.Entries.Count(x => x.Envelope.Facts.NativeInstrument == q.NativeInstrument);
+                    if (subscriptions is not null) revision = coordinator.TryCreateAccountRevision(cut, subscriptions);
                     break;
                 }
             }
@@ -89,7 +97,8 @@ public sealed partial class DeribitRecoveryEvidenceGate
             else blockers.Add(replayProblems.Contains(OmsPrivateReplayProblem.DrainTimeout)
                 ? DeribitRecoveryEvidenceBlocker.BufferedReplayDrainTimedOut : DeribitRecoveryEvidenceBlocker.BufferedReplayInvalid);
             return new(evidence with { AssessedAtUtc = time.GetUtcNow(), Blockers = Array.AsReadOnly(blockers.Order().ToArray()) },
-                window.Id, valid, valid ? count : 0, valid ? selected : 0, Array.AsReadOnly(replayProblems.Order().ToArray()));
+                window.Id, valid, valid ? count : 0, valid ? selected : 0, Array.AsReadOnly(replayProblems.Order().ToArray()),
+                valid ? window.BeganAtUtc : null, valid ? sealedAt : null, valid ? window.AfterReceipt : null, valid ? throughReceipt : null, revision);
         }
         finally { coordinator.AbandonReplay(window); }
     }

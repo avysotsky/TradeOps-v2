@@ -18,7 +18,7 @@ public sealed record OmsPrivateReplayLimits(int MaximumObservations = 1024, int 
 public enum OmsPrivateReplayProblem
 {
     StaleSession, StaleEpoch, StreamGap, CaptureFailed, Collision, BufferOverflow, InvalidObservation,
-    UntrackedCapture, ReceiptOrder, PendingCommits, Expired, Superseded, CoordinatorStopped, Abandoned, DrainTimeout
+    UntrackedCapture, ReceiptOrder, PendingCommits, Expired, Superseded, CoordinatorStopped, Abandoned, DrainTimeout, AccountMutation
 }
 
 /// <summary>Unforgeable process-local receipt, never a database checkpoint or venue sequence.</summary>
@@ -112,7 +112,7 @@ public sealed partial class OmsPrivateCaptureCoordinator
         lock (replaySync)
         {
             replayWindow?.Fail(problem); replayWindow = null; pendingReceipts.Clear(); replayFault = null;
-            receivedOrdinal = committedOrdinal = epochRunnerGeneration = 0;
+            receivedOrdinal = committedOrdinal = epochRunnerGeneration = economicGeneration = 0;
         }
     }
     private void CheckReplay(OmsPrivateReplayWindow window)

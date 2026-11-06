@@ -14,6 +14,20 @@ suite commands below describe historical scopes, not a sequence to rerun after e
 keeps the same owned disposable databases, resource guards, exact TRX count checks
 and cleanup checks as acceptance. A filter is passed as an argument, never shell code.
 
+For the single final acceptance after B4 implementation, discover the complete
+`TradeOps.UnitTests` assembly count, then use `-Suite b4-final -ExpectedTests <count>`.
+The expected number is the executed TRX count: data theories can expand after
+discovery (the initial B4 run discovered 2090 but executed 2105). Account for added
+regression rows explicitly; never replace an expected count with whatever happened.
+This runs the entire assembly, including legacy PostgreSQL/API tests against the
+same marked isolated test server via `TRADEOPS_TEST_POSTGRES_ADMIN`; it does not
+allow those tests to silently return because that variable was absent. All test
+databases and generated `to_*` roles must be gone afterward; only the owned reusable
+template may remain. This mode is not the development default. After a full run,
+use targeted affected reruns for identified fixes; `-IncludeLegacyPostgres` keeps
+the same isolated SQL backend enabled for an API subset. Portable runs explicitly
+map the ASP.NET test content roots to Ubuntu without modifying app settings.
+
 Windows PowerShell, from the repository:
 
 ```powershell

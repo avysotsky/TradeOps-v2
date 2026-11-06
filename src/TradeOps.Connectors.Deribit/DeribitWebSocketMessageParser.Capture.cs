@@ -26,8 +26,9 @@ internal static partial class DeribitWebSocketMessageParser
                 var instrument = item.GetProperty("instrument_name").GetString()!;
                 if (!plan.Instruments.TryGetValue(instrument, out var metadata))
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.UnsupportedInstrument, false);
-                var expectedChannel = execution ? $"user.trades.{metadata.Kind}.{metadata.Currency}.100ms"
-                    : $"user.orders.{metadata.Kind}.{metadata.Currency}.raw";
+                var expectedChannel = plan.CapturesAllCurrenciesAndKinds
+                    ? execution ? "user.trades.any.any.100ms" : "user.orders.any.any.raw"
+                    : execution ? $"user.trades.{metadata.Kind}.{metadata.Currency}.100ms" : $"user.orders.{metadata.Kind}.{metadata.Currency}.raw";
                 if (channel != expectedChannel) throw new FormatException();
                 var facts = ParsePrivateFacts(item, metadata, execution);
                 var envelope = new OmsPrivateEventEnvelope(scope, facts,

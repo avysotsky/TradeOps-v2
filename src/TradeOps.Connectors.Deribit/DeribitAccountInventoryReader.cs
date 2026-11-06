@@ -43,7 +43,8 @@ public sealed class DeribitAccountInventoryReader(DeribitPrivateCaptureBinding b
                 var size = row.GetProperty("size").GetDecimal(); var direction = Text(row, "direction", 16);
                 if (!seenPositions.Add(symbol) || (direction switch { "buy" => size <= 0, "sell" => size >= 0, "zero" => size != 0, _ => true }))
                     throw new Refused(DeribitAccountInventoryProblem.InvalidObservation);
-                positions.Add(new(symbol, kind, direction, size));
+                decimal? baseSize = row.TryGetProperty("size_currency", out var nativeBase) && nativeBase.ValueKind != JsonValueKind.Null ? nativeBase.GetDecimal() : null;
+                positions.Add(new(symbol, kind, direction, size, baseSize));
             }
             // No kind/type/currency filter: trigger, linked and other product families must remain visible.
             var rawOrders = await rpc.Call("private/get_open_orders", new { }, token); Stamp();
@@ -54,7 +55,7 @@ public sealed class DeribitAccountInventoryReader(DeribitPrivateCaptureBinding b
                 var state = Text(row, "order_state", 32); var type = Text(row, "order_type", 32);
                 if (state is not ("open" or "triggered" or "untriggered") || !seenOrders.Add((symbol, id)))
                     throw new Refused(DeribitAccountInventoryProblem.InvalidObservation);
-                orders.Add(new(symbol, id, state, type));
+                orders.Add(new(symbol, id, state, type, DeribitNativeOrderFingerprint.Create(row)));
             }
             await Summary(); // Refresh actual balance observations and recheck the native identity.
         }

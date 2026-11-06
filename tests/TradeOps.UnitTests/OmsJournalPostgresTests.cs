@@ -352,6 +352,11 @@ public sealed class OmsJournalPostgresTests
         await WithPostgres(async (ds, cs) =>
         {
             var item = Event(Scope());
+            // Authenticate the bounded pool sequentially before the 16-way inbox race.
+            // This case tests deduplication, not a simultaneous SCRAM-login burst on the 0.5-CPU fixture.
+            var warm = new List<NpgsqlConnection>();
+            try { for (var i = 0; i < 16; i++) warm.Add(await ds.OpenConnectionAsync()); }
+            finally { foreach (var connection in warm) await connection.DisposeAsync(); }
             var results = await Task.WhenAll(Enumerable.Range(0, 16)
                 .Select(_ => new OmsPostgresJournal(ds).PersistInboxAsync(item)));
             Assert.Equal(1, results.Count(x => x == OmsJournalInboxResult.Inserted));

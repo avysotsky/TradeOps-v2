@@ -4,13 +4,13 @@ namespace TradeOps.Application.Oms;
 
 /// <summary>Server-owned terms from native public metadata. Never reconstruct these from the instrument name.</summary>
 public sealed record DeribitRecoveryInstrument(string NativeInstrument, string Currency, string Kind,
-    OmsPrivateAmountUnit AmountUnit, string AmountCurrency);
+    OmsPrivateAmountUnit AmountUnit, string AmountCurrency, string? BaseCurrency = null, string? PositionSizeCurrency = null);
 public enum DeribitRecoveryUniverseProblem { InvalidInventory = 1, StaleInventory, InvalidJournal,
-    InvalidManifest, UnmappedInstrument, UnsupportedCurrency, Capacity, CurrencyHistoryUnavailable }
+    InvalidManifest, UnmappedInstrument, UnsupportedCurrency, Capacity, CurrencyHistoryUnavailable, PositionUnitsUnavailable, AccountObservationsChanged, VenueClockUnavailable }
 public sealed record DeribitRecoveryUniverseIssue(DeribitRecoveryUniverseProblem Problem, string? NativeInstrument = null, string? Currency = null);
 public sealed record DeribitRecoveryUniverse(AccountKey Scope, Guid Epoch, Guid SnapshotId,
     IReadOnlyList<string> RequiredInstruments, IReadOnlyList<string> RequiredCurrencies,
-    IReadOnlyList<DeribitRecoveryUniverseIssue> Issues)
+    IReadOnlyList<DeribitRecoveryUniverseIssue> Issues, IReadOnlyList<DeribitRecoveryInstrument>? InstrumentTerms = null)
 {
     public bool UniverseResolved => Issues.Count == 0;
     public bool AccountReady => false;
@@ -37,15 +37,18 @@ public static class DeribitRecoveryUniverseBuilder
         { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidJournal)); return Finish(); }
         if (trustedManifest.Count > 4096 || trustedManifest.Any(x => x is null || !Opaque(x.NativeInstrument, 160) ||
             !Token(x.Currency) || !Token(x.AmountCurrency) || x.Kind is not ("future" or "option") || !Enum.IsDefined(x.AmountUnit) ||
-            x.AmountUnit == OmsPrivateAmountUnit.Usd && x.AmountCurrency != "USD") ||
+            x.AmountUnit == OmsPrivateAmountUnit.Usd && x.AmountCurrency != "USD" || x.BaseCurrency is not null && !Token(x.BaseCurrency) ||
+            x.PositionSizeCurrency is not null && !Token(x.PositionSizeCurrency)) ||
             trustedManifest.Select(x => x.NativeInstrument).Distinct(StringComparer.Ordinal).Count() != trustedManifest.Count)
         { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidManifest)); return Finish(); }
         var metadata = trustedManifest.ToDictionary(x => x.NativeInstrument, StringComparer.Ordinal);
+        IReadOnlyList<OmsPrivateEventEnvelope> retained;
         try
         {
             foreach (var command in ledger.Commands) command.Validate(scope);
             if (ledger.Commands.Select(x => x.Request.CommandId).Distinct().Count() != ledger.Commands.Count) throw new ArgumentException();
             DeribitCommandReceiptSet.Validate(scope, ledger.Commands, ledger.Receipts, ledger.Private.ReadAtUtc);
+            retained = OmsRecoveryRetainedFacts.Collect(ledger, now);
             foreach (var row in ledger.Private.Observations)
             {
                 row.Envelope.Validate();
@@ -60,7 +63,8 @@ public static class DeribitRecoveryUniverseBuilder
                 x.Window.ReceivedAtUtc.Offset != TimeSpan.Zero || x.Window.RequestedAtUtc < inventory.StartedAtUtc ||
                 x.Window.ReceivedAtUtc < x.Window.RequestedAtUtc || x.Window.ReceivedAtUtc > inventory.CompletedAtUtc) ||
             inventory.Balances.Select(x => x.Currency).Distinct(StringComparer.Ordinal).Count() != inventory.Balances.Count ||
-            inventory.Positions.Any(x => !Opaque(x.NativeInstrument, 160) || !Opaque(x.Kind, 32)) ||
+            inventory.Positions.Any(x => !Opaque(x.NativeInstrument, 160) || !Opaque(x.Kind, 32) || !Sign(x.Direction, x.NativeSize) ||
+                x.NativeBaseSize.HasValue && !Sign(x.Direction, x.NativeBaseSize.Value)) ||
             inventory.Positions.Select(x => x.NativeInstrument).Distinct(StringComparer.Ordinal).Count() != inventory.Positions.Count ||
             inventory.OpenOrders.Any(x => !Opaque(x.NativeInstrument, 160) || !Opaque(x.ExchangeOrderId, 160) ||
                 x.NativeState is not ("open" or "untriggered" or "triggered") || !Opaque(x.NativeOrderType, 32)))
@@ -74,8 +78,8 @@ public static class DeribitRecoveryUniverseBuilder
         }
         foreach (var order in inventory.OpenOrders) symbols.Add(order.NativeInstrument);
         foreach (var command in ledger.Commands) symbols.Add(command.Request.Payload.Instrument); // Includes unsent and unresolved commands.
-        foreach (var row in ledger.Private.Observations)
-        { symbols.Add(row.Envelope.Facts.NativeInstrument); currencies.Add(row.Envelope.Facts.Currency); }
+        foreach (var row in retained)
+        { symbols.Add(row.Facts.NativeInstrument); currencies.Add(row.Facts.Currency); }
         foreach (var symbol in symbols)
             if (metadata.TryGetValue(symbol, out var m)) currencies.Add(m.Currency);
             else issues.Add(new(DeribitRecoveryUniverseProblem.UnmappedInstrument, symbol));
@@ -87,8 +91,10 @@ public static class DeribitRecoveryUniverseBuilder
 
         DeribitRecoveryUniverse Finish() => new(scope, epoch, ledger.Private.SnapshotId,
             symbols.Order(StringComparer.Ordinal).ToArray(), currencies.Order(StringComparer.Ordinal).ToArray(),
-            issues.OrderBy(x => x.Problem).ThenBy(x => x.NativeInstrument, StringComparer.Ordinal).ThenBy(x => x.Currency, StringComparer.Ordinal).ToArray());
+            issues.OrderBy(x => x.Problem).ThenBy(x => x.NativeInstrument, StringComparer.Ordinal).ThenBy(x => x.Currency, StringComparer.Ordinal).ToArray(),
+            trustedManifest.Where(x => x is not null && symbols.Contains(x.NativeInstrument)).OrderBy(x => x.NativeInstrument, StringComparer.Ordinal).ToArray());
     }
     private static bool Opaque(string? value, int max) => value is { Length: > 0 } && value.Length <= max && value == value.Trim() && !value.Any(char.IsControl);
     private static bool Token(string? value) => Opaque(value, 32) && value!.All(x => char.IsAsciiLetterUpper(x) || char.IsAsciiDigit(x) || x == '_');
+    private static bool Sign(string direction, decimal size) => direction switch { "buy" => size > 0, "sell" => size < 0, "zero" => size == 0, _ => false };
 }

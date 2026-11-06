@@ -21,6 +21,7 @@ public sealed class OmsPrivateCaptureSession
     public CancellationToken Cancellation => lifetime.Token;
     internal bool HasRunner => Volatile.Read(ref currentRunner) is not null;
     internal long RunnerGeneration => Volatile.Read(ref currentRunner)?.Generation ?? 0;
+    internal bool IsCurrentRunner(IDisposable runner) => ReferenceEquals(Volatile.Read(ref currentRunner), runner);
     internal OmsPrivateCaptureSession(AccountKey scope) => Scope = scope;
     internal void Stop() => lifetime.Cancel();
 
@@ -79,6 +80,7 @@ public sealed partial class OmsPrivateCaptureCoordinator : IAsyncDisposable
                 ObjectDisposedException.ThrowIf(stopped, this);
                 previous = active;
                 ResetReplay(OmsPrivateReplayProblem.StaleSession);
+                accountSubscriptions = null;
                 next = active = new(scope);
                 epoch = Guid.Empty;
                 Volatile.Write(ref status, new(scope, epoch, OmsPrivateStreamPhase.Disconnected,
@@ -99,6 +101,7 @@ public sealed partial class OmsPrivateCaptureCoordinator : IAsyncDisposable
             {
                 RequireActive(session);
                 ResetReplay(OmsPrivateReplayProblem.StaleEpoch);
+                accountSubscriptions = null;
                 epoch = Guid.NewGuid();
                 epochRunnerGeneration = session.RunnerGeneration;
                 Volatile.Write(ref status, new(session.Scope, epoch, OmsPrivateStreamPhase.Connecting,
@@ -119,6 +122,8 @@ public sealed partial class OmsPrivateCaptureCoordinator : IAsyncDisposable
             lock (replaySync)
             {
                 if (!IsActive(session) || epoch != expectedEpoch) return false;
+                if (phase != OmsPrivateStreamPhase.Recovering || problem != OmsPrivateStreamProblem.AwaitingReconciliation)
+                    accountSubscriptions = null;
                 if (replaySettings is not null && (problem != OmsPrivateStreamProblem.AwaitingReconciliation ||
                     phase == OmsPrivateStreamPhase.Stopped || replayWindow is not null && phase != OmsPrivateStreamPhase.Recovering))
                     FailReplay(OmsPrivateReplayProblem.StreamGap);

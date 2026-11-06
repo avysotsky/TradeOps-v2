@@ -24,6 +24,7 @@ public sealed class DeribitAccountInventoryTests
         Assert.Equal(new[] { "ETH", "USDC" }, result.Balances.Select(x => x.Currency)); Assert.Equal(0, result.Balances[1].CashBalance);
         var position = Assert.Single(result.Positions); Assert.Equal("UNMAPPED-COMBO", position.NativeInstrument);
         Assert.Equal("future_combo", position.Kind); Assert.Equal(-2, position.NativeSize);
+        Assert.Equal(-0.001m, position.NativeBaseSize);
         Assert.Equal("trailing_stop", Assert.Single(result.OpenOrders).NativeOrderType);
         Assert.Equal(q.Epoch, result.Epoch); Assert.False(result.VenueCoherent); Assert.False(result.AccountReady);
         var serialized = JsonSerializer.Serialize(result);
@@ -68,7 +69,7 @@ public sealed class DeribitAccountInventoryTests
                 Assert.Equal("fixture-token", request.Headers.Authorization?.Parameter);
                 if (method == "private/get_account_summaries")
                 {
-                    Assert.True(p.GetProperty("extended").GetBoolean()); Assert.Equal(1, p.EnumerateObject().Count()); summaries++;
+                    Assert.True(p.GetProperty("extended").GetBoolean()); Assert.Single(p.EnumerateObject()); summaries++;
                     object Balance(string currency) => new { currency, balance = currency == "ETH" ? -0.1m : 0m, equity = currency == "ETH" ? 0.25m : 0m,
                         cross_collateral_enabled = false, portfolio_margining_enabled = false };
                     var second = Mode == "duplicate-currency" ? "ETH" : Mode == "changed-currencies" && summaries == 2 ? "BTC" : "USDC";
@@ -77,8 +78,8 @@ public sealed class DeribitAccountInventoryTests
                 }
                 else if (method == "private/get_positions")
                 {
-                    Assert.Equal(1, p.EnumerateObject().Count()); Assert.Equal("any", p.GetProperty("currency").GetString());
-                    var row = new { instrument_name = "UNMAPPED-COMBO", kind = "future_combo", direction = "sell", size = -2, user_id = Mode == "position-owner" ? 456 : 123 };
+                    Assert.Single(p.EnumerateObject()); Assert.Equal("any", p.GetProperty("currency").GetString());
+                    var row = new { instrument_name = "UNMAPPED-COMBO", kind = "future_combo", direction = "sell", size = -2, size_currency = -0.001m, user_id = Mode == "position-owner" ? 456 : 123 };
                     result = Mode == "capacity" ? new[] { row, row } : new[] { row };
                 }
                 else

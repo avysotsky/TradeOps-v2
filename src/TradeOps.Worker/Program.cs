@@ -10,6 +10,15 @@ using TradeOps.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+if (DeribitRecoveryStartup.TryConfigure(builder))
+{
+    using var recoveryHost = builder.Build();
+    var recoveryWorker = recoveryHost.Services.GetRequiredService<DeribitAccountRecoveryWorker>();
+    await recoveryHost.RunAsync();
+    if (recoveryWorker.ExecuteTask?.IsFaulted == true) Environment.ExitCode = 1;
+    return;
+}
+
 if (DeribitCaptureStartup.TryConfigure(builder))
 {
     using var captureHost = builder.Build();

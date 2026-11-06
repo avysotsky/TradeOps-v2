@@ -36,6 +36,8 @@ public sealed partial class DeribitPrivateWebSocketStream
         DeribitPrivateCaptureDiagnostics? diagnostics = null)
     {
         var endpoint = plan.Validate(options, session.Scope);
+        if (plan.CapturesAllCurrenciesAndKinds && !coordinator.ReplayTrackingEnabled)
+            throw new ArgumentException("Account recovery capture requires bounded replay tracking.");
         using var owner = session.AcquireRunner();
         EnterRun();
         Guid epoch = default;
@@ -50,7 +52,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                 try
                 {
                     using var socket = captureSocket();
-                    await new CaptureEpoch(socket, options, endpoint, plan, coordinator, session, epoch, captureClock, diagnostics)
+                    await new CaptureEpoch(socket, options, endpoint, plan, coordinator, session, owner, epoch, captureClock, diagnostics)
                         .RunAsync(lifetime.Token);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
@@ -80,7 +82,7 @@ public sealed partial class DeribitPrivateWebSocketStream
 
     private sealed class CaptureEpoch(IDeribitPrivateSocket socket, DeribitOptions options, Uri endpoint,
         DeribitPrivateCapturePlan plan, OmsPrivateCaptureCoordinator coordinator,
-        OmsPrivateCaptureSession session, Guid epoch, TimeProvider clock, DeribitPrivateCaptureDiagnostics? diagnostics)
+        OmsPrivateCaptureSession session, IDisposable runner, Guid epoch, TimeProvider clock, DeribitPrivateCaptureDiagnostics? diagnostics)
     {
         private sealed record Delivery(OmsPrivateEventEnvelope Envelope, OmsPrivateCaptureReceipt? Receipt);
         private readonly Channel<Delivery> queue = Channel.CreateBounded<Delivery>(
@@ -91,6 +93,9 @@ public sealed partial class DeribitPrivateWebSocketStream
         private long nextId;
         private long? pendingTest;
         private long testStarted;
+        private bool accountPinVerified;
+        private readonly Dictionary<string, (string Kind, string Direction, decimal Size)> nativePositions = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (decimal Cash, decimal? Fee, decimal? Locked, bool Cross, bool Portfolio, string Margin)> nativePortfolios = new(StringComparer.Ordinal);
 
         public async Task RunAsync(CancellationToken root)
         {
@@ -120,6 +125,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                     ReadString(account, "type") != (plan.IsSubaccount ? "subaccount" : "main") || ReadString(account, "currency") != currency)
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.AccountMismatch, false);
                 diagnostics?.AccountVerified();
+                accountPinVerified = true;
                 var heartbeat = await RequestAsync("public/set_heartbeat", new { interval = plan.Limits.HeartbeatSeconds }, ct);
                 if (heartbeat.ValueKind != JsonValueKind.String || heartbeat.GetString() != "ok")
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
@@ -129,6 +135,9 @@ public sealed partial class DeribitPrivateWebSocketStream
                 if (subscribed.ValueKind != JsonValueKind.Array || subscribed.GetArrayLength() != plan.Channels.Length ||
                     !subscribed.EnumerateArray().Select(x => x.GetString()).ToHashSet(StringComparer.Ordinal).SetEquals(plan.Channels))
                     throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+                if (plan.CapturesAllCurrenciesAndKinds)
+                    await coordinator.ConfirmAccountSubscriptionsAsync(session, runner, epoch,
+                        subscribed.EnumerateArray().Select(x => x.GetString()!).ToArray(), clock.GetUtcNow(), ct);
                 await coordinator.UpdateAsync(session, epoch, OmsPrivateStreamPhase.Recovering,
                     OmsPrivateStreamProblem.AwaitingReconciliation, ct);
                 diagnostics?.Subscribed();
@@ -249,6 +258,7 @@ public sealed partial class DeribitPrivateWebSocketStream
                     else if (type != "heartbeat") throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
                     return null;
                 case "subscription":
+                    if (plan.CapturesAllCurrenciesAndKinds && ObserveAccountState(root)) return null;
                     foreach (var envelope in DeribitWebSocketMessageParser.ParseCaptureEvents(root, plan, session.Scope, epoch, clock.GetUtcNow()))
                     {
                         diagnostics?.Event();
@@ -259,6 +269,62 @@ public sealed partial class DeribitPrivateWebSocketStream
                     return null;
                 default: throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
             }
+        }
+
+        private bool ObserveAccountState(JsonElement root)
+        {
+            var p = root.GetProperty("params"); var channel = ReadString(p, "channel");
+            if (channel is not ("user.changes.any.any.raw" or "user.portfolio.any")) return false;
+            if (!accountPinVerified) throw new DeribitCaptureException(OmsPrivateStreamProblem.AccountMismatch, false);
+            var data = p.GetProperty("data");
+            if (data.ValueKind != JsonValueKind.Object) throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+            if (channel == "user.portfolio.any")
+            {
+                var currency = ReadString(data, "currency");
+                if (currency.Length is < 1 or > 32 || !currency.All(x => char.IsAsciiLetterUpper(x) || char.IsAsciiDigit(x) || x == '_'))
+                    throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+                var margin = ReadString(data, "margin_model");
+                if (string.IsNullOrWhiteSpace(margin) || margin.Length > 64 || margin.Any(char.IsControl)) throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+                decimal? Optional(string name) => data.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetDecimal() : null;
+                var state = (data.GetProperty("balance").GetDecimal(), Optional("fee_balance"), Optional("locked_balance"),
+                    data.GetProperty("cross_collateral_enabled").GetBoolean(), data.GetProperty("portfolio_margining_enabled").GetBoolean(), margin);
+                if (!nativePortfolios.TryGetValue(currency, out var previous) || previous != state)
+                {
+                    if (!nativePortfolios.ContainsKey(currency) && nativePortfolios.Count == 32) throw new DeribitCaptureException(OmsPrivateStreamProblem.BufferOverflow, false);
+                    nativePortfolios[currency] = state;
+                    coordinator.ObserveAccountMutation(session, runner, epoch, OmsPrivateAccountMutation.Portfolio);
+                }
+                return true;
+            }
+            var entries = 0; var hadArray = false; var activity = false; var orderTradeActivity = false;
+            foreach (var name in new[] { "orders", "trades", "positions" })
+            {
+                if (!data.TryGetProperty(name, out var rows)) continue;
+                hadArray = true;
+                if (rows.ValueKind != JsonValueKind.Array) throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+                entries = checked(entries + rows.GetArrayLength());
+                if (entries > plan.Limits.MaxEventsPerMessage) throw new DeribitCaptureException(OmsPrivateStreamProblem.BufferOverflow, false);
+                foreach (var row in rows.EnumerateArray())
+                {
+                    var symbol = ReadString(row, "instrument_name");
+                    if (!plan.Instruments.TryGetValue(symbol, out var metadata)) throw new DeribitCaptureException(OmsPrivateStreamProblem.UnsupportedInstrument, false);
+                    if (name != "positions") { activity = orderTradeActivity = true; continue; } // Dedicated channels remain the sole durable producers.
+                    var kind = ReadString(row, "kind"); var direction = ReadString(row, "direction"); var size = row.GetProperty("size").GetDecimal();
+                    if (kind != metadata.Kind || row.GetProperty("user_id").GetInt64() != plan.ExpectedAccountId ||
+                        (direction switch { "buy" => size <= 0, "sell" => size >= 0, "zero" => size != 0, _ => true }))
+                        throw new DeribitCaptureException(OmsPrivateStreamProblem.AccountMismatch, false);
+                    var state = (kind, direction, size);
+                    if (!nativePositions.TryGetValue(symbol, out var previous) || previous != state)
+                    {
+                        if (!nativePositions.ContainsKey(symbol) && nativePositions.Count == 4096) throw new DeribitCaptureException(OmsPrivateStreamProblem.BufferOverflow, false);
+                        nativePositions[symbol] = state; activity = true;
+                    }
+                }
+            }
+            if (!hadArray) throw new DeribitCaptureException(OmsPrivateStreamProblem.ProtocolViolation);
+            if (activity) coordinator.ObserveAccountMutation(session, runner, epoch,
+                orderTradeActivity ? OmsPrivateAccountMutation.OrdersOrTrades : OmsPrivateAccountMutation.Positions);
+            return true;
         }
 
         private static double ValidateAuth(JsonElement auth)

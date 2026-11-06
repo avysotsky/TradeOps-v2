@@ -14,7 +14,7 @@ namespace TradeOps.Infrastructure.Persistence.Oms;
 /// journal v1 and private event v2 hashes retain their original canonical encodings.
 /// Does not grant privileges, migrate, repair, dispatch, or publish a recovered projection.
 /// </summary>
-public sealed class OmsPostgresRecoveryLedgerReader(NpgsqlDataSource source) : IOmsRecoveryLedgerReader
+public sealed partial class OmsPostgresRecoveryLedgerReader(NpgsqlDataSource source, bool includeEvidenceVersion = false) : IOmsRecoveryLedgerReader
 {
     private const string ScopeWhere = """
 c.tenant_id=@tenant AND c.venue_id=@venue AND c.environment=@environment
@@ -170,8 +170,42 @@ WHERE {ScopeWhere} ORDER BY c.command_id LIMIT @limit
         catch (LedgerFailure failure) { problems.Add(failure.Problem); commands.Clear(); receipts.Clear(); }
         catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or OverflowException or KeyNotFoundException)
         { problems.Add(OmsRecoveryLedgerProblem.InvalidRecord); commands.Clear(); receipts.Clear(); }
+        long? evidenceVersion = null;
+        var reviews = new List<OmsRecoveryExternalOrderReview>();
+        OmsRetainedRecoveryArchiveV1? archive = null;
+        if (includeEvidenceVersion)
+        {
+            await using (var reviewQuery = new NpgsqlCommand($"""
+SELECT DISTINCT ON (c.currency,c.native_order_id) c.decision_id,c.source_run_id,c.currency,c.native_order_id,
+ c.evidence_sha256,c.decision,c.actor_role::text,c.reason,c.recorded_at,c.evidence_version
+FROM oms_recovery_external_reviews_v1 c WHERE {ScopeWhere}
+ORDER BY c.currency,c.native_order_id,c.evidence_version DESC LIMIT @limit
+""", db, tx))
+            {
+                Bind(reviewQuery); await using var rows = await reviewQuery.ExecuteReaderAsync(cancellationToken);
+                while (await rows.ReadAsync(cancellationToken))
+                {
+                    if (reviews.Count == maximumRows) { problems.Add(OmsRecoveryLedgerProblem.CapacityExceeded); break; }
+                    reviews.Add(new(1, scope, rows.GetGuid(0), rows.GetGuid(1), rows.GetString(2), rows.GetString(3),
+                        Convert.ToHexString(rows.GetFieldValue<byte[]>(4)), (OmsRecoveryExternalOrderDecision)rows.GetInt16(5),
+                        rows.GetString(6), rows.GetString(7), new(rows.GetDateTime(8)), rows.GetInt64(9)));
+                }
+            }
+            await using var versionQuery = new NpgsqlCommand($"SELECT c.version FROM oms_evidence_versions_v1 c WHERE {ScopeWhere}", db, tx);
+            Bind(versionQuery);
+            evidenceVersion = await versionQuery.ExecuteScalarAsync(cancellationToken) is long value ? value : 0;
+            if (reviews.Any(x => x.DecisionId == Guid.Empty || x.SourceRunId == Guid.Empty || !Enum.IsDefined(x.Decision) ||
+                x.EvidenceSha256.Length != 64 || x.EvidenceVersion <= 0 || x.EvidenceVersion > evidenceVersion ||
+                x.RecordedAtUtc > readAt.AddSeconds(5) || string.IsNullOrWhiteSpace(x.ActorRole) || string.IsNullOrWhiteSpace(x.Reason)))
+            { reviews.Clear(); problems.Add(OmsRecoveryLedgerProblem.InvalidRecord); }
+            try { archive = await ReadArchiveAsync(db, tx, scope, maximumRows, evidenceVersion!.Value, cancellationToken); }
+            catch (ArgumentOutOfRangeException) { problems.Add(OmsRecoveryLedgerProblem.CapacityExceeded); }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or JsonException)
+            { problems.Add(OmsRecoveryLedgerProblem.InvalidRecord); }
+        }
         await tx.CommitAsync(cancellationToken);
-        return new(retained, commands.AsReadOnly(), problems.Order().ToArray(), receipts.AsReadOnly());
+        return new(retained, commands.AsReadOnly(), problems.Order().ToArray(), receipts.AsReadOnly(), evidenceVersion,
+            includeEvidenceVersion ? reviews.AsReadOnly() : null, archive);
 
         void Bind(NpgsqlCommand command)
         {

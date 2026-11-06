@@ -7,7 +7,7 @@ using TradeOps.Domain.Oms;
 
 namespace TradeOps.Application.Oms;
 
-public enum OmsRecoveryRunState { Disconnected = 1, Recovering, Reconciling, Blocked }
+public enum OmsRecoveryRunState { Disconnected = 1, Recovering, Reconciling, Blocked, Ready }
 public enum OmsRecoveryStopReason { CompletedWithIssues = 1, Cancelled, Failed, ConnectionLost, CaptureGap, AccountChanged }
 
 /// <summary>A local recovery generation is not a physical sender lease or a venue sequence.</summary>
@@ -41,13 +41,17 @@ public sealed record DeribitRecoveryRunDocumentV1(int SchemaVersion, OmsRecovery
     DeribitAccountSnapshotResult? AccountObservations,
     DeribitRecoveryQueryResult? QueryObservations = null, DeribitKnownOrderReadResult? KnownOrderObservations = null,
     DeribitRecoveryCandidateV1? Candidate = null, DeribitAccountInventoryResult? InventoryObservations = null,
-    DeribitRecoveryUniverse? Universe = null, IReadOnlyList<DeribitCurrencyRecoveryResult>? CurrencyObservations = null)
+    DeribitRecoveryUniverse? Universe = null, IReadOnlyList<DeribitCurrencyRecoveryResult>? CurrencyObservations = null,
+    DeribitAccountInventoryResult? InitialInventoryObservations = null, DeribitRecoveryClockObservation? VenueClock = null,
+    DeribitRecoveryCoherenceAssessment? Coherence = null)
 {
     public void Validate()
     {
         Start.Validate();
         var a = Assessment.Ledger.Orders;
         if (SchemaVersion != 1 || a.Scope != Start.Scope || a.Epoch != Start.Epoch ||
+            Coherence is not null && (Coherence.Policy != DeribitRecoveryCoherencePolicy.Policy ||
+                Coherence.Problems.Any(x => !Enum.IsDefined(x)) || Coherence.AssessedAtUtc.Offset != TimeSpan.Zero) ||
             a.NativeInstrument != Start.NativeInstrument || a.FromUtc != Start.FromUtc || a.ThroughUtc != Start.ThroughUtc ||
             a.SnapshotId != Ledger.Private.SnapshotId || Ledger.Private.Scope != Start.Scope ||
             !OmsRecoveryRunCodec.Encode(Assessment.Account.Evidence).Sha256.SequenceEqual(OmsRecoveryRunCodec.Encode(a).Sha256) || a.Blockers.Count == 0 ||
@@ -57,6 +61,8 @@ public sealed record DeribitRecoveryRunDocumentV1(int SchemaVersion, OmsRecovery
             Candidate is not null && (Candidate.Scope != Start.Scope || Candidate.Epoch != Start.Epoch ||
                 Candidate.Published || Candidate.AccountReady) ||
             InventoryObservations is not null && (InventoryObservations.Scope != Start.Scope || InventoryObservations.Epoch != Start.Epoch) ||
+            InitialInventoryObservations is not null && (InitialInventoryObservations.Scope != Start.Scope || InitialInventoryObservations.Epoch != Start.Epoch) ||
+            VenueClock is not null && (VenueClock.Scope != Start.Scope || VenueClock.Epoch != Start.Epoch) ||
             Universe is not null && (Universe.Scope != Start.Scope || Universe.Epoch != Start.Epoch || Universe.SnapshotId != a.SnapshotId) ||
             CurrencyObservations is not null && CurrencyObservations.Any(x => x.Scope != Start.Scope || x.Epoch != Start.Epoch ||
                 x.Observations.Any(y => y.Scope != Start.Scope || y.Observation.StreamEpoch != Start.Epoch)))

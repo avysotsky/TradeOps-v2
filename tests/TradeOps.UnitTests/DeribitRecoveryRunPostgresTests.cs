@@ -17,19 +17,27 @@ public sealed class DeribitRecoveryRunPostgresTests
         await using var db = await OmsPostgresTestDatabase.CreateAsync(); await using var r = await DeribitRecoveryReplayGateTests.Rig.Open();
         var sources = new UniversePorts(r, unknown); var q = r.Request();
         var support = new DeribitRecoveryUniverseSources(sources, sources,
-            [new("ETH-OTHER", "ETH", "future", OmsPrivateAmountUnit.Usd, "USD")]);
+            [new("ETH-OTHER", "ETH", "future", OmsPrivateAmountUnit.Usd, "USD", "ETH", "USD")], sources);
         var store = new OmsPostgresRecoveryRunStore(db.Source);
         var engine = new DeribitRecoveryRunEngine(store, new OmsPostgresRecoveryLedgerReader(db.Source), r, r,
-            new DeribitRecoveryAccountAssessmentTests.Accounts(), universeSources: support);
+            new DeribitRecoveryAccountAssessmentTests.Accounts { Transform = x => x with { Positions = [],
+                Balance = x.Balance! with { CashBalance = 0, Equity = 0, CrossCollateralEnabled = false, PortfolioMarginingEnabled = false } } }, universeSources: support);
         var document = await engine.RunAsync(q, DeribitRecoveryAccountAssessmentTests.Request(q), r.Coordinator, r.Session);
-        Assert.Equal(1, sources.InventoryCalls); Assert.Equal(unknown ? 0 : 3, sources.CurrencyCalls);
-        Assert.Equal(unknown ? 1 : 4, document.Assessment.Account.Replay!.BufferedObservations);
+        Assert.Equal(unknown ? 1 : 2, sources.InventoryCalls); Assert.Equal(unknown ? 0 : 3, sources.CurrencyCalls);
+        Assert.Equal(unknown ? 1 : 5, document.Assessment.Account.Replay!.BufferedObservations);
         Assert.True(document.Assessment.Account.Replay.LocalReplayValidated);
         var saved = (await store.ReadResultAsync(Account, document.Start.RunId))!;
         Assert.NotNull(saved.InventoryObservations); Assert.Equal(!unknown, saved.Universe!.UniverseResolved);
         Assert.Equal(unknown ? 0 : 3, saved.CurrencyObservations!.Count);
         if (unknown) Assert.Contains(saved.Universe.Issues, x => x.Problem == DeribitRecoveryUniverseProblem.UnmappedInstrument);
         else Assert.Equal(new[] { "BTC", "ETH", "USDC" }, saved.CurrencyObservations.Select(x => x.Currency));
+        if (!unknown)
+        {
+            Assert.Equal(DeribitRecoveryCandidateScope.InventoryCurrencies, saved.Candidate!.CoverageScope);
+            Assert.Equal(3, saved.Candidate.CurrencyBalances!.Count); Assert.Equal("USD", Assert.Single(saved.Candidate.Positions).SizeCurrency);
+            Assert.NotNull(saved.InitialInventoryObservations); Assert.NotNull(saved.VenueClock);
+            Assert.All(saved.CurrencyObservations, x => Assert.Equal(saved.VenueClock.VenueTimeUtc, x.ThroughUtc));
+        }
         Assert.Contains(DeribitRecoveryEvidenceBlocker.AccountWideCoverageUnproven, saved.Assessment.Ledger.Orders.Blockers);
         Assert.False((await store.ReadHeadAsync(Account))!.CanIncreaseRisk);
     }
@@ -200,7 +208,7 @@ CREATE TRIGGER synthetic_recovery_failure BEFORE INSERT ON oms_recovery_events_v
         public async Task<OmsRecoveryLedgerSnapshot> ReadAsync(AccountKey scope, int maximumRows = 10000, CancellationToken cancellationToken = default)
         { Calls++; return await inner.ReadAsync(scope, maximumRows, cancellationToken); }
     }
-    private sealed class UniversePorts(DeribitRecoveryReplayGateTests.Rig rig, bool unknown) : IDeribitAccountInventoryReader, IDeribitCurrencyRecoveryQueries
+    private sealed class UniversePorts(DeribitRecoveryReplayGateTests.Rig rig, bool unknown) : IDeribitAccountInventoryReader, IDeribitCurrencyRecoveryQueries, IDeribitRecoveryClockReader
     {
         internal int InventoryCalls, CurrencyCalls;
         public async Task<DeribitAccountInventoryResult> ReadAsync(DeribitAccountInventoryRequest q, CancellationToken ct = default)
@@ -208,7 +216,7 @@ CREATE TRIGGER synthetic_recovery_failure BEFORE INSERT ON oms_recovery_events_v
             InventoryCalls++; await rig.Coordinator.TryCaptureReceiptAsync(await rig.Receipt()); var at = DateTimeOffset.UtcNow;
             return new(q.Scope, q.Epoch, at, at, q.MaximumObservationSpan,
                 new[] { "ETH", "BTC", "USDC" }.Select(x => new DeribitCurrencyBalance(x, 0, 0, false, false, new(at, at))).ToArray(),
-                [new(unknown ? "UNMAPPED" : "ETH-OTHER", "future", "buy", 1)], [], []);
+                [new(unknown ? "UNMAPPED" : "ETH-OTHER", "future", "buy", 1, 0.0005m)], [], []);
         }
         public async Task<DeribitCurrencyRecoveryResult> CollectAsync(DeribitCurrencyRecoveryQuery q, CancellationToken ct = default)
         {
@@ -217,6 +225,12 @@ CREATE TRIGGER synthetic_recovery_failure BEFORE INSERT ON oms_recovery_events_v
                 DateTimeOffset.FromUnixTimeMilliseconds(q.ThroughUtc.ToUnixTimeMilliseconds()), at, at,
                 new[] { "open", "orders-recent", "orders-historical", "trades-recent", "trades-historical" }
                     .Select(x => new DeribitRecoverySourceRead(x, 1, true)).ToArray(), [], []);
+        }
+        public Task<DeribitRecoveryClockObservation> ReadAsync(DeribitRecoveryClockRequest q, CancellationToken ct = default)
+        {
+            var at = DateTimeOffset.UtcNow;
+            return Task.FromResult(new DeribitRecoveryClockObservation(q.Scope, q.Epoch, at, at,
+                DateTimeOffset.FromUnixTimeMilliseconds(at.AddMilliseconds(-100).ToUnixTimeMilliseconds())));
         }
     }
 }

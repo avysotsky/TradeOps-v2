@@ -11,7 +11,7 @@ public enum DeribitCurrencyRecoveryProblem { ReadFailed = 1, UnmappedInstrument,
 public sealed record DeribitCurrencyRecoveryResult(AccountKey Scope, Guid Epoch, string Currency, string Kind,
     DateTimeOffset QueryFromUtc, DateTimeOffset ThroughUtc, DateTimeOffset StartedAtUtc, DateTimeOffset CompletedAtUtc,
     IReadOnlyList<DeribitRecoverySourceRead> Sources, IReadOnlyList<OmsPrivateEventEnvelope> Observations,
-    IReadOnlyList<DeribitCurrencyRecoveryProblem> Problems)
+    IReadOnlyList<DeribitCurrencyRecoveryProblem> Problems, IReadOnlyList<string>? UnmappedInstruments = null)
 {
     public bool TraversalComplete => Problems.Count == 0 && Sources.Count == 5 && Sources.All(x => x.Exhausted);
     public bool HistoricalUnfilledOrdersCovered => false;

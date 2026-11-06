@@ -8,7 +8,7 @@ namespace TradeOps.Infrastructure.Persistence.Oms;
 
 /// <summary>Recovery metadata only; never changes dispatch phases, receipts, positions or sender ownership.
 /// Every writer locks the same scoped head. Superseded epochs can retain history but cannot publish a result.</summary>
-public sealed class OmsPostgresRecoveryRunStore(NpgsqlDataSource source) : IOmsRecoveryRunStore
+public sealed partial class OmsPostgresRecoveryRunStore(NpgsqlDataSource source) : IOmsRecoveryRunStore, IOmsRecoveredAccountStore, IOmsRecoveryOperatorReviewStore
 {
     private const string Where = "tenant_id=@tenant AND venue_id=@venue AND environment=@environment AND account_id=@account AND subaccount_id=@subaccount";
     private const string Columns = "tenant_id,venue_id,environment,account_id,subaccount_id";

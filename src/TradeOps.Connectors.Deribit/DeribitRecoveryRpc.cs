@@ -22,7 +22,7 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
     internal async Task<JsonElement> Call(string method, object parameters, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (method is not ("public/auth" or "private/get_account_summary" or "private/get_open_orders_by_instrument" or
+        if (method is not ("public/auth" or "public/get_time" or "private/get_account_summary" or "private/get_open_orders_by_instrument" or
             "private/get_order_history_by_instrument" or "private/get_user_trades_by_instrument" or "private/get_order_state" or "private/get_positions" or
             "private/get_open_orders_by_currency" or "private/get_order_history_by_currency" or "private/get_user_trades_by_currency" or
             "private/get_account_summaries" or "private/get_open_orders"))

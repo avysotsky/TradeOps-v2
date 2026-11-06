@@ -5,6 +5,7 @@ set -Eeuo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 suite=${1:-targeted}
 live_inbox=false
+legacy_postgres_enabled=false
 tool_project=TradeOps.DeribitLiveInboxQualification
 stream_filter='FullyQualifiedName~DeribitPrivateCaptureTests|FullyQualifiedName~DeribitPrivateCaptureParserTests|FullyQualifiedName~OmsPrivateCaptureCoordinatorTests|FullyQualifiedName~DeribitPrivateSocketTests|FullyQualifiedName~DeribitPrivateStreamPostgresTests|FullyQualifiedName~DeribitAdapterTests|FullyQualifiedName~DeribitWebSocketMessageParserTests|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_SelectsDeribitTestnetFromConfiguration|FullyQualifiedName=TradeOps.UnitTests.ExchangeServiceRegistrationTests.AddTradeOpsExchange_DeribitProductionBaseUrlIsRejectedOnResolution'
 case "$suite" in
@@ -12,8 +13,16 @@ case "$suite" in
     filter=${2:?Targeted checks require a test filter}
     expected=${3:?Targeted checks require an expected test count}
     [[ -n "$filter" && "$expected" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid targeted test scope'; exit 2; }
+    if [[ "${4:-}" == 'legacy-postgres' ]]; then legacy_postgres_enabled=true;
+    elif [[ -n "${4:-}" ]]; then echo 'Invalid targeted PostgreSQL mode'; exit 2; fi
     ;;
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
+  b4-final)
+    filter='FullyQualifiedName~TradeOps.UnitTests'
+    expected=${2:?Final B4 acceptance requires the discovered full-suite test count}
+    [[ "$expected" =~ ^[1-9][0-9]*$ ]] || exit 2
+    legacy_postgres_enabled=true
+    ;;
   b3) filter='FullyQualifiedName~OmsPrivateEventContractTests|FullyQualifiedName~OmsPrivateCapturePostgresTests'; expected=28 ;;
   b3-stream) filter=$stream_filter; expected=52 ;;
   b3-host) filter="$stream_filter|FullyQualifiedName~DeribitCaptureHostTests|FullyQualifiedName~DeribitCaptureHostPostgresTests"; expected=83 ;;
@@ -70,7 +79,7 @@ finish() {
   if [[ "$live_inbox" == true ]]; then
     if [[ "$server_validated" == true ]]; then
       docker exec "$container" psql -X -U tradeops_test_admin -d postgres -At -c \
-        "SELECT datname FROM pg_database ORDER BY datname; SELECT rolname FROM pg_roles WHERE rolname ~ '^to_app_'; SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'to_%';" > "$out/database-after.txt" || result=1
+        "SELECT datname FROM pg_database ORDER BY datname; SELECT rolname FROM pg_roles WHERE rolname ~ '^to_'; SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'to_%';" > "$out/database-after.txt" || result=1
     else
       : > "$out/database-after.txt"; result=1
     fi
@@ -83,7 +92,7 @@ except Exception:
     data=dict(Status='TESTNET_ORDER_FAILED_UNKNOWN' if testnet else 'LIVE_INBOX_FAILED',Stage='GUARD_OR_TOOL_OUTPUT',DatabaseUsed=None,TradingReady=False)
 try:
     db=(out/'database-after.txt').read_text().splitlines()
-    clean=not any(x.startswith(('to_test_','to_app_')) for x in db) and sum(x.startswith('to_tpl_') for x in db)<=1 and db[-1]=='0'
+    clean=all(x in ('postgres','template0','template1') or x.startswith('to_tpl_') for x in db[:-1]) and sum(x.startswith('to_tpl_') for x in db)<=1 and db[-1]=='0'
 except Exception: clean=False
 data['EnvironmentStatus']='PASS' if good else 'FAIL'; data['CleanupStatus']='PASS' if clean else 'FAIL'
 data['EvidenceRelativeDirectory']='.tradeops/postgres-reuse/'+out.name
@@ -230,11 +239,16 @@ if [[ "$live_inbox" == true ]]; then
   unset TRADEOPS_B2_POSTGRES TRADEOPS_TESTNET_ATTEMPT_DIRECTORY connection
   exit "$result" # finish validates peer containers, guard, clone/role/session cleanup, then emits a redacted frame
 fi
+legacy_postgres=()
+if [[ "$legacy_postgres_enabled" == true ]]; then legacy_postgres=("TRADEOPS_TEST_POSTGRES_ADMIN=$connection"); fi
 taskset -c "$cpu" runuser -u user -- env \
   -u TRADEOPS_TEST_POSTGRES_ADMIN -u GITHUB_ACTIONS \
   DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_PROCESSOR_COUNT=1 \
   DeribitTerminal__ExecutionEnabled=false DeribitTerminal__MainnetExecutionEnabled=false \
+  ASPNETCORE_TEST_CONTENTROOT_TRADEOPS_API="$repo/src/TradeOps.Api" \
+  ASPNETCORE_TEST_CONTENTROOT_TRADEOPS_TERMINALAPI="$repo/apps/TradeOps.TerminalApi" \
   TRADEOPS_B2_POSTGRES="$connection" \
+  "${legacy_postgres[@]}" \
   dotnet vstest "$repo/tests/TradeOps.UnitTests/bin/Release/net10.0/TradeOps.UnitTests.dll" \
   --Settings:"$repo/scripts/testing/oms-postgres.runsettings" \
   --TestCaseFilter:"$filter" --Logger:'trx;LogFileName=results.trx' \
@@ -245,7 +259,7 @@ unset connection
 tail -n 15 "$out/test.log"
 docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}} {{.PIDs}}' "$container" > "$out/resources-after.txt"
 docker exec "$container" psql -X -U tradeops_test_admin -d postgres -At -c \
-  "SELECT datname FROM pg_database ORDER BY datname; SELECT rolname FROM pg_roles WHERE rolname ~ '^to_app_'; SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'to_%';" > "$out/database-after.txt"
+  "SELECT datname FROM pg_database ORDER BY datname; SELECT rolname FROM pg_roles WHERE rolname ~ '^to_'; SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'to_%';" > "$out/database-after.txt"
 python3 - "$out" "$expected" "$result" <<'PY'
 import json,sys,xml.etree.ElementTree as ET
 from pathlib import Path
@@ -259,7 +273,7 @@ summary={'counters':counters,'case_seconds':sum(seconds(x.attrib['duration']) fo
          'test_server_retained':True}
 ok=int(sys.argv[3])==0 and len(cases)==int(sys.argv[2]) and int(counters['passed'])==int(sys.argv[2]) and all(x.attrib['outcome']=='Passed' for x in cases)
 db=(out/'database-after.txt').read_text().splitlines()
-clean=not any(x.startswith(('to_test_','to_app_')) for x in db) and sum(x.startswith('to_tpl_') for x in db)<=1 and db[-1]=='0'
+clean=all(x in ('postgres','template0','template1') or x.startswith('to_tpl_') for x in db[:-1]) and sum(x.startswith('to_tpl_') for x in db)<=1 and db[-1]=='0'
 summary['cleanup_status']='PASS' if clean else 'FAIL'
 ok=ok and clean
 summary['status']='PASS' if ok else 'FAIL'

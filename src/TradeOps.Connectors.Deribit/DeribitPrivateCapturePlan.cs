@@ -44,9 +44,18 @@ public sealed class DeribitPrivateCapturePlan
     public int InstrumentCount => Instruments.Count;
     internal FrozenDictionary<string, DeribitPrivateInstrument> Instruments { get; }
     internal string[] Channels { get; }
+    public bool CapturesAllCurrenciesAndKinds { get; }
 
     public DeribitPrivateCapturePlan(long expectedAccountId, bool isSubaccount,
         IEnumerable<DeribitPrivateInstrument> instruments, DeribitPrivateStreamLimits? limits = null)
+        : this(expectedAccountId, isSubaccount, instruments, limits, false) { }
+
+    public static DeribitPrivateCapturePlan ForAccountRecovery(long expectedAccountId, bool isSubaccount,
+        IEnumerable<DeribitPrivateInstrument> instruments, DeribitPrivateStreamLimits? limits = null) =>
+        new(expectedAccountId, isSubaccount, instruments, limits, true);
+
+    private DeribitPrivateCapturePlan(long expectedAccountId, bool isSubaccount,
+        IEnumerable<DeribitPrivateInstrument> instruments, DeribitPrivateStreamLimits? limits, bool accountRecovery)
     {
         if (expectedAccountId <= 0) throw new ArgumentException("Expected remote account ID is required.");
         ExpectedAccountId = expectedAccountId;
@@ -64,7 +73,8 @@ public sealed class DeribitPrivateCapturePlan
                 throw new ArgumentException("Invalid trusted instrument metadata.");
         }
         Instruments = items.ToFrozenDictionary(x => x.Name, StringComparer.Ordinal);
-        Channels = items.SelectMany(x => new[] { $"user.orders.{x.Kind}.{x.Currency}.raw",
+        CapturesAllCurrenciesAndKinds = accountRecovery;
+        Channels = accountRecovery ? ["user.changes.any.any.raw", "user.orders.any.any.raw", "user.portfolio.any", "user.trades.any.any.100ms"] : items.SelectMany(x => new[] { $"user.orders.{x.Kind}.{x.Currency}.raw",
             $"user.trades.{x.Kind}.{x.Currency}.100ms" }).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
     }
 

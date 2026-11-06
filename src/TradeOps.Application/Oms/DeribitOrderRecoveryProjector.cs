@@ -115,12 +115,16 @@ public static class DeribitOrderRecoveryProjector
                     Add(DeribitOrderRecoveryProblem.ConflictingOrderReports, key);
             decimal? previousFilled = null;
             var terminal = false;
+            string? terminalState = null;
             foreach (var report in reports)
             {
                 if (report.FilledNativeAmount < previousFilled) Add(DeribitOrderRecoveryProblem.CumulativeRegression, key);
                 if (terminal && !Terminal(report.OrderState)) Add(DeribitOrderRecoveryProblem.TerminalReopened, key);
+                if (Terminal(report.OrderState) && terminalState is not null && terminalState != report.OrderState)
+                    Add(DeribitOrderRecoveryProblem.ConflictingOrderReports, key);
                 previousFilled = report.FilledNativeAmount ?? previousFilled;
                 terminal |= Terminal(report.OrderState);
+                if (Terminal(report.OrderState)) terminalState ??= report.OrderState;
             }
 
             decimal? filled = 0;

@@ -1,18 +1,45 @@
 # Продолжение TradeOps-v2 — B4, журнал команд и исходы отправок
 
-## Приоритетное решение владельца: закончить весь B4
+## Текущее состояние — B4 завершён в коде, 2026-11-06
 
-2026-11-05: единица текущей разработки и завершения — весь B4. Внутри этапа запускать только проверки изменённого поведения и непосредственно затронутых компонентов. Полный набор — один раз перед закрытием B4; повтор только после исправления выявленного финального сбоя. Внутренние части не объявлять завершёнными этапами. Это решение заменяет прежнюю практику широких прогонов после каждой небольшой правки.
+Реализация и offline-приёмка B4 завершены. Полный relevant inventory/currency history,
+actual global capture/replay, ограниченная политика согласованности, атомарная
+публикация, retained query checkpoint, scoped operator audit и recovery runtime
+реализованы. Подробности: [итог B4](workstreams/B4_RECOVERY_COMPLETION_2026-11-06.md),
+[контракты и runtime](../architecture/OMS_RECOVERY_RUNS_V1.md).
 
-Незавершённая работа находится в рабочей ветке, а не в main: ограниченный owner-launched OMS-сценарий; сохранение recovery runs/причин блокировки; объединение ledger/account/active replay в один цикл. Это пока не закрытый B4 и не разрешение READY. До завершения остаются доказанная область покрытия и согласованность биржевых данных, публикация восстановленной модели и привязка runtime gate.
+**Итоговая проверка: 2110 test-case rows, 0 оставшихся сбоев, 0 skipped; 30/30 +
+30/30 output cases.** Один полный прогон: 2084 PASS / 21 FAIL из 2105 фактически
+выполненных случаев (discovery 2090 разворачивал data cases). Затем только адресные
+исправления: 47/47 PASS; 66/68 и контроль часов fixture; финальные 2/2 PASS. Все
+первоначальные и последующие ошибки закрыты, 412 source hashes совпали. Это
+составная приёмка, а не один полностью зелёный первоначальный TRX.
 
-Рабочая ветка: `TradeOps/B4-recovery-completion`. Адресные проверки сохранения recovery runs и затронутого ledger gate: **38/38 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T203612-targeted-14687/`. Поздняя проверка истечения котировки: **1/1 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T202224-targeted-25134/`.
+Локальный итоговый аудит: `.tradeops/b4-final-qualification.json`. Основные evidence:
+`20261106T072944-b4-final-18046`, `20261106T075847-targeted-15099`,
+`20261106T083626-targeted-12076`, `20261106T084423-targeted-7680`,
+`20261106T085033-targeted-15908`. Guard, peer containers и cleanup проверены.
+У 68-case команды ошибочно стояло ExpectedTests=74; реальный FAIL/TRX сохранён.
 
-Модель и архив actual query responses добавлены в тот же recovery result: five model cases + actual PostgreSQL roundtrip, **6/6 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T215100-targeted-27877/`. Candidate не опубликован как рабочее состояние; coverage/replay gaps остаются явными. Следующая текущая работа — сбор по валютной группе вместо одного инструмента и полный relevant universe, затем общая согласованность и runtime publication/gate. Новый currency collector пока не подключён к account engine и не является account-wide proof.
+Правило владельца остаётся: единица разработки — целый этап; внутри него проверять
+изменённое поведение, полный набор — перед закрытием. Не возвращаться к широким
+прогонам после каждой небольшой правки. Не создавать субагентов/worker-чаты/очереди,
+Issue/PR для существующей задачи и не запускать GitHub Actions.
 
-Обновление 2026-11-06: currency collector проверен адресно **8/8 PASS**, `.tradeops/postgres-reuse/20261105T215818-targeted-6832/`. Добавлены account inventory без фильтра по manifest, union с полным journal и optional `DeribitRecoveryUniverseSources` внутри реального replay window; required currency histories читаются с kind any, inventory повторно проверяется на свежесть после drain. **19/19 PASS**, environment/cleanup PASS, `.tradeops/postgres-reuse/20261105T221408-targeted-20733/`. Эти actual inputs и issues сохраняются в одном recovery result; неизвестные инструменты не получают выдуманных units, zero-balance currencies не исключаются. По умолчанию в существующий host не подключено, native calls и permanent migrations/grants не запускались. Далее — общая candidate-модель по currency evidence, настоящая проверка согласованности/coverage и атомарная publication/runtime gate. Полный набор до завершения B4 не запускать.
+Следующий этап — **B5**: обязательные pre-trade/runtime лимиты, pending exposure,
+kill switch и единственный физический sender. Далее **B6** — Deribit FIX 4.4 через
+QuickFIX/n; он обязателен для V2. [План до FIX](B4_TO_QUICKFIX_PLAN_2026-11-05.md).
 
-Полный прогон `.tradeops/postgres-reuse/20261105T201154-b4-bounded-24116/` отменён по решению владельца; это не результат квалификации. Его cleanup/guard проверены, peers неизменны. Предыдущий завершённый прогон 728/728: `.tradeops/postgres-reuse/20261105T195904-b4-bounded-3449/`, до поздних изменений. Не повторять полный набор до завершения B4.
+Постоянная mainnet БД и роли не мигрировались, реальные заявки не выставлялись,
+consumed marker старого one-off не сбрасывался. Старые ACK без direct receipt
+не превращаются в binding по label. Qualified B4 READY не является trading readiness;
+оба ordinary execution switches остаются false. Длинный разрыв, неизвестный исход,
+unsupported metadata/units, capacity и конфликты оставляют BLOCKED. Текущая политика
+требует тихого native replay и окна с overlap/I/O в пределах 25 минут; runtime
+свежесть модели — пять секунд. Согласованные mainnet-границы сохраняются в
+[политике проверок](../testing/OMS_MAINNET_QUALIFICATION_POLICY_2026-11-05.md).
+
+## Предшествующие условия и evidence
 
 ## Новое решение владельца о mainnet-проверках, 2026-11-05
 

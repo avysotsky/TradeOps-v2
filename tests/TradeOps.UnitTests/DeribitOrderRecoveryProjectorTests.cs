@@ -56,6 +56,15 @@ public sealed class DeribitOrderRecoveryProjectorTests
         Assert.Equal(0, result.DistinctExecutions);
     }
 
+    [Theory]
+    [InlineData("filled", "cancelled")]
+    [InlineData("cancelled", "filled")]
+    public void DifferentTerminalStatesRemainAConflictEvenWithMatchingCumulative(string first, string later)
+    {
+        var result = Project([Report(first, 10, minute: 2), Report(later, 10, minute: 3), Fill(10)]);
+        Has(result, DeribitOrderRecoveryProblem.ConflictingOrderReports);
+    }
+
     [Fact]
     public void EmptyOpenOrders_DoNotImplyCancellation()
     {

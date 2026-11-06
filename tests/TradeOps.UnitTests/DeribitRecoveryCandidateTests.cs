@@ -55,7 +55,7 @@ public sealed class DeribitRecoveryCandidateTests
             Assert.Null(DeribitRecoveryCandidateBuilder.Build(document with { QueryObservations = query with { Observations = [changed] } }));
     }
 
-    private static DeribitRecoveryRunDocumentV1 Document(OmsPrivateEventEnvelope[] prior, OmsPrivateEventEnvelope[] current)
+    internal static DeribitRecoveryRunDocumentV1 Document(OmsPrivateEventEnvelope[] prior, OmsPrivateEventEnvelope[] current)
     {
         var start = new OmsRecoveryRunStart(Account, Guid.NewGuid(), Epoch, "ETH-PERPETUAL", "ETH", From, Through);
         var snapshot = new OmsPrivateRecoveryReadResult(Account, Guid.NewGuid(), Through, prior.Length,

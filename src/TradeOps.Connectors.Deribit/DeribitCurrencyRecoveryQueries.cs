@@ -23,6 +23,7 @@ public sealed class DeribitCurrencyRecoveryQueries(DeribitPrivateCaptureBinding 
         var through = DateTimeOffset.FromUnixTimeMilliseconds(q.ThroughUtc.ToUnixTimeMilliseconds());
         var sources = new List<DeribitRecoverySourceRead>(); var facts = new List<OmsPrivateEventEnvelope>();
         var hashes = new Dictionary<(string, string), byte[]>(); var problems = new List<DeribitCurrencyRecoveryProblem>();
+        var unmapped = new HashSet<string>(StringComparer.Ordinal);
         var rpc = new DeribitRecoveryRpc(http, q.Scope.Environment);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(60));
         var token = deadline.Token;
@@ -53,7 +54,7 @@ public sealed class DeribitCurrencyRecoveryQueries(DeribitPrivateCaptureBinding 
         finally { rpc.Token = null; }
         if (problems.Count != 0) facts.Clear();
         return new(q.Scope, q.Epoch, q.Currency, q.Kind, from, through, started, DateTimeOffset.UtcNow,
-            sources.AsReadOnly(), facts.AsReadOnly(), problems.AsReadOnly());
+            sources.AsReadOnly(), facts.AsReadOnly(), problems.AsReadOnly(), unmapped.Order(StringComparer.Ordinal).ToArray());
 
         async Task Verify()
         {
@@ -93,7 +94,9 @@ public sealed class DeribitCurrencyRecoveryQueries(DeribitPrivateCaptureBinding 
                 foreach (var item in rows.EnumerateArray())
                 {
                     var symbol = item.GetProperty("instrument_name").GetString()!;
-                    if (!binding.Plan.Instruments.TryGetValue(symbol, out var metadata)) throw new Refused(DeribitCurrencyRecoveryProblem.UnmappedInstrument);
+                    if (string.IsNullOrWhiteSpace(symbol) || symbol.Length > 160 || symbol != symbol.Trim() || symbol.Any(char.IsControl)) throw new FormatException();
+                    if (!binding.Plan.Instruments.TryGetValue(symbol, out var metadata))
+                    { unmapped.Add(symbol); throw new Refused(DeribitCurrencyRecoveryProblem.UnmappedInstrument); }
                     if (metadata.Currency != q.Currency || q.Kind != "any" && metadata.Kind != q.Kind) throw new Refused(DeribitCurrencyRecoveryProblem.BindingInvalid);
                     var native = DeribitWebSocketMessageParser.ParsePrivateFacts(item, metadata, execution); native.Validate();
                     if (native.VenueTimestampUtc > received || open && native.OrderState is not ("open" or "triggered" or "untriggered")) throw new FormatException();

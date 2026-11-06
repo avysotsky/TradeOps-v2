@@ -30,7 +30,9 @@ public sealed record OmsRecoveryCommand(OmsJournalCommandRequest Request, long A
 /// <summary>Commands, attempts, outbox and private facts from ONE database snapshot.</summary>
 public sealed record OmsRecoveryLedgerSnapshot(OmsPrivateRecoveryReadResult Private,
     IReadOnlyList<OmsRecoveryCommand> Commands, IReadOnlyList<OmsRecoveryLedgerProblem> Problems,
-    IReadOnlyList<DeribitJsonRpcCommandReceipt>? CommandReceipts = null)
+    IReadOnlyList<DeribitJsonRpcCommandReceipt>? CommandReceipts = null, long? EvidenceVersion = null,
+    IReadOnlyList<OmsRecoveryExternalOrderReview>? OperatorReviews = null,
+    OmsRetainedRecoveryArchiveV1? RecoveryArchive = null)
 {
     public bool IsUsable => Private.IsUsable && Problems.Count == 0;
     public IReadOnlyList<DeribitJsonRpcCommandReceipt> Receipts => CommandReceipts ?? Array.Empty<DeribitJsonRpcCommandReceipt>();
