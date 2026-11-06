@@ -8,6 +8,7 @@
 
 Актуальные этапы и проверенный прогресс: [master roadmap](docs/orchestration/INSTITUTIONAL_PLATFORM_MASTER_ROADMAP_2026-10-25.md), сначала решения владельца в начале файла. Проверять текущие файлы, Git и evidence; исторические планы не подтверждают реализацию.
 Для нового чата после завершения B5: [актуальное задание B6 — QuickFIX/n](docs/orchestration/CONTINUE_TRADEOPS_B6_2026-11-06.md). [Итог B5](docs/orchestration/workstreams/B5_RISK_EXECUTION_COMPLETION_2026-11-06.md): обязательные risk admission/controls/pending и физический sender, offline-квалификация поддержанного режима; это не live readiness. Код B4 опубликован как `24bcc0c`, реализация B5 — ветка `TradeOps/B5-risk-admission`; сверять текущие Git/main/roadmap/evidence. [Задание B5](docs/orchestration/CONTINUE_TRADEOPS_B5_2026-11-06.md) и [прежняя точка передачи](docs/orchestration/CONTINUE_TRADEOPS_2026-11-05.md) содержат датированную историю, а не новые задания B4/B5.
+Текущий B6 начат в `TradeOps/B6-quickfix`: [фактический код, адресные проверки и обязательный остаток интеграции](docs/orchestration/workstreams/B6_FIX_IMPLEMENTATION_STATE_2026-11-06.md). Это IN_PROGRESS, не закрытие B6; main пока на B5. Продолжать существующую ветку, не создавать заново каркас FIX и не повторять полный B5 для знакомства.
 Сохранять границы модулей и направление зависимостей. Коннекторы не зависят от PostgreSQL/EF или Infrastructure. Стратегии не обходят risk/OMS. Изменение durable contracts требует явного версионирования и проверки совместимости.
 
 ## Работа и публикация

@@ -5,11 +5,18 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="QuickFIXn.Core" Version="1.14.1" />
+    <PackageReference Include="QuickFIXn.FIX44" Version="1.14.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <ProjectReference Include="..\TradeOps.Application\TradeOps.Application.csproj" />
     <ProjectReference Include="..\TradeOps.Domain\TradeOps.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="TradeOps.UnitTests" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fix/DeribitFix44ProfileV1.xml" />
+    <None Update="Fix/DeribitFix44ProfileV1.xml" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="ThirdPartyNotices/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

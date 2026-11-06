@@ -1,5 +1,9 @@
 # Продолжение TradeOps-v2 после B5 — B6 QuickFIX/n
 
+Реализация уже начата: **сначала сверить [текущий код/evidence/остаток B6](workstreams/B6_FIX_IMPLEMENTATION_STATE_2026-11-06.md)**.
+Ветка `TradeOps/B6-quickfix`; B6 IN_PROGRESS. Ниже — исходное задание, не указание
+снова начинать inventory или повторять проверенные протокольные компоненты.
+
 Дата: 2026-11-06, Europe/Kiev. Репозиторий: `D:\Projects\TradeOps-v2`.
 Этот handoff относится к следующему этапу после принятого B5. Перед началом
 сверить Git/main, master roadmap и фактическую приёмку в отчёте B5.

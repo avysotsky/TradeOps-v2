@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Npgsql;
+using TradeOps.Application.Oms;
 using TradeOps.Domain.Oms;
 
 namespace TradeOps.Infrastructure.Persistence.Oms;
@@ -12,6 +13,8 @@ internal sealed class OmsSingleHostPhysicalFence : IAsyncDisposable
 {
     private readonly FileStream handle;
     private readonly SemaphoreSlim serial = new(1,1);
+    private readonly object authoritySync=new();
+    private readonly List<Task> sessionWrites=[];
     private int revoked;
     private int waiting;
     public Guid OwnerId { get; } = Guid.NewGuid();
@@ -66,10 +69,33 @@ internal sealed class OmsSingleHostPhysicalFence : IAsyncDisposable
         }
         finally {Interlocked.Decrement(ref waiting);}
     }
-    internal void Revoke() => Interlocked.Exchange(ref revoked,1);
+    internal OmsPhysicalSessionAuthority CreateSessionAuthority()=>new(write=>
+    {
+        lock(authoritySync)
+        {
+            if(!IsCurrent)throw new InvalidOperationException("Physical session owner revoked.");
+            if(sessionWrites.Count>=128)throw new InvalidOperationException("Physical session write capacity exceeded.");
+            var operation=write();sessionWrites.Add(operation);return TrackSessionWriteAsync(operation);
+        }
+    });
+    private async Task TrackSessionWriteAsync(Task operation)
+    {
+        try{await operation.ConfigureAwait(false);}
+        finally{lock(authoritySync)sessionWrites.Remove(operation);}
+    }
+    internal void Revoke(){lock(authoritySync)Interlocked.Exchange(ref revoked,1);}
     public async ValueTask DisposeAsync()
     {
-        Revoke(); await serial.WaitAsync(); try { await handle.DisposeAsync(); } finally { serial.Release(); }
+        Revoke(); await serial.WaitAsync();
+        try
+        {
+            Task[] pending;lock(authoritySync)pending=sessionWrites.ToArray();
+            // Even a caller that forgot transport drain cannot hand over while a physical write
+            // is still pending. Failed writes are drained too; their caller retains UNKNOWN.
+            foreach(var write in pending){try{await write.ConfigureAwait(false);}catch{}}
+            await handle.DisposeAsync();
+        }
+        finally { serial.Release(); }
         // Never unlink: another process must lock the very same inode after handover.
     }
 }
