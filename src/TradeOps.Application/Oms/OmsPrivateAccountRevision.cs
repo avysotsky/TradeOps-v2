@@ -21,6 +21,15 @@ public sealed class OmsPrivateAccountRevision
 
 public sealed partial class OmsPrivateCaptureCoordinator
 {
+    internal Task InitiateWithRevision(OmsPrivateAccountRevision revision, Func<bool> eligible, Func<Task> write)
+    {
+        lock (replaySync)
+        {
+            if (!IsAccountRevisionCurrent(revision) || !eligible()) throw new InvalidOperationException("Live revision or physical ownership changed.");
+            // Invoke the actual socket write before releasing the ingress barrier. Never enqueue work here.
+            return write();
+        }
+    }
     public OmsPrivateAccountRevision? TryCreateAccountRevision(OmsPrivateReplayCut cut, OmsPrivateAccountSubscriptions subscriptions)
     {
         ArgumentNullException.ThrowIfNull(cut); ArgumentNullException.ThrowIfNull(subscriptions);

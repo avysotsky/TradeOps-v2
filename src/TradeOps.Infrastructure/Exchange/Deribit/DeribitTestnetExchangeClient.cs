@@ -128,113 +128,18 @@ public sealed class DeribitTestnetExchangeClient
         PlaceOrderRequest request,
         CancellationToken cancellationToken = default)
     {
-        ValidateInstrumentName(request.Symbol);
-        ValidateClientOrderId(request.ClientOrderId);
-
-        if (request.Quantity <= 0m)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(request),
-                "Deribit contract quantity must be positive.");
-        }
-
-        if (request.OrderType == OrderType.Limit
-            && request.Price is null)
-        {
-            throw new ArgumentException(
-                "Deribit limit orders require Price.",
-                nameof(request));
-        }
-
-        if (request.OrderType is not (OrderType.Limit or OrderType.Market))
-        {
-            throw new NotSupportedException(
-                $"Deribit adapter does not support TradeOps order type {request.OrderType}.");
-        }
-
-        var parameters = new List<KeyValuePair<string, string?>>
-        {
-            Pair("instrument_name", request.Symbol.Trim().ToUpperInvariant()),
-            Pair("contracts", FormatDecimal(request.Quantity)),
-            Pair(
-                "type",
-                request.OrderType == OrderType.Market
-                    ? "market"
-                    : "limit"),
-            Pair("label", request.ClientOrderId)
-        };
-
-        if (request.Price is not null)
-        {
-            parameters.Add(
-                Pair("price", FormatDecimal(request.Price.Value)));
-        }
-
-        var endpoint = request.Side == OrderSide.Buy
-            ? "/private/buy"
-            : "/private/sell";
-
-        _logger.LogInformation(
-            "OrderPlacementRequested for {ClientOrderId}: {Side} {Contracts} contracts {Instrument} on Deribit testnet.",
-            request.ClientOrderId,
-            request.Side,
-            request.Quantity,
-            request.Symbol);
-
-        try
-        {
-            var result = await SendPrivateGetAsync(
-                endpoint,
-                parameters,
-                cancellationToken);
-
-            if (!result.TryGetProperty("order", out var orderElement))
-            {
-                throw new InvalidOperationException(
-                    "Deribit order response did not contain an order.");
-            }
-
-            var order = MapOrder(orderElement);
-
-            return new OrderResult(
-                order.ExchangeOrderId,
-                request.ClientOrderId,
-                order.Status,
-                order.FilledQuantity,
-                order.AverageFillPrice);
-        }
-        catch (TaskCanceledException exception)
-            when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"Deribit order placement timed out for {request.ClientOrderId}.",
-                exception);
-        }
-        catch (HttpRequestException exception)
-        {
-            throw new TimeoutException(
-                $"Deribit order placement outcome is ambiguous for {request.ClientOrderId}.",
-                exception);
-        }
+        ValidateInstrumentName(request.Symbol); ValidateClientOrderId(request.ClientOrderId);
+        await Task.CompletedTask;
+        throw new InvalidOperationException("Direct Deribit execution is disabled. Submit a native account-scoped intent through the B5 OMS gateway.");
     }
 
     public async Task CancelOrderAsync(
         string exchangeOrderId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(exchangeOrderId))
-        {
-            throw new ArgumentException(
-                "Deribit order id is required.",
-                nameof(exchangeOrderId));
-        }
-
-        _ = await SendPrivateGetAsync(
-            "/private/cancel",
-            [
-                Pair("order_id", exchangeOrderId)
-            ],
-            cancellationToken);
+        if (string.IsNullOrWhiteSpace(exchangeOrderId)) throw new ArgumentException("Deribit order id is required.", nameof(exchangeOrderId));
+        await Task.CompletedTask;
+        throw new InvalidOperationException("Direct Deribit cancellation is disabled. A scoped OMS cancellation policy is required.");
     }
 
     public Task CancelOrderAsync(

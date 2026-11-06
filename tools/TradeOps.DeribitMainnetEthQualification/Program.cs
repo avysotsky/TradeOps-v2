@@ -35,22 +35,9 @@ internal static class MainnetEthEntryPoint
                 return 0;
             }
             if (args.Length != 0) throw new InvalidOperationException();
-            using var buffer = new MemoryStream(); var chunk = new byte[4096];
-            var stdin = Console.OpenStandardInput(); int length;
-            while ((length = await stdin.ReadAsync(chunk, deadline.Token)) != 0)
-            {
-                if (buffer.Length + length > 16384) throw new InvalidOperationException();
-                buffer.Write(chunk, 0, length);
-            }
-            input = JsonSerializer.Deserialize<TestnetOrderInput>(buffer.ToArray()) ?? throw new InvalidOperationException();
-            input.ValidateMainnetEth();
-            var directory = Environment.GetEnvironmentVariable("TRADEOPS_MAINNET_ATTEMPT_DIRECTORY");
-            if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory)) throw new InvalidOperationException();
-            using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseDefaultCredentials = false };
-            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
-            var result = await TestnetOrderQualification.RunMainnetEthAsync(input, http, directory, deadline.Token);
-            Console.WriteLine(JsonSerializer.Serialize(result));
-            return result.Status == "MAINNET_ETH_CAPTURE_PASS" ? 0 : 1;
+            // An old standalone executable must not bypass mandatory B5 risk/physical ownership.
+            Console.WriteLine("{\"Status\":\"MAINNET_ETH_OMS_GATEWAY_REQUIRED\",\"PlacementAttempts\":0,\"CancellationAttempts\":0,\"TradingReady\":false}");
+            return 1;
         }
         catch
         {

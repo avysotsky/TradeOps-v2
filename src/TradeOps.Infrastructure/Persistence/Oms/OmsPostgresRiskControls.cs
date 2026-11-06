@@ -82,8 +82,17 @@ INSERT INTO oms_risk_admission_controls_v1(tenant_id,venue_id,environment,accoun
     {
         await using var db = await source.OpenConnectionAsync(ct); await using var tx = await db.BeginTransactionAsync(ct);
         var current = await LockAndReadAsync(db, tx, account, ct);
-        if (current.Blocked) return false;
-        await using var q = Query(db, tx, OmsRiskControlScopeV1.ForAccount(account), """
+        return await MatchesAdmissionAsync(db, tx, account, command, current, ct);
+    }
+
+    internal static async Task<bool> MatchesAdmissionAsync(NpgsqlConnection db, NpgsqlTransaction tx, AccountKey account,
+        OmsCommandId command, (bool Blocked, OmsRiskControlStampV1 Stamp) current, CancellationToken ct,bool addressedCancel=false)
+    {
+        if (current.Blocked&&!addressedCancel) return false;
+        await using var q = Query(db, tx, OmsRiskControlScopeV1.ForAccount(account), addressedCancel ? """
+SELECT schema_version,stamp_json::text,stamp_sha256 FROM oms_risk_cancel_admissions_v1
+ WHERE tenant_id=@tenant AND venue_id=@venue AND environment=@environment AND account_id=@account AND subaccount_id=@subaccount AND command_id=@command
+""" : """
 SELECT schema_version,stamp_json::text,stamp_sha256 FROM oms_risk_admission_controls_v1
  WHERE tenant_id=@tenant AND venue_id=@venue AND environment=@environment AND account_id=@account AND subaccount_id=@subaccount AND command_id=@command
 """);

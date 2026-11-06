@@ -48,6 +48,13 @@ public sealed class OmsQualifiedRecovery
     }
     public bool IsCurrent => time.GetUtcNow() >= assessed && time.GetUtcNow() <= usableThrough &&
         revision.Owner.IsAccountRevisionCurrent(revision);
+    internal OmsPhysicalWritePermit CreatePhysicalWritePermit(OmsJournalCommandRequest command, Func<bool> stillOwnsPhysicalTransport)
+    {
+        if (command.Scope != Start.Scope || !IsCurrent) throw new InvalidOperationException("Current live recovery required.");
+        return new(this, command, stillOwnsPhysicalTransport);
+    }
+    internal Task InitiatePhysicalWrite(Func<bool> owns, Func<Task> write) => revision.Owner.InitiateWithRevision(revision,
+        () => time.GetUtcNow() >= assessed && time.GetUtcNow() <= usableThrough && owns(), write);
 }
 
 public sealed record DeribitRecoveryCoherenceResult(DeribitRecoveryCoherenceAssessment Assessment,

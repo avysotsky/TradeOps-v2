@@ -61,13 +61,15 @@ public sealed class DeribitReactTerminalSecurityTests
     }
 
     [Fact]
-    public void MainnetRequiresTwoIndependentServerFeatureFlags()
+    public void MainnetPreviewFlagsNeverGrantExecutionAuthority()
     {
         var ctrl = Controller(execution: true, mainnet: true);
         Assert.IsType<ConflictObjectResult>(ctrl.PreviewOrder(
             new DeribitTerminalController.PreviewRequest("BTC-PERPETUAL", "buy", 10m, 65000m)));
 
         var approved = Controller(execution: true, mainnet: true, mainnetOverride: true);
+        using(var status=JsonDocument.Parse(JsonSerializer.Serialize(Assert.IsType<OkObjectResult>(approved.Status()).Value)))
+            Assert.False(status.RootElement.GetProperty("tradingEnabled").GetBoolean());
         var result = Assert.IsType<OkObjectResult>(approved.PreviewOrder(
             new DeribitTerminalController.PreviewRequest("BTC-PERPETUAL", "sell", 10m, 66000m)));
         var json = JsonSerializer.Serialize(result.Value);
@@ -192,8 +194,9 @@ public sealed class DeribitReactTerminalSecurityTests
         var vite = File.ReadAllText(Path.Combine(root,
             "apps/trade-terminal/vite.config.ts"));
 
-        Assert.Contains("post_only", server);
-        Assert.Contains("reject_post_only", server);
+        Assert.DoesNotContain("\"private/buy\"", server);
+        Assert.DoesNotContain("\"private/sell\"", server);
+        Assert.Contains("Read-only terminal RPC required", server);
         Assert.Contains("Pending.TryRemove(request.PreviewId", server);
         Assert.Contains("MainnetExecutionEnabled", server);
         Assert.Contains("IPAddress.IsLoopback", server);

@@ -6,7 +6,8 @@ public sealed record DeribitRecoveryUniverseSources(IDeribitAccountInventoryRead
 
 public sealed record DeribitRecoveryRunOutcome(DeribitRecoveryRunDocumentV1 Document,
     DeribitRecoveryCoherenceAssessment Coherence,
-    [property: System.Text.Json.Serialization.JsonIgnore] OmsRuntimeRecoveryGate? RuntimeGate);
+    [property: System.Text.Json.Serialization.JsonIgnore] OmsRuntimeRecoveryGate? RuntimeGate,
+    [property: System.Text.Json.Serialization.JsonIgnore] OmsLiveExecutionBaseline? ExecutionBaseline = null);
 
 /// <summary>Durable lifecycle around the actual ledger/account/replay gate. No dispatch, caller-provided
 /// completeness flags, swallowed errors or READY shortcut. Existing read-only hosts remain read-only.</summary>
@@ -61,13 +62,15 @@ public sealed class DeribitRecoveryRunEngine(IOmsRecoveryRunStore store, IOmsRec
             var coherence = DeribitRecoveryCoherencePolicy.Assess(document, clock);
             document = coherence.Document;
             OmsRuntimeRecoveryGate? runtime = null;
+            OmsLiveExecutionBaseline? executionBaseline = null;
             if (publish && coherence.Publication is { } qualified && store is IOmsRecoveredAccountStore publisher)
             {
                 var publication = await publisher.PublishAsync(token, document, qualified, ct);
                 runtime = new(publisher, qualified, publication);
+                executionBaseline = new(publication, qualified);
             }
             else await store.CompleteBlockedAsync(token, document, ct);
-            return new(document, coherence.Assessment, runtime);
+            return new(document, coherence.Assessment, runtime, executionBaseline);
         }
         catch (Exception error)
         {

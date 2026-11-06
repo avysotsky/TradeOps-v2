@@ -215,6 +215,13 @@ VALUES (@tenant,@venue,@environment,@account,@subaccount,@command)
     {
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(cancellationToken);
+        var result = await MarkStartedInTransactionAsync(db, tx, scope, commandId, fault, cancellationToken);
+        await tx.CommitAsync(cancellationToken); return result;
+    }
+
+    internal static async Task<OmsJournalAttemptResult> MarkStartedInTransactionAsync(NpgsqlConnection db, NpgsqlTransaction tx,
+        AccountKey scope, OmsCommandId commandId, Func<OmsJournalFailPoint, Task>? fault, CancellationToken cancellationToken)
+    {
         int affected;
         await using (var update = Command($"""
 UPDATE oms_commands SET dispatch_phase='DispatchStarted',updated_at=clock_timestamp()
@@ -234,7 +241,6 @@ SELECT 1 FROM oms_commands WHERE {ScopeWhere} AND command_id=@command
                 check.Parameters.AddWithValue("command", commandId.Value);
                 exists = await check.ExecuteScalarAsync(cancellationToken) is not null;
             }
-            await tx.CommitAsync(cancellationToken);
             return exists ? OmsJournalAttemptResult.AlreadyStartedOrResolved
                 : OmsJournalAttemptResult.NotFound;
         }
@@ -257,7 +263,6 @@ WHERE {ScopeWhere} AND command_id=@command AND state='NotSent'
                 throw new InvalidOperationException("Missing outbox row: refusing to advance attempt.");
         }
         if (fault is not null) await fault(OmsJournalFailPoint.BeforeCommit);
-        await tx.CommitAsync(cancellationToken);
         return OmsJournalAttemptResult.Started;
     }
 

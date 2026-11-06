@@ -17,9 +17,9 @@ case "$suite" in
     elif [[ -n "${4:-}" ]]; then echo 'Invalid targeted PostgreSQL mode'; exit 2; fi
     ;;
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
-  b4-final)
+  b4-final|b5-final)
     filter='FullyQualifiedName~TradeOps.UnitTests'
-    expected=${2:?Final B4 acceptance requires the discovered full-suite test count}
+    expected=${2:?Final stage acceptance requires the discovered full-suite test count}
     [[ "$expected" =~ ^[1-9][0-9]*$ ]] || exit 2
     legacy_postgres_enabled=true
     ;;
@@ -191,6 +191,9 @@ capture_paths=(
   tools/TradeOps.DeribitLiveInboxQualification
   tools/TradeOps.DeribitTestnetOrderQualification
   tools/TradeOps.DeribitMainnetEthQualification
+  tools/TradeOps.OmsPhysicalOwnerProbe
+  src/TradeOps.Application/Properties
+  apps/TradeOps.TerminalApi/Controllers/DeribitTerminalController.cs
   scripts/deribit/Deribit-MainnetEthLocal.ps1
   scripts/deribit/Deribit-RecoveryCollectionLocal.ps1
   scripts/deribit/Deribit-AccountSnapshotLocal.ps1

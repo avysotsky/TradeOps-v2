@@ -1,138 +1,192 @@
-# B5: account-scoped risk admission v1 — реализация в работе
+# B5 — risk admission, controls и единственный sender
 
-2026-11-06. Это начальная реализация B5, не закрытие этапа и не send permission.
+2026-11-06. Поддержанный режим B5 реализован и квалифицирован offline:
+2245/2245 полного прогона, затем 29/29 адресной финальной правки; всего 2246
+актуальных cases, без оставшихся сбоев/пропусков. [Результаты и evidence](../orchestration/workstreams/B5_RISK_EXECUTION_COMPLETION_2026-11-06.md).
+Это не live PASS, не production activation и не универсальная multi-host модель.
 
-`OmsPostgresRiskAdmission` связывает live `OmsQualifiedRecovery`, опубликованный
-B4 run/generation/state digest, актуальную evidence version, серверные policy и
-valuation, pending reservation и immutable OMS command/outbox. Команда, outbox,
-aggregate CAS и резерв фиксируются одной транзакцией. Старые command v1,
-private-event v2, receipt v1 и recovery v1 encodings не меняются. Добавлена
-отдельная migration/table `oms_risk_reservations_v1`, schema version 1.
+## Поддержанный режим
 
-Account recovery head сериализует admissions одного полного account scope.
-Суммируются все retained reservations этого scope, включая предыдущие recovery
-runs. Противоположные заявки не неттируются. Cancel/replace пока отклоняются.
-Путь v1 не освобождает резерв ни по ACK, ни по ambiguous outcome, ни по новому
-recovery. Это консервативное ограничение до реализации proven settlement;
-повторный fill сейчас вообще не уменьшает pending и не может освободить его дважды.
+Deribit V2: pinned main account, standard segregated BTC/ETH inverse futures,
+native USD amount, limit/GTC placement и адресная отмена собственного OMS-ордера.
+Options, linear contracts, subaccount execution, replace, trigger orders и FIX
+order entry отклоняются. FIX 4.4/QuickFIX/n — следующий B6, с тем же физическим
+владельцем и отдельными versioned native report contracts; WS receipt не выдается
+за FIX ExecutionReport. Другие площадки — V3.
 
-Версия B4 не ослаблена: следующая admission принимает только исходную publication
-version или `evidence_after` предыдущей собственной reservation того же
-run/generation/state digest. Любая другая запись журнала ломает цепочку. Locks
-берутся в совместимом с publication порядке: command/intent arbitration, recovery
-head, existing command rows, evidence counter. Ни один из этих locks не является
-physical-send fencing.
+Обязательный путь: `IOmsOrderIntentGateway` → актуальная live B4 qualification →
+policy/native valuation → атомарные command/outbox/reservation → durable attempt →
+повторная проверка policy/controls/evidence → одноразовый physical-write permit →
+owned WS socket → direct receipt/outcome → новая recovery. Caller-supplied risk
+reference, JSON, READY boolean и старый receipt не дают разрешения на отправку.
 
-Повтор той же команды сравнивается по canonical digest; другой payload с тем же
-ID возвращает collision. Команда, ранее записанная без reservation, не становится
-одобренной задним числом. Audit reservation содержит policy/valuation JSON и digest,
-actor DB role, baseline и обе evidence versions. UPDATE/DELETE/TRUNCATE запрещены;
-rollback migration отказывается удалять непустой журнал риска.
+Старый Deribit adapter больше не делает placement/cancel; реальные CLI-entrypoints
+прежних testnet/mainnet/bounded OMS qualification отказывают до чтения stdin,
+ключей и сети. Исторические scripted replay-сценарии остаются только для offline
+совместимости, read-only mainnet-режимы сохранены. Старый terminal оставлен
+read-only, status сообщает tradingEnabled=false, confirm/cancel не вызывают биржу.
+UI/стратегии должны использовать новый gateway, не прямой коннектор. Legacy
+`/api/risk` управляет прежним runtime, а не B5: операторские B5 controls проходят
+через `OmsPostgresRiskControls` и реальную scoped роль БД. Frontend F3 и подключение
+пользовательских каналов не объявляются выполненными этим этапом.
 
-`IOmsRiskInputsReader` — доверенный серверный порт. Пользовательская команда не
-содержит решение риска. Нет production reader/default policy и регистрации sender.
-Порт обязан получить account policy и доказанные instrument rules, цены, FX,
-portfolio/loss/margin bounds из авторитетных источников, связать valuation с
-точным state/command digest. Проверяются eligibility, units, reduce-only,
-notional, position delta, gross portfolio, leverage, margin, concentration, loss,
-pending USD/count. USD в этом контракте — оценка риска, а не переименование
-native quantity; generic RiskSettings и лимит тестового сценария не используются.
-Нет оценки — DENIED. Freshness ограничена пятью секундами, live B4 revision
-проверяется до commit; saved JSON не восстанавливает live capability.
+## Account policy и оценка риска
 
-Остаток B5: production policy/valuation provider и композиция с recovery host,
-settlement с partial-fill dedup, operational wiring автоматических breaker triggers,
-обязательный physical owner для WS/FIX и закрытие
-всех legacy/direct bypass paths. Результат `Reserved` не должен использоваться
-как разрешение на сетевую отправку; отдельная send boundary ещё не реализована.
-Обычные execution switches остаются false. Постоянная БД/роли не мигрируются.
+`oms_account_risk_policies_v1` — append-only, owner-provisioned, scoped revision,
+strict JSON/schema/hash, validity window и разрешённые инструменты. Runtime не
+может выдавать себе policy/permissions, менять node binding или делать migrations.
+Нет policy — нет допуска. Generic RiskSettings и 1 USD тестового сценария не
+используются как production policy.
 
-Полный набор тестов выполняется перед закрытием всего B5. До этого — только
-адресные проверки изменённого поведения и затронутых компонентов.
+`DeribitRiskObservationReader` получает native metadata/ticks, mark/index prices,
+account summaries, hypothetical order margins и полный bounded transaction log
+с 00:00 UTC. Проверяются account pin до/после, currency/units, timestamp, pagination,
+коллизии IDs, capacity и scope. 5-second deadline, до 4 страниц по 1000 log rows на
+валюту; неполнота отвергает оценку, без автоматического расширения лимитов.
 
-## Адресная проверка 2026-11-06
+`DeribitRiskInputsReader` рассчитывает USD notional без умножения USD-native amount
+на USD price. Portfolio и concentration включают абсолютные позиции и remaining
+open orders и абсолютную стоимость cash/underlying collateral; pending не
+неттируется. Для inverse delta используется верхняя граница amount × max(1,index/mark)
+со stress; дополнительная delta входит в portfolio/concentration bounds.
+Reduce-only требует противоположной текущей
+позиции и допустимого размера, а native reduce_only сохраняется при отправке.
+FX stress снижает доступную equity и повышает margin/loss; equity ограничена ещё
+и collateral каждой задействованной segregated currency. Equity берётся не выше
+минимума native equity, margin_balance и used margin + available_funds. Требуются явные FX stress, margin
+multiplier и limit-price deviation policy. Проверяются step/tick/band, eligibility,
+per-order, position delta, portfolio, leverage, margin, concentration, loss и pending
+USD/count. Неподдержанный продукт/режим/units закрывает всю оценку.
 
-Составная проверка текущего изменения: 23 journal cases PASS в первом запуске и
-28 risk cases PASS в последнем (18 limit cases и 10 actual PostgreSQL cases).
-Это 51 различный case, а не полный прогон или закрытие B5.
+Нелинейная margin не оценивается суммой маржи отдельных маленьких заявок.
+`OmsPostgresPendingRiskReader` читает committed незавершённые commands с точными
+hash/units, исключая candidate. Native get_margins получает для каждого инструмента
+полную pending + новую + remaining open quantity по минимальной известной limit
+price. Берётся максимум buy/sell, положительная верхняя комиссия и margin multiplier.
+В reservation сохраняется полный cumulative bound; повторный запас намеренно
+допустим, understating очередной ступени маржи — нет. Повреждённые, неподдержанные
+или превышающие capacity pending rows закрывают оценку целиком.
 
-- `.tradeops/postgres-reuse/20261106T113339-targeted-5851/`: 47 PASS / 1 FAIL
-  из 48; failure — ожидание только `Denied` при истечении пятисекундной freshness
-  во время 12-way concurrency. Лимит не превышен, было два резерва; часть отказов
-  корректно получила `StaleBaseline`. Для проверки самого oversubscription тест
-  использует управляемые часы; production freshness не ослаблена.
-- `.tradeops/postgres-reuse/20261106T113817-targeted-23536/`: 28/28 PASS,
-  0 skipped, exit 0, environment/cleanup PASS. Дополнительно проверено сохранение
-  pending после новой recovery и после ACK/ambiguous outcome. Суммарный счётчик
-  `pg_case_seconds` старого runner не распознаёт новый префикс risk test names;
-  actual DB execution подтверждён TRX и fixture/cleanup, значение 0 не является
-  признаком отсутствия PostgreSQL-проверок.
+Loss v1 — консервативная метрика: сумма отрицательных cashflow и change плюс
+абсолютные комиссии за UTC-день, затем отрицательные текущие session RPL/UPL,
+без profit offsets. Возможен намеренный двойной запас по дебетам/settlement;
+это не equity drawdown и не точный net PnL. Полное дневное прохождение обязательно.
+Session RPL сам по себе не подменяет дневную историю.
 
-В обоих запусках guard до/после OK, peer container diff пуст, disposable test DBs
-и roles отсутствуют после cleanup, retained только owned schema template. В первом
-summary общий `environment_status=FAIL` наследует nonzero status тестов; отдельные
-guard/cleanup файлы проверены. Первоначальный FAIL остаётся в evidence.
-Mainnet, private store и пользовательский launchSettings не изменены.
+Native observations кешируются максимум 5 секунд, по точным command/state/pending-vector hashes;
+cache bounded 128. Approval не кешируется: policy читается и оценка проверяется
+заново перед отправкой. Новый private ingress/gap/epoch немедленно инвалидирует
+live B4 revision, даже пока запись inbox ещё не завершилась.
 
-## Durable controls и аудит admission
+## Durable admission, pending и settlement
 
-Продолжение B5 добавляет отдельные versioned tables/functions v1, не меняя старые
-encodings. `OmsPostgresRiskControls` сохраняет kill switch и circuit breaker как
-два независимых журнала-защёлки. Global применяется ко всем tenant/environment;
-venue — к конкретным tenant/venue/environment; account дополнительно включает
-account/subaccount. Новая recovery или создание нового экземпляра сервиса не
-сбрасывают остановку. Снятие одного вида блокировки не снимает другой.
-Все уровни относятся к одной authoritative risk БД. Данные global control не
-федерируются между разными БД; будущая host-композиция обязана использовать один
-и тот же authority store для всех обслуживаемых scopes. Эта реализация не
-заявляет глобальную остановку процессов, подключённых к другим хранилищам.
+Account head → command rows → evidence counter сериализуют journal transition.
+Транзакция включает CAS агрегата, intent/command/outbox, reservation, control stamp
+и success audit. Следующая admission принимает только publication evidence version
+или собственный `evidence_after` того же run/generation/state; сторонняя запись
+требует новой B4 сверки. B4 gate не ослаблен ради собственных записей.
 
-Изменение требует exact scoped permission и настоящей роли БД. Реестр прав
-настраивает только владелец БД; host не выдаёт прав и не выполняет migrations.
-Возможны раздельные activate-only и clear permissions. При retry сравнивается
-decision ID, предыдущая revision, действие, reason и actual actor; другой payload
-не становится новым решением. Снятие по старой revision отвергается CAS.
-Audit events нельзя UPDATE/DELETE/TRUNCATE. Migration Down отказывается удалять
-непустые журналы и настройки прав.
+Reservation idempotent по command ID/canonical digest. Restart/unknown outcome не
+обнуляют pending. Partial fill сохраняет полный консервативный резерв; позиции
+берутся один раз из account model, executions повторно к ним не прибавляются.
+`oms_risk_settlements_v1` исключает резерв только по текущей coherent B4 publication:
+точный original placement receipt, owned native identity, terminal report и
+полная сумма deduplicated fills. Отсутствие open order или cancel ACK недостаточно.
+Terminal settlement уникален для команды, immutable и привязан к published state.
+Неизвестные/неотправленные без доказанного terminal исхода резервы не освобождаются
+по таймеру, рестарту или желанию нового sender.
 
-Admission берёт shared transaction locks global → venue → account до journal
-locks. Control writer берёт exclusive lock одного scope. Writer ждёт завершения
-уже выполняющейся admission; после успешного commit остановки новая admission
-возвращает `ControlBlocked`, не создавая команду/резерв. Это граница **резервирования**,
-не доказательство остановки физического sender или отмены ранее созданных заявок.
+Адресная cancel admission проверяет текущую account policy, parent reservation,
+placement receipt, open native order и полное совпадение aggregate/intent/terms.
+Она не создаёт новую exposure reservation и не уменьшает исходную. Foreign orders,
+замена target/amount и отсутствие policy отклоняются. `Reserved` здесь означает
+принятую durable admission с нулевым новым риском, не освобождение parent risk.
+После cancel ACK по-прежнему нужны recovery и отдельные fills.
 
-В той же admission-транзакции сохраняется immutable sidecar со всеми шестью
-control revisions. Любая смена revision, включая цикл activate → clear, делает
-старый stamp неактуальным. Старые reservations без sidecar не получают stamp
-при migration. `IsReservationControlCurrentAsync` проверяет только эту часть
-состояния, никогда не является send permission и не заменяет live B4/owner gate.
+## Kill switch, circuit breakers и аудит
 
-Каждый возвращаемый результат валидной admission-заявки теперь имеет immutable
-audit row: scope, exact command hash, результат, baseline run/state hash, actual DB
-actor и timestamp. Success audit входит в транзакцию команды/резерва/stamp.
-При отказе сначала откатываются tentative CAS/command writes, затем отдельно
-фиксируется denial. Если аудит недоступен, операция завершится ошибкой, без
-возврата одобрения и без молчаливого исчезновения отказа. Некорректные DTO и
-исключения до получения классифицированного результата не выдаются за admission.
+Независимые KillSwitch/CircuitBreaker latches: global, tenant/venue/environment,
+account/subaccount. Global действует в одной authoritative risk БД, не федерация
+между разными БД. Каждый writer использует actual database role membership,
+exact scoped permission, CAS revision, idempotent decision ID и immutable audit.
+Activate-only runtime не имеет права clear. Любой change, включая activate→clear,
+инвалидирует старый control stamp. Старые reservations без stamp не получают
+полномочий при migration.
 
-Политика stop v1: **block new risk, retain pending, no automatic cancel/flatten**.
-Нет cancel-all, RPC побочных эффектов, освобождения резерва по ACK или прямого
-operator override B4/risk blockers. Cancel/flatten требует отдельного безопасного
-потока и recovery неизвестных исходов. Runtime/provider ещё не подключены;
-автоматические triggers и физическая остановка sender остаются в B5.
+Все admissions берут shared locks global→venue→account; control writers и policy
+changes берут соответствующий exclusive lock. Durable loss/existing-margin breach
+активирует account circuit после rollback отказанной admission. Capture disconnect,
+gap или смена epoch после READY активируют latched account circuit в host.
+Ошибка сохранения обязательного circuit/audit закрывает выполнение, не даёт approval.
 
-Адресная проверка продолжения, 2026-11-06:
+Stop policy: block new increasing-risk admissions/dispatch starts, retain pending,
+разрешить только явно запрошенную и доказанную addressed cancellation через тот же
+owner/gate. Никаких автоматических cancel-all или flatten. Уже committed started
+attempt считается in-flight/possibly-sent и может завершиться при гонке остановки;
+kill ACK не означает отсутствие ордеров/fills. Native facts/recovery определяют исход.
+Clear не снимает B4 hard blockers и не возрождает старые permits.
 
-- `.tradeops/postgres-reuse/20261106T115905-targeted-13881/`: **47/47 PASS**,
-  0 skipped, exit 0. 19 новых PostgreSQL control/audit/race cases и 28 затронутых
-  admission/limit cases. Обе очередности commit race проверены через настоящий
-  PostgreSQL advisory wait, без подмены транзакций моками.
-- `.tradeops/postgres-reuse/20261106T120248-targeted-27318/`: **2/2 PASS**,
-  0 skipped, exit 0. Actual migration downgrade/upgrade сохраняет прежнюю
-  reservation без выдуманного control stamp; downgrade после audit отказывается
-  уничтожать историю. Использован `FreshMigrations`, а не только template clone.
+Каждый возвращаемый risk result аудируется. Tentative CAS откатывается перед
+отдельным immutable denial; success audit коммитится с reservation. Gateway denial
+без live baseline помечается zero run/hash sentinel и StaleBaseline, никогда approval.
+Unknown send сохраняет started/ambiguous outcome и pending, без resend.
 
-TRX проверены независимо от stdout. Нормализованные source hashes совпали с
-manifest обоих запусков, новые исходники были staged до capture manifest.
-Guard до/после, environment/cleanup и peer container diff PASS. Полный набор не
-запускался. Это 49 адресных cases продолжения B5, а не закрытие всего этапа.
+## Физическое владение
+
+Поддержан один provisioned Windows/Linux узел на venue/environment. Immutable
+`oms_execution_bindings_v2` связывает OS machine identity, канонический local lock
+root и фактические OS identities directory + открытого lock-file object. Windows
+использует volume/file ID на local fixed drive; Linux — device/inode на local
+ext4/XFS/Btrfs/tmpfs. Network, overlay/9p и неизвестные filesystems отклоняются.
+Same textual path в другом namespace, replacement root и unlink/recreate lock
+не создают второго владельца. V1 metadata сохранена, но больше не даёт полномочий
+и не обновляется автоматически. Other node/root, symlink/reparse root, expiring lease takeover и automatic
+cross-host failover запрещены. Уникальность OS identity и непереносимость deployment
+на клон — операционные предпосылки этого режима; cloned identities и multi-host
+deployment не квалифицированы.
+
+`OmsSingleHostPhysicalFence` держит OS-exclusive FileStream handle всю жизнь owner.
+Он намеренно грубее account scope: один процесс на venue/environment, поэтому
+разные credentials/tenant aliases одного native account не дают второго sender.
+Process pause/потеря SQL connection не освобождают этот handle. Отзыв сначала
+инвалидирует permits и abort-ит transport, затем дожидается операции/transport,
+и только потом освобождает handle. Crash освобождает OS handle вместе с процессом.
+Lock file не удаляется при передаче, чтобы новый процесс блокировал тот же inode.
+Runtime открывает только существующий пустой pinned file. Явный operator helper
+`OmsExecutionNodeProvisioning.Prepare(root, scope)` подготавливает локальный файл и
+возвращает descriptor v2; он не пишет binding в БД, не выдаёт права и не запускает
+торговлю. Provisioning DB policy/roles/binding остаётся отдельным действием владельца.
+
+Каждый socket write потребляет одноразовый непублично создаваемый permit точной
+команды. Последняя проверка live revision и вызов фактического socket Send находятся
+под одним ingress barrier. После смены owner старый permit не может начать write.
+SQL locks/metadata сами по себе не объявляются fencing. Shared kill/head locks
+защищают пред-send переход; evidence counter остаётся locked через socket write,
+так что посторонняя journal mutation не коммитится между финальной проверкой и
+отправкой. OS handle защищает физическую передачу владения. Queued work
+bounded 128; reconnect/resend и автоматический takeover отсутствуют.
+
+## Host и совместимость
+
+`Worker:Mode=DeribitOmsExecution` + explicit `DeribitOms:Enabled=true`, provisioned
+LockRoot, отдельные capture/recovery/execution DB identities в одной БД, актуальная
+account policy и node binding. Оба ordinary execution switches остаются false.
+Default mode не регистрирует этот sender. Только host после restricted-role checks
+открывает pinned WS session; fail-stop после uncertain send, без automatic restart.
+
+Journal v1, private event v2, receipt v1 и recovery v1 encodings сохранены.
+Новые append-only risk/control/policy/settlement/cancel tables versioned v1.
+`oms_execution_bindings_v2` усиливает физическую привязку без изменения v1 данных.
+`oms_execution_dispatches_v2` расширяет admission kinds на Place/Cancel, сохраняя
+предыдущий `oms_risk_dispatches_v1` для совместимости; старые строки не дают resend.
+Migration rollback отказывается уничтожать аудит. Authority нельзя восстановить
+десериализацией. Коннектор зависит от Application/Domain, не от Npgsql/Infrastructure.
+
+Постоянная mainnet БД/роли/ключи/позиции не менялись, реальных placement/cancel не было,
+старый consumed marker не сбрасывался. Отдельная live activation/qualification
+остаётся за владельцем по сохранённой mainnet policy.
+
+Источники native semantics: [instrument rules](https://docs.deribit.com/api-reference/market-data/public-get_instrument),
+[hypothetical margins](https://docs.deribit.com/api-reference/trading/private-get_margins),
+[transaction log](https://docs.deribit.com/api-reference/account-management/private-get_transaction_log),
+[transaction-log cashflow semantics](https://support.deribit.com/hc/en-us/articles/25944587269021-Transaction-log).

@@ -10,6 +10,14 @@ using TradeOps.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+if(DeribitOmsExecutionStartup.TryConfigure(builder))
+{
+    using var omsHost=builder.Build(); var omsWorker=omsHost.Services.GetRequiredService<DeribitOmsExecutionWorker>();
+    await omsHost.RunAsync();
+    if(omsWorker.ExecuteTask?.IsFaulted==true) Environment.ExitCode=1;
+    return;
+}
+
 if (DeribitRecoveryStartup.TryConfigure(builder))
 {
     using var recoveryHost = builder.Build();

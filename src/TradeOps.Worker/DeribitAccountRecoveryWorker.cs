@@ -8,15 +8,17 @@ namespace TradeOps.Worker;
 /// A saved baseline never re-enables itself after process restart or a capture gap.</summary>
 public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources, IDeribitRecoveryBindingSource bindings,
     DeribitRecoveryHostOptions options, DeribitPrivateWebSocketStream stream, IHttpClientFactory httpFactory,
-    ILogger<DeribitAccountRecoveryWorker> logger) : BackgroundService
+    ILogger<DeribitAccountRecoveryWorker> logger) : BackgroundService, IOmsExecutionRecoverySource
 {
+    private OmsLiveExecutionBaseline? executionBaseline;
+    public OmsLiveExecutionBaseline? Current { get { var value=Volatile.Read(ref executionBaseline); return value?.Qualified.IsCurrent==true ? value : null; } }
     private OmsRuntimeRecoveryGate? runtime;
     private OmsPrivateCaptureCoordinator? coordinator;
     private DeribitRecoveryCoherenceAssessment? lastAssessment;
     private int requested;
     public OmsPrivateStreamStatus? CaptureStatus => Volatile.Read(ref coordinator)?.Status;
     public DeribitRecoveryCoherenceAssessment? LastAssessment => Volatile.Read(ref lastAssessment);
-    public void RequestRecovery() => Interlocked.Exchange(ref requested, 1);
+    public void RequestRecovery() { Volatile.Write(ref executionBaseline,null); Interlocked.Exchange(ref requested, 1); }
 
     public async Task<OmsRecoveredAccountStateV1?> ReadCurrentAsync(CancellationToken ct = default)
     {
@@ -49,12 +51,12 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
                 if (current is not null && (status?.Epoch != current.Start.Epoch || status.Phase != OmsPrivateStreamPhase.Recovering ||
                     status.Problem != OmsPrivateStreamProblem.AwaitingReconciliation))
                 {
-                    Volatile.Write(ref runtime, null); await store.StopAsync(current, OmsRecoveryStopReason.ConnectionLost, stoppingToken); current = null;
+                    Volatile.Write(ref runtime, null); Volatile.Write(ref executionBaseline,null); await store.StopAsync(current, OmsRecoveryStopReason.ConnectionLost, stoppingToken); current = null;
                 }
                 if (status?.Phase == OmsPrivateStreamPhase.Recovering && status.Problem == OmsPrivateStreamProblem.AwaitingReconciliation &&
                     (status.Epoch != attempted | Interlocked.Exchange(ref requested, 0) != 0))
                 {
-                    attempted = status.Epoch; Volatile.Write(ref runtime, null); Volatile.Write(ref lastAssessment, null);
+                    attempted = status.Epoch; Volatile.Write(ref runtime, null); Volatile.Write(ref executionBaseline,null); Volatile.Write(ref lastAssessment, null);
                     if (DateTimeOffset.UtcNow-metadataAt >= TimeSpan.FromMinutes(4))
                     {
                         var refreshed = await bindings.ReadAsync(stoppingToken);
@@ -73,6 +75,7 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
                     var head = await store.ReadHeadAsync(binding.Scope, stoppingToken);
                     if (head?.Token.Start.RunId != outcome.Document.Start.RunId) throw new InvalidOperationException("Recovery ownership changed.");
                     current = head.Token; Volatile.Write(ref runtime, outcome.RuntimeGate);
+                    Volatile.Write(ref executionBaseline,outcome.ExecutionBaseline);
                     Volatile.Write(ref lastAssessment, outcome.Coherence);
                     logger.LogInformation("Deribit recovery completed; qualified baseline available: {Qualified}; blocking reasons: {Count}.",
                         outcome.RuntimeGate is not null, outcome.Coherence.Problems.Count);
@@ -97,7 +100,7 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
         catch { throw new InvalidOperationException("Deribit account recovery stopped; no current recovered baseline is available."); }
         finally
         {
-            Volatile.Write(ref runtime, null); stopCapture.Cancel();
+            Volatile.Write(ref runtime, null); Volatile.Write(ref executionBaseline,null); stopCapture.Cancel();
             if (capturing is not null) { try { await capturing; } catch when (!capturing.IsCompletedSuccessfully) { } }
             if (current is not null)
             {

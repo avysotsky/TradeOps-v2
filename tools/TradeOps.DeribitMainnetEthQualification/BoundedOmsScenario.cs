@@ -44,30 +44,12 @@ internal static class BoundedOmsScenario
         decimal MinimumDistanceFraction = 0.10m, bool PostOnly = true, bool AutomaticFlatten = false,
         bool AccountReady = false, bool TradingReady = false, bool DurableProjectionPublished = false);
 
-    internal static async Task<int> RunFromStdinAsync(CancellationToken ct)
+    // Historical replay code below remains testable with scripted transports. Native trading entry is retired.
+    internal static Task<int> RunFromStdinAsync(CancellationToken ct)
     {
-        Input? input = null; using var bytes = new MemoryStream(); var chunk = new byte[4096];
-        try
-        {
-            int n; var stdin = Console.OpenStandardInput();
-            while ((n = await stdin.ReadAsync(chunk, ct)) != 0)
-            { if (bytes.Length + n > 16384) throw new InvalidOperationException(); bytes.Write(chunk, 0, n); }
-            input = JsonSerializer.Deserialize<Input>(bytes.GetBuffer().AsSpan(0, (int)bytes.Length), new JsonSerializerOptions {
-                MaxDepth = 8, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow }) ?? throw new InvalidOperationException();
-            var directory = System.Environment.GetEnvironmentVariable("TRADEOPS_BOUNDED_OMS_DIRECTORY") ?? throw new InvalidOperationException();
-            using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseDefaultCredentials = false };
-            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
-            var result = await RunAsync(input, http, directory, ct);
-            Console.WriteLine(JsonSerializer.Serialize(result));
-            return result.Status is "OMS_SCENARIO_PASS" or "OMS_SCENARIO_SKIPPED" ? 0 : 1;
-        }
-        catch
-        {
-            Console.WriteLine(JsonSerializer.Serialize(Empty("OMS_SCENARIO_REFUSED", "Input")));
-            return 1;
-        }
-        finally
-        { if (input is not null) { input.ClientId = ""; input.ClientSecret = ""; } CryptographicOperations.ZeroMemory(chunk); CryptographicOperations.ZeroMemory(bytes.GetBuffer()); }
+        ct.ThrowIfCancellationRequested();
+        Console.WriteLine(JsonSerializer.Serialize(Empty("OMS_SCENARIO_REFUSED", "Admission")));
+        return Task.FromResult(1);
     }
 
     internal static async Task<Diagnostics> RunAsync(Input input, HttpClient http, string directory, CancellationToken ct,

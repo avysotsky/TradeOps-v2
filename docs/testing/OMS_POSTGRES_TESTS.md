@@ -1,5 +1,13 @@
 # Isolated reusable OMS PostgreSQL 17 acceptance
 
+Owner decision, 2026-11-06: B5 follows the same whole-stage rule. Run only directly
+affected tests during implementation; after all B5 implementation is complete use
+`-Suite b5-final -ExpectedTests <executed-count>` once. This alias runs the complete
+assembly, enables the isolated legacy PostgreSQL backend, and runs both diagnostic
+validators. It never activates the opt-in execution host or a live trading scenario.
+The `pg_case_seconds` field is a historical named subset, not total PostgreSQL time;
+use actual TRX cases and cleanup/guard evidence to assess coverage.
+
 Owner decision, 2026-11-05: during B4 development, run only affected behavior.
 The complete acceptance is reserved for completion of the whole B4 stage. The older
 suite commands below describe historical scopes, not a sequence to rerun after edits.

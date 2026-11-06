@@ -27,7 +27,7 @@ public interface IOmsRiskInputsReader
 public enum OmsRiskAdmissionResult { Reserved = 1, Duplicate, Collision, Denied, StaleBaseline, StaleOrderVersion, ControlBlocked }
 
 /// <summary>Conservative pending upper bounds: never net opposite orders and never release on ACK.
-/// A future proven settlement path may retire reservations; v1 intentionally retains all of them.</summary>
+/// Only current, receipt-bound, complete terminal recovery may retire a reservation.</summary>
 public static class OmsRiskLimitsV1
 {
     public static bool Allows(OmsJournalCommandRequest command, string stateSha, OmsRiskInputsV1 inputs,

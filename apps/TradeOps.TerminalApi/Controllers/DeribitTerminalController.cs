@@ -10,10 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace TradeOps.Api.Controllers;
 
 /// <summary>
-/// Local, manually operated Deribit terminal. Unlike the background trading
-/// engine, this controller has no exchange/DB DI registration and no jobs.
-/// Secret-bearing requests are sent only to the fixed exchange HTTPS origin.
-/// Every mutation requires a server-issued single-use preview ID.
+/// Local read-only Deribit terminal. Legacy previews cannot grant order authority;
+/// physical execution belongs exclusively to the account-scoped B5 OMS host.
 /// </summary>
 [ApiController]
 [Route("api/deribit-terminal")]
@@ -88,7 +86,7 @@ public sealed class DeribitTerminalController(
             environment = EnvironmentName,
             exchange = "Deribit",
             credentialsConfigured = CredentialsPresent,
-            tradingEnabled = TradingEnabled,
+            tradingEnabled = false,
             maxContracts = MaxContracts,
             instruments = AllowedInstruments,
             localOnly = true
@@ -256,43 +254,8 @@ public sealed class DeribitTerminalController(
         if (DateTimeOffset.UtcNow >= intent.ExpiresUtc || intent.Environment != EnvironmentName)
             return Conflict(new { error = "Expired or mismatched preview." });
 
-        var label = "tradeops-ui-" + intent.Id.ToString("N");
-        try
-        {
-            var result = await GetExchangeAsync(intent.Side == "buy" ? "private/buy" : "private/sell",
-            [
-                new("instrument_name", intent.Instrument),
-                new("contracts", intent.Contracts.ToString(CultureInfo.InvariantCulture)),
-                new("type", "limit"),
-                new("price", intent.Price.ToString(CultureInfo.InvariantCulture)),
-                new("post_only", "true"),
-                new("reject_post_only", "true"),
-                new("label", label)
-            ], true, ct);
-
-            if (!result.TryGetProperty("order", out var order) || order.ValueKind != JsonValueKind.Object)
-                throw new InvalidOperationException("Order response missing order.");
-
-            return Ok(new
-            {
-                environment = intent.Environment,
-                label,
-                orderId = Str(order, "order_id"),
-                state = Str(order, "order_state"),
-                price = Num(order, "price"),
-                amount = Num(order, "amount")
-            });
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            // Broker may have accepted the order even if HTTP response was lost.
-            // Never automatically resubmit. Reconcile using returned label.
-            return StatusCode(503, new
-            {
-                error = "Order outcome unknown or rejected. Check Deribit by label before any new order.",
-                label
-            });
-        }
+        await Task.CompletedTask;
+        return Conflict(new { error = "Direct execution is disabled. Use the account-scoped OMS gateway." });
     }
 
     public sealed record CancelRequest(string OrderId, string Confirmation);
@@ -306,27 +269,15 @@ public sealed class DeribitTerminalController(
             || request.OrderId.Length > 128 || request.OrderId.Any(char.IsControl)
             || request.Confirmation != "CANCEL " + request.OrderId)
             return BadRequest(new { error = "Exact order ID confirmation required." });
-        try
-        {
-            // Exact per-order cancellation only; no bulk cancel supported.
-            var result = await GetExchangeAsync("private/cancel",
-                [new("order_id", request.OrderId)], true, ct);
-            return Ok(new
-            {
-                orderId = Str(result, "order_id"),
-                state = Str(result, "order_state"),
-                environment = EnvironmentName
-            });
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            return StatusCode(503, new { error = "Cancellation outcome uncertain. Refresh open orders." });
-        }
+        await Task.CompletedTask;
+        return Conflict(new { error = "Direct cancellation is disabled. Use the account-scoped OMS gateway." });
     }
 
     private async Task<JsonElement> GetExchangeAsync(string method,
         IEnumerable<KeyValuePair<string, string>> parameters, bool authenticated, CancellationToken ct)
     {
+        if (method is not ("public/get_instrument" or "public/ticker" or "private/get_account_summary" or "private/get_positions" or "private/get_open_orders"))
+            throw new InvalidOperationException("Read-only terminal RPC required.");
         if (authenticated && !CredentialsPresent)
             throw new InvalidOperationException("Missing Deribit credentials.");
 

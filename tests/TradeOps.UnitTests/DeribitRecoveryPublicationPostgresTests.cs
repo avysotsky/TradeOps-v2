@@ -311,6 +311,7 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         internal string Mode = ""; private int inventoryCalls;
         internal OmsPrivateVenueFacts? NativeReport;
         internal bool LateFill, FullFill, DuplicateFill;
+        internal decimal Cash,Equity;
         internal DateTimeOffset? FromOverride;
         internal static async Task<Live> Open(OmsPostgresTestDatabase db, TimeProvider? clock = null)
         {
@@ -328,7 +329,7 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
                 FromUtc = FromOverride ?? Now.AddMinutes(Mode == "long-outage" ? -40 : -5),
                 ThroughUtc = FromOverride ?? Now.AddSeconds(-1) } };
             var account = new DeribitRecoveryAccountAssessmentTests.Accounts(clock) { Transform = x => x with { Positions = [],
-                Balance = x.Balance! with { CashBalance = 0, Equity = 0, CrossCollateralEnabled = false, PortfolioMarginingEnabled = false } } };
+                Balance = x.Balance! with { CashBalance = Cash, Equity = Equity, CrossCollateralEnabled = false, PortfolioMarginingEnabled = false } } };
             IOmsRecoveryLedgerReader journal = new OmsPostgresRecoveryLedgerReader(db.Source, true);
             if (clock is not null) journal = new ClockedLedger(journal, clock);
             var engine = new DeribitRecoveryRunEngine(Store, journal, this, this,
@@ -350,8 +351,8 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         {
             var at = Now; inventoryCalls++; if (Mode == "pre-window") at = at.AddSeconds(-1);
             return Task.FromResult(new DeribitAccountInventoryResult(q.Scope, q.Epoch, at, at, q.MaximumObservationSpan,
-                new[] { "ETH", "BTC" }.Select(x => new DeribitCurrencyBalance(x, Mode == "cash" && inventoryCalls > 1 ? 1 : 0,
-                    0, false, false, new(at, at))).ToArray(),
+                new[] { "ETH", "BTC" }.Select(x => new DeribitCurrencyBalance(x, (x=="ETH"?Cash:0)+(Mode == "cash" && inventoryCalls > 1 ? 1 : 0),
+                    x=="ETH"?Equity:0, false, false, new(at, at))).ToArray(),
                 Mode == "unmapped" ? [new("UNKNOWN", "future", "buy", 1)] : [],
                 NativeReport is { OrderState: "open" } open ? [new(open.NativeInstrument, open.ExchangeOrderId, "open", "limit", new string('A', 64))] : [], []));
         }
