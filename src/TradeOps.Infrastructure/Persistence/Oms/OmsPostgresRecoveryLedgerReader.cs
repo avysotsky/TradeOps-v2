@@ -170,6 +170,16 @@ WHERE {ScopeWhere} ORDER BY c.command_id LIMIT @limit
         catch (LedgerFailure failure) { problems.Add(failure.Problem); commands.Clear(); receipts.Clear(); }
         catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or OverflowException or KeyNotFoundException)
         { problems.Add(OmsRecoveryLedgerProblem.InvalidRecord); commands.Clear(); receipts.Clear(); }
+        List<DeribitFixCommandBindingV1>? fixBindings=null; List<DeribitFixReportEnvelopeV1>? fixReports=null;
+        try
+        {
+            var native=await OmsPostgresFixCommandEvidenceV1.ReadAsync(db,tx,scope,maximumRows,readAt,cancellationToken);
+            fixBindings=native.Bindings.Count==0?null:native.Bindings;fixReports=native.Reports.Count==0?null:native.Reports;
+            _=DeribitNativeCommandEvidenceV1.Read(new(retained,commands,problems.ToArray(),receipts,FixBindings:fixBindings,FixReports:fixReports));
+        }
+        catch(ArgumentOutOfRangeException){problems.Add(OmsRecoveryLedgerProblem.CapacityExceeded);}
+        catch(Exception error) when(error is ArgumentException or InvalidOperationException or JsonException or OverflowException)
+        {problems.Add(OmsRecoveryLedgerProblem.InvalidRecord);}
         long? evidenceVersion = null;
         var reviews = new List<OmsRecoveryExternalOrderReview>();
         OmsRetainedRecoveryArchiveV1? archive = null;
@@ -205,7 +215,7 @@ ORDER BY c.currency,c.native_order_id,c.evidence_version DESC LIMIT @limit
         }
         await tx.CommitAsync(cancellationToken);
         return new(retained, commands.AsReadOnly(), problems.Order().ToArray(), receipts.AsReadOnly(), evidenceVersion,
-            includeEvidenceVersion ? reviews.AsReadOnly() : null, archive);
+            includeEvidenceVersion ? reviews.AsReadOnly() : null, archive,fixBindings,fixReports);
 
         void Bind(NpgsqlCommand command)
         {

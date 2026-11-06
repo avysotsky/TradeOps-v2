@@ -267,7 +267,7 @@ GRANT INSERT ON oms_deribit_command_receipts_v1 TO "{role}";
 CREATE ROLE "{role}" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '{password}';
 COMMENT ON ROLE "{role}" IS 'tradeops-tests:role:v1:{db.Name}';
 GRANT CONNECT ON DATABASE "{db.Name}" TO "{role}"; GRANT USAGE ON SCHEMA public TO "{role}";
-GRANT SELECT ON oms_commands,oms_attempts,oms_outbox,oms_intents,oms_aggregates,
+GRANT SELECT ON oms_deribit_fix_command_bindings_v1,oms_deribit_fix_native_events_v1,oms_deribit_fix_reports_v1,oms_deribit_fix_report_incidents_v1,oms_commands,oms_attempts,oms_outbox,oms_intents,oms_aggregates,
  oms_inbox,oms_private_capture_observations,oms_integrity_incidents,oms_deribit_command_receipts_v1 TO "{role}";
 ALTER TABLE oms_deribit_command_receipts_v1 ENABLE ROW LEVEL SECURITY;
 CREATE POLICY fixture_read ON oms_deribit_command_receipts_v1 FOR SELECT TO "{role}" USING

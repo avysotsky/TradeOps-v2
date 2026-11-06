@@ -1,19 +1,24 @@
 using Npgsql;
 using TradeOps.Application.Oms;
 using TradeOps.Connectors.Deribit;
+using TradeOps.Connectors.Deribit.Fix;
 using TradeOps.Infrastructure.Persistence.Oms;
 
 namespace TradeOps.Worker;
 
 public sealed record DeribitOmsExecutionOptions(string LockRoot);
+public sealed record DeribitOmsFixHostOptions(OmsFixSessionKeyV1 Session);
+public sealed class DeribitOmsFixProtocolSource(NpgsqlDataSource source):IDisposable
+{public NpgsqlDataSource Source {get;}=source;public void Dispose()=>Source.Dispose();}
 public sealed class DeribitOmsExecutionSource(NpgsqlDataSource source):IDisposable
 { public NpgsqlDataSource Source { get; }=source; public void Dispose()=>Source.Dispose(); }
 public static class DeribitOmsExecutionStartup
 {
     public const string Mode="DeribitOmsExecution";
+    public const string FixMode="DeribitOmsFixExecution";
     public static bool TryConfigure(HostApplicationBuilder builder)
     {
-        if(builder.Configuration["Worker:Mode"]!=Mode) return false;
+        if(builder.Configuration["Worker:Mode"] is not(Mode or FixMode)) return false;
         if(!builder.Configuration.GetValue<bool>("DeribitOms:Enabled")) throw new InvalidOperationException("Explicit Deribit OMS activation required.");
         var root=builder.Configuration["DeribitOms:LockRoot"];
         if(string.IsNullOrWhiteSpace(root)||!Path.IsPathFullyQualified(root)||!Directory.Exists(root)) throw new InvalidOperationException("Provisioned physical owner root required.");
@@ -33,6 +38,27 @@ public static class DeribitOmsExecutionStartup
         }
         catch(Exception error) when(error is ArgumentException or InvalidOperationException)
         {throw new InvalidOperationException("Invalid execution database identity or authority binding; startup refused.");}
+        if(builder.Configuration["Worker:Mode"]==FixMode)
+        {
+            try
+            {
+            if(!builder.Configuration.GetValue<bool>("DeribitFix:Enabled"))throw new InvalidOperationException("Explicit FIX opt-in required.");
+            var pin=DeribitCaptureStartup.ReadBinding(builder.Configuration);
+            var key=new OmsFixSessionKeyV1(1,pin.Scope,builder.Configuration["DeribitFix:SenderCompId"]??"","DERIBITSERVER");key.Validate();
+            var protocol=new NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("TradeOpsFixDb")??throw new InvalidOperationException("Separate FIX protocol identity required."))
+            {Pooling=true,MinPoolSize=0,MaxPoolSize=8,Multiplexing=false,SearchPath="public",IncludeErrorDetail=false,LogParameters=false,Timeout=10,CommandTimeout=15};
+            foreach(var name in new[]{"TradeOpsCaptureDb","TradeOpsRecoveryDb","TradeOpsExecutionDb"})
+            {
+                var other=new NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString(name));
+                if(protocol.Host!=other.Host||protocol.Port!=other.Port||protocol.Database!=other.Database||protocol.Username==other.Username||string.IsNullOrWhiteSpace(protocol.Username))
+                    throw new InvalidOperationException("FIX needs a separate restricted identity in the authoritative OMS database.");
+            }
+            builder.Services.AddSingleton(new DeribitOmsFixHostOptions(key));
+            builder.Services.AddSingleton(_=>new DeribitOmsFixProtocolSource(NpgsqlDataSource.Create(protocol.ConnectionString)));
+            }
+            catch(Exception error) when(error is ArgumentException or InvalidOperationException or FormatException)
+            {throw new InvalidOperationException("Invalid FIX activation, session or database identity; startup refused.");}
+        }
         builder.Services.AddSingleton(new DeribitOmsExecutionOptions(root));
         builder.Services.AddSingleton(_=>new DeribitOmsExecutionSource(NpgsqlDataSource.Create(execution.ConnectionString)));
         builder.Services.AddSingleton<IOmsExecutionRecoverySource>(sp=>sp.GetRequiredService<DeribitAccountRecoveryWorker>());
@@ -45,7 +71,7 @@ public static class DeribitOmsExecutionStartup
 
 public sealed class DeribitOmsExecutionWorker(DeribitOmsExecutionSource store,IDeribitRecoveryBindingSource bindings,
     IOmsExecutionRecoverySource recovery,IHttpClientFactory http,DeribitOmsExecutionOptions options,
-    IHostApplicationLifetime lifetime,DeribitAccountRecoveryWorker accountRecovery):BackgroundService,IOmsOrderIntentGateway
+    IHostApplicationLifetime lifetime,DeribitAccountRecoveryWorker accountRecovery,IServiceProvider services):BackgroundService,IOmsOrderIntentGateway
 {
     private OmsPostgresExecutionGateway? gateway;
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -67,12 +93,28 @@ public sealed class DeribitOmsExecutionWorker(DeribitOmsExecutionSource store,ID
             using var client=http.CreateClient("DeribitAccountRecovery");
             var pending=new OmsPostgresPendingRiskReader(store.Source);
             var risk=new DeribitRiskInputsReader(policies,new DeribitRiskObservationReader(binding,client,pendingRisk:pending),pendingRisk:pending);
-            owned=await OmsPostgresExecutionGateway.OpenAsync(binding.Scope,store.Source,recovery,risk,options.LockRoot,
-                async token=>await DeribitOmsWebSocketTransport.OpenAsync(binding,token),cancelPolicies:policies,ct:ct);
+            DeribitOmsFixTransportV1? fixTransport=null;
+            var fixOptions=services.GetService<DeribitOmsFixHostOptions>();
+            if(fixOptions is not null)
+            {
+                var protocol=services.GetRequiredService<DeribitOmsFixProtocolSource>();
+                await OmsPostgresFixRuntimeGuardV1.ValidateAsync(protocol.Source,ct);
+                while(accountRecovery.NativeCapture is null)await Task.Delay(25,ct);
+                var capture=accountRecovery.NativeCapture!.Value;
+                var sessionStore=new OmsPostgresFixSessionStoreV1(protocol.Source,fixOptions.Session);
+                owned=await OmsPostgresExecutionGateway.OpenAsync(binding.Scope,store.Source,recovery,risk,options.LockRoot,
+                    async(authority,token)=>fixTransport=await DeribitOmsFixTransportV1.OpenAsync(binding,new(fixOptions.Session),sessionStore,
+                        new OmsPostgresDeribitFixReportJournalV1(protocol.Source,fixOptions.Session),authority,capture.Coordinator,capture.Session,client,
+                        (command,t)=>OmsPostgresFixParentReaderV1.ReadAsync(store.Source,command,t),recovery.RequestRecovery,token),cancelPolicies:policies,ct:ct);
+            }
+            else
+                owned=await OmsPostgresExecutionGateway.OpenAsync(binding.Scope,store.Source,recovery,risk,options.LockRoot,
+                    async token=>await DeribitOmsWebSocketTransport.OpenAsync(binding,token),cancelPolicies:policies,ct:ct);
             Volatile.Write(ref gateway,owned);
             var seen=Guid.Empty;
             while(!ct.IsCancellationRequested)
             {
+                if(fixTransport is not null&&!fixTransport.IsRunning)throw new InvalidOperationException("FIX supervision ended; sender stopped.");
                 var live=recovery.Current;
                 var status=accountRecovery.CaptureStatus;
                 if(seen!=Guid.Empty && (status is null || status.Epoch!=seen || status.Phase!=OmsPrivateStreamPhase.Recovering ||

@@ -5,6 +5,8 @@ namespace TradeOps.Application.Oms;
 public static class OmsRiskSettlementV1
 {
     public static bool CanRetire(OmsRecoveredAccountStateV1 baseline, DeribitJsonRpcCommandReceipt placement)
+    {try{return CanRetire(baseline,DeribitNativeCommandView.FromWs(placement));}catch(ArgumentException){return false;}}
+    public static bool CanRetire(OmsRecoveredAccountStateV1 baseline, DeribitNativeCommandView placement)
     {
         try
         {

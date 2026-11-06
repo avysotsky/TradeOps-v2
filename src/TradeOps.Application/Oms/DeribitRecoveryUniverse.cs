@@ -47,7 +47,7 @@ public static class DeribitRecoveryUniverseBuilder
         {
             foreach (var command in ledger.Commands) command.Validate(scope);
             if (ledger.Commands.Select(x => x.Request.CommandId).Distinct().Count() != ledger.Commands.Count) throw new ArgumentException();
-            DeribitCommandReceiptSet.Validate(scope, ledger.Commands, ledger.Receipts, ledger.Private.ReadAtUtc);
+            _ = DeribitNativeCommandEvidenceV1.Read(ledger);
             retained = OmsRecoveryRetainedFacts.Collect(ledger, now);
             foreach (var row in ledger.Private.Observations)
             {

@@ -40,7 +40,7 @@ public sealed class OmsRiskPolicyAndRolePostgresTests
 CREATE ROLE "{role}" NOLOGIN; COMMENT ON ROLE "{role}" IS 'tradeops-tests:role:v1:{db.Name}';
 GRANT USAGE ON SCHEMA public TO "{role}";
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO "{role}";
-GRANT INSERT ON oms_aggregates,oms_intents,oms_commands,oms_attempts,oms_outbox,oms_integrity_incidents,oms_deribit_command_receipts_v1,
+GRANT INSERT ON oms_aggregates,oms_intents,oms_commands,oms_attempts,oms_outbox,oms_integrity_incidents,oms_deribit_command_receipts_v1,oms_deribit_fix_command_bindings_v1,
  oms_risk_reservations_v1,oms_risk_settlements_v1,oms_risk_admission_controls_v1,oms_risk_dispatches_v1,oms_risk_admission_audit_v1,oms_risk_cancel_admissions_v1,oms_execution_dispatches_v2 TO "{role}";
 GRANT UPDATE ON oms_aggregates,oms_intents,oms_commands,oms_attempts,oms_outbox TO "{role}";
 GRANT INSERT(tenant_id,venue_id,environment,account_id,subaccount_id) ON oms_evidence_versions_v1 TO "{role}";

@@ -14,6 +14,9 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
     public OmsLiveExecutionBaseline? Current { get { var value=Volatile.Read(ref executionBaseline); return value?.Qualified.IsCurrent==true ? value : null; } }
     private OmsRuntimeRecoveryGate? runtime;
     private OmsPrivateCaptureCoordinator? coordinator;
+    private OmsPrivateCaptureSession? captureSession;
+    public (OmsPrivateCaptureCoordinator Coordinator,OmsPrivateCaptureSession Session)? NativeCapture
+        => Volatile.Read(ref coordinator) is {} c && Volatile.Read(ref captureSession) is {} s ? (c,s) : null;
     private DeribitRecoveryCoherenceAssessment? lastAssessment;
     private int requested;
     public OmsPrivateStreamStatus? CaptureStatus => Volatile.Read(ref coordinator)?.Status;
@@ -40,6 +43,7 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
             await using var owner = await OmsPostgresPrivateCaptureOwner.AcquireAsync(sources.Capture, binding.Scope, stoppingToken);
             await using var active = new OmsPrivateCaptureCoordinator(owner, new());
             Volatile.Write(ref coordinator, active); var session = await active.SwitchAsync(binding.Scope, stoppingToken);
+            Volatile.Write(ref captureSession,session);
             using var http = httpFactory.CreateClient("DeribitAccountRecovery");
             var (engine, expected) = Compose(metadata); var metadataAt = DateTimeOffset.UtcNow;
             capturing = stream.RunCaptureAsync(active, session, binding.Plan, stopCapture.Token);
@@ -100,6 +104,7 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
         catch { throw new InvalidOperationException("Deribit account recovery stopped; no current recovered baseline is available."); }
         finally
         {
+            Volatile.Write(ref captureSession,null);
             Volatile.Write(ref runtime, null); Volatile.Write(ref executionBaseline,null); stopCapture.Cancel();
             if (capturing is not null) { try { await capturing; } catch when (!capturing.IsCompletedSuccessfully) { } }
             if (current is not null)

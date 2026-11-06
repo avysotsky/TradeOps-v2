@@ -1,10 +1,16 @@
-# B6 — состояние реализации FIX, не закрытие этапа
+# B6 — история checkpoints и актуальное закрытие
 
 2026-11-06. Ветка `TradeOps/B6-quickfix`, база `main`/B5 `c99090d`.
-**B6 IN_PROGRESS.** Полный B6 suite не запускался. Main пока содержит завершённый
-B5; новые FIX-компоненты не регистрируются в host и не получают торговых полномочий.
+**Обновление 2026-11-07: B6 реализован и квалифицирован offline** —
+[итог и ограничения](B6_FIX_COMPLETION_2026-11-06.md),
+[контракт и opt-in host](../../architecture/DERIBIT_FIX_EXECUTION_V1.md).
+Один полный **2351/2351 PASS**, Windows new cases **25/25**, validators **30/30 + 30/30**,
+493 source hashes + assembly SHA сверены, guard/peers/cleanup PASS.
+Native bindings, RR reader, recovery/settlement/cancel и host подключены.
+Main оставлен на B5; live qualification не выполнялась. Ниже — датированная история
+`80fc7ce`/`30ab299`, а не незавершённые задания для повторного запуска.
 
-## Дополнение после checkpoint 80fc7ce
+## Историческое дополнение checkpoint 30ab299 после 80fc7ce
 
 Этап по-прежнему **IN_PROGRESS**, end-to-end FIX gateway/host ещё не собран.
 В текущем коде устранены две prerequisite гонки и проверена отдельная DB-роль:
@@ -150,7 +156,7 @@ Evidence под ignored `.tradeops/postgres-reuse/`; public reference snapshots 
 сверен SHA-256 test assembly. Аудит — `.tradeops/b6-checkpoint-verification.json`.
 Ни один полный B6 suite не запускался; B6 не закрывается этой сверкой.
 
-## Следующая обязательная интеграция
+## Исторический остаток интеграции на checkpoint 80fc7ce (выполнен в B6)
 
 1. Подключить уже реализованный native report journal к настоящему transport/host
    с exact session binding; добавить guard прав реальной ограниченной роли.

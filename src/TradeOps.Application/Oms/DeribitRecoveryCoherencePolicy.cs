@@ -118,8 +118,8 @@ public static class DeribitRecoveryCoherencePolicy
 
         var all = OmsRecoveryRetainedFacts.Collect(document.Ledger, now)
             .Concat(batches.SelectMany(x => x.Observations)).Concat(document.KnownOrderObservations?.Observations ?? []).ToArray();
-        var receipts = document.Ledger.Receipts;
-        try { DeribitCommandReceiptSet.Validate(document.Start.Scope, document.Ledger.Commands, receipts, document.Ledger.Private.ReadAtUtc); }
+        IReadOnlyList<DeribitNativeCommandView> receipts;
+        try { receipts=DeribitNativeCommandEvidenceV1.Read(document.Ledger); }
         catch (ArgumentException) { problems.Add(DeribitRecoveryCoherenceProblem.JournalUnavailable); return Finish(null); }
         var owned = receipts.Where(x => x.Command.Payload.Kind == OmsJournalCommandKind.Place)
             .ToDictionary(x => (x.Order.Currency, x.Order.ExchangeOrderId));
@@ -182,6 +182,21 @@ public static class DeribitRecoveryCoherencePolicy
                 problems.Add(DeribitRecoveryCoherenceProblem.UnresolvedCommand);
             else if (command.Phase is OmsRecoveryDispatchPhase.DispatchStarted or OmsRecoveryDispatchPhase.Ambiguous)
                 resolutions.Add(new(command.Request.CommandId, command.Phase));
+        }
+        // FIX cumulative quantities constrain the WS/history ledger; they are never added
+        // as another fill stream and never replace native fee/trade history proof.
+        foreach(var envelope in document.Ledger.FixReports??[])
+        {
+            if(envelope.Execution is not{} report)continue;
+            var binding=(document.Ledger.FixBindings??[]).FirstOrDefault(x=>x.Match(report) is not null);
+            var view=binding?.Match(report);
+            var order=view is null?null:orders.SingleOrDefault(x=>x.State.Currency==view.Order.Currency&&x.State.ExchangeOrderId==view.Order.ExchangeOrderId);
+            if(view is null||order is null||report.TransactTimeUtc>document.VenueClock?.VenueTimeUtc||
+                order.State.NativeInstrument!=report.Instrument||order.State.Side!=report.Side||order.State.NativeAmount!=report.OrderQty||
+                order.State.KnownFilledNativeAmount<report.CumQty||order.LastReport.Price!=report.Price||
+                order.LastReport.VenueTimestampUtc<report.TransactTimeUtc||
+                report.OrderStatus is "2" or "4" or "8"&&order.State.NativeState!=view.Order.OrderState)
+                problems.Add(DeribitRecoveryCoherenceProblem.InconsistentOrderLedger);
         }
         var projectedOpen = orders.Where(x => x.State.NativeState is "open" or "triggered" or "untriggered")
             .Select(x => (x.State.NativeInstrument, x.State.ExchangeOrderId)).OrderBy(x => x.NativeInstrument).ThenBy(x => x.ExchangeOrderId).ToArray();

@@ -95,7 +95,7 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
                     session.Next(frame);queued.RemoveWhere(x=>x<session.NextTargetMsgSeqNum);EnsureRunning();
                 }
                 if(!framer.HasPending&&queued.Count==0)
-                {foreach(var pending in ingress)pending.Complete();ingress.Clear();}
+                {var drained=ingress.Count!=0;foreach(var pending in ingress)pending.Complete();ingress.Clear();if(drained)recoveryRequired();}
             }
             catch{foreach(var pending in ingress)pending.Dispose();ingress.Clear();Fail();throw new InvalidOperationException("FIX receive stopped; recovery required.");}
         }

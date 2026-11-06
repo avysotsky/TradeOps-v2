@@ -16,11 +16,12 @@ AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamesp
  AND has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE'))
 AND (SELECT bool_and(has_table_privilege(current_user,'public.'||relation,'SELECT') AND has_table_privilege(current_user,'public.'||relation,'INSERT')) FROM (VALUES
  ('oms_aggregates'),('oms_intents'),('oms_commands'),('oms_attempts'),('oms_outbox'),('oms_integrity_incidents'),
- ('oms_deribit_command_receipts_v1'),('oms_risk_reservations_v1'),('oms_risk_settlements_v1'),('oms_risk_admission_controls_v1'),('oms_risk_dispatches_v1'),('oms_risk_admission_audit_v1'),('oms_risk_cancel_admissions_v1'),('oms_execution_dispatches_v2')) t(relation))
+ ('oms_deribit_command_receipts_v1'),('oms_deribit_fix_command_bindings_v1'),('oms_risk_reservations_v1'),('oms_risk_settlements_v1'),('oms_risk_admission_controls_v1'),('oms_risk_dispatches_v1'),('oms_risk_admission_audit_v1'),('oms_risk_cancel_admissions_v1'),('oms_execution_dispatches_v2')) t(relation))
 AND (SELECT bool_and(has_table_privilege(current_user,'public.'||relation,'SELECT')) FROM (VALUES
- ('oms_recovery_heads_v1'),('oms_recovery_runs_v1'),('oms_recovered_account_states_v1'),('oms_evidence_versions_v1'),('oms_risk_control_events_v1'),('oms_account_risk_policies_v1'),('oms_execution_bindings_v2')) t(relation))
+ ('oms_recovery_heads_v1'),('oms_recovery_runs_v1'),('oms_recovered_account_states_v1'),('oms_evidence_versions_v1'),('oms_risk_control_events_v1'),('oms_account_risk_policies_v1'),('oms_execution_bindings_v2'),('oms_deribit_fix_reports_v1'),('oms_deribit_fix_native_events_v1'),('oms_deribit_fix_report_incidents_v1')) t(relation))
 AND (SELECT bool_and(has_table_privilege(current_user,'public.'||relation,'UPDATE')) FROM (VALUES
  ('oms_aggregates'),('oms_intents'),('oms_commands'),('oms_attempts'),('oms_outbox')) t(relation))
+AND NOT has_any_column_privilege(current_user,'public.oms_deribit_fix_command_bindings_v1','UPDATE')
 AND NOT has_table_privilege(current_user,'public.oms_evidence_versions_v1','UPDATE')
 AND NOT has_column_privilege(current_user,'public.oms_evidence_versions_v1','version','INSERT')
 AND has_function_privilege(current_user,'public.oms_lock_evidence_version_v1(text,text,smallint,text,text)','EXECUTE')
@@ -34,7 +35,7 @@ AND has_column_privilege(current_user,'public.oms_evidence_versions_v1','account
 AND has_column_privilege(current_user,'public.oms_evidence_versions_v1','subaccount_id','INSERT')
 AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN('r','p')
  AND c.relname NOT IN ('oms_aggregates','oms_intents','oms_commands','oms_attempts','oms_outbox','oms_integrity_incidents',
- 'oms_deribit_command_receipts_v1','oms_risk_reservations_v1','oms_risk_settlements_v1','oms_risk_admission_controls_v1','oms_risk_dispatches_v1','oms_risk_admission_audit_v1','oms_risk_cancel_admissions_v1','oms_execution_dispatches_v2','oms_evidence_versions_v1')
+ 'oms_deribit_command_receipts_v1','oms_deribit_fix_command_bindings_v1','oms_risk_reservations_v1','oms_risk_settlements_v1','oms_risk_admission_controls_v1','oms_risk_dispatches_v1','oms_risk_admission_audit_v1','oms_risk_cancel_admissions_v1','oms_execution_dispatches_v2','oms_evidence_versions_v1')
  AND has_table_privilege(current_user,c.oid,'INSERT,UPDATE'))
 AND has_sequence_privilege(current_user,'public.oms_risk_reservations_v1_reservation_id_seq','USAGE')
 """);

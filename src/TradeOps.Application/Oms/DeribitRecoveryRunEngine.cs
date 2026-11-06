@@ -93,6 +93,7 @@ public sealed class DeribitRecoveryRunEngine(IOmsRecoveryRunStore store, IOmsRec
             var raw = await inner.ReadAsync(scope, maximumRows, cancellationToken);
             Snapshot = raw with { Commands = raw.Commands.ToArray(), Problems = raw.Problems.ToArray(), OperatorReviews = raw.OperatorReviews?.ToArray(),
                 RecoveryArchive = raw.RecoveryArchive is null ? null : raw.RecoveryArchive with { Facts = Array.AsReadOnly(raw.RecoveryArchive.Facts.ToArray()) },
+                FixBindings = raw.FixBindings?.ToArray(), FixReports = raw.FixReports?.ToArray(),
                 CommandReceipts = raw.Receipts.ToArray(), Private = raw.Private with {
                     Observations = raw.Private.Observations.ToArray(), Problems = raw.Private.Problems.ToArray() } };
             return Snapshot;

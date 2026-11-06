@@ -17,7 +17,7 @@ case "$suite" in
     elif [[ -n "${4:-}" ]]; then echo 'Invalid targeted PostgreSQL mode'; exit 2; fi
     ;;
   b2) filter='FullyQualifiedName~OmsJournalPostgresTests|FullyQualifiedName~OmsJournalContractTests'; expected=28 ;;
-  b4-final|b5-final)
+  b4-final|b5-final|b6-final)
     filter='FullyQualifiedName~TradeOps.UnitTests'
     expected=${2:?Final stage acceptance requires the discovered full-suite test count}
     [[ "$expected" =~ ^[1-9][0-9]*$ ]] || exit 2

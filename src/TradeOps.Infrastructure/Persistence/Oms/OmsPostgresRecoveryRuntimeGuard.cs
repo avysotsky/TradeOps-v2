@@ -17,7 +17,7 @@ AND (SELECT bool_and(has_table_privilege(current_user,relation,privilege)) FROM 
  ('public.oms_aggregates','SELECT'),('public.oms_intents','SELECT'),('public.oms_commands','SELECT'),
  ('public.oms_outbox','SELECT'),('public.oms_attempts','SELECT'),('public.oms_inbox','SELECT'),
  ('public.oms_private_capture_observations','SELECT'),('public.oms_integrity_incidents','SELECT'),
- ('public.oms_deribit_command_receipts_v1','SELECT'),('public.oms_recovery_external_reviews_v1','SELECT'),
+ ('public.oms_deribit_fix_command_bindings_v1','SELECT'),('public.oms_deribit_fix_reports_v1','SELECT'),('public.oms_deribit_fix_native_events_v1','SELECT'),('public.oms_deribit_fix_report_incidents_v1','SELECT'),('public.oms_deribit_command_receipts_v1','SELECT'),('public.oms_recovery_external_reviews_v1','SELECT'),
  ('public.oms_evidence_versions_v1','SELECT'),('public.oms_recovery_runs_v1','SELECT'),
  ('public.oms_recovery_heads_v1','SELECT'),('public.oms_recovery_events_v1','SELECT'),
  ('public.oms_deribit_recovery_results_v1','SELECT'),('public.oms_recovered_account_states_v1','SELECT'),

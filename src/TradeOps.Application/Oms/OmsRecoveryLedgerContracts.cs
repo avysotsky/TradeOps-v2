@@ -32,7 +32,11 @@ public sealed record OmsRecoveryLedgerSnapshot(OmsPrivateRecoveryReadResult Priv
     IReadOnlyList<OmsRecoveryCommand> Commands, IReadOnlyList<OmsRecoveryLedgerProblem> Problems,
     IReadOnlyList<DeribitJsonRpcCommandReceipt>? CommandReceipts = null, long? EvidenceVersion = null,
     IReadOnlyList<OmsRecoveryExternalOrderReview>? OperatorReviews = null,
-    OmsRetainedRecoveryArchiveV1? RecoveryArchive = null)
+    OmsRetainedRecoveryArchiveV1? RecoveryArchive = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<DeribitFixCommandBindingV1>? FixBindings = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<DeribitFixReportEnvelopeV1>? FixReports = null)
 {
     public bool IsUsable => Private.IsUsable && Problems.Count == 0;
     public IReadOnlyList<DeribitJsonRpcCommandReceipt> Receipts => CommandReceipts ?? Array.Empty<DeribitJsonRpcCommandReceipt>();

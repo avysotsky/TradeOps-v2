@@ -23,11 +23,17 @@ public sealed class OmsPostgresExecutionGateway : IOmsOrderIntentGateway, IAsync
     public static async Task<OmsPostgresExecutionGateway> OpenAsync(AccountKey scope, NpgsqlDataSource source,
         IOmsExecutionRecoverySource recovery, IOmsRiskInputsReader inputs, string lockRoot,
         Func<CancellationToken,Task<IOmsAccountOrderTransport>> openTransport, TimeProvider? clock = null,IOmsRiskPolicyReader? cancelPolicies=null, CancellationToken ct = default)
+        => await OpenAsync(scope,source,recovery,inputs,lockRoot,(_,token)=>openTransport(token),clock,cancelPolicies,ct);
+
+    public static async Task<OmsPostgresExecutionGateway> OpenAsync(AccountKey scope, NpgsqlDataSource source,
+        IOmsExecutionRecoverySource recovery, IOmsRiskInputsReader inputs, string lockRoot,
+        Func<OmsPhysicalSessionAuthority,CancellationToken,Task<IOmsAccountOrderTransport>> openTransport,
+        TimeProvider? clock=null,IOmsRiskPolicyReader? cancelPolicies=null,CancellationToken ct=default)
     {
         var fence = await OmsSingleHostPhysicalFence.AcquireAsync(source, scope, lockRoot, ct);
         try
         {
-            var transport = await fence.RunAsync(() => openTransport(ct),ct);
+            var transport = await fence.RunAsync(() => openTransport(fence.CreateSessionAuthority(),ct),ct);
             return new(scope,source,recovery,inputs,fence,transport,clock ?? TimeProvider.System,cancelPolicies);
         }
         catch { await fence.DisposeAsync(); throw; }
@@ -52,6 +58,7 @@ public sealed class OmsPostgresExecutionGateway : IOmsOrderIntentGateway, IAsync
                 var token = deadline.Token;
                 await using var db = await source.OpenConnectionAsync(token);
                 long dispatchVersion;
+                DeribitFixCommandBindingV1? fixBinding=null;
                 await using (var tx = await db.BeginTransactionAsync(token))
                 {
                     var controls = await OmsPostgresRiskControls.LockAndReadAsync(db,tx,scope,token);
@@ -68,6 +75,12 @@ public sealed class OmsPostgresExecutionGateway : IOmsOrderIntentGateway, IAsync
                     }
                     if (await OmsPostgresJournal.MarkStartedInTransactionAsync(db,tx,scope,command.CommandId,null,token)!=OmsJournalAttemptResult.Started)
                         return await RejectDispatchAsync(command,live,admission,"Command no longer dispatchable.",token);
+                    if(transport is IOmsFixAccountOrderTransport fix)
+                    {
+                        fixBinding=await fix.PrepareAsync(command,token);fixBinding.Validate();
+                        if(fixBinding.Command!=command)throw new InvalidOperationException("Native binding command mismatch.");
+                        await OmsPostgresFixCommandEvidenceV1.InsertAsync(db,tx,fixBinding,token);
+                    }
                     await using (var q=Query(db,tx,"SELECT version FROM oms_evidence_versions_v1 WHERE " + Where)) dispatchVersion=(long)(await q.ExecuteScalarAsync(token))!;
                     await using (var q=Query(db,tx,"""
 INSERT INTO oms_execution_dispatches_v2(tenant_id,venue_id,environment,account_id,subaccount_id,command_id,schema_version,evidence_after_started,owner_id)
@@ -77,8 +90,9 @@ VALUES(@t,@v,@e,@a,@s,@command,2,@version,@owner)
                     // Unknown COMMIT ACK is conservatively treated as possibly started, never retried.
                     started=true; await tx.CommitAsync(token);
                 }
-                DeribitJsonRpcCommandReceipt receipt;
-                Task<DeribitJsonRpcCommandReceipt> response;
+                DeribitJsonRpcCommandReceipt? receipt=null;
+                DeribitFixExecutionReportV1? nativeReport=null;
+                Task response;
                 await using (var tx=await db.BeginTransactionAsync(token))
                 {
                     var controls=await OmsPostgresRiskControls.LockAndReadAsync(db,tx,scope,token);
@@ -109,7 +123,11 @@ AND command_id NOT IN(SELECT command_id FROM oms_risk_settlements_v1 WHERE tenan
                     var permit=live.Qualified.CreatePhysicalWritePermit(command,()=>fence.IsCurrent);
                     // The engine may synchronously wait for its physical write. Keep the SQL
                     // owner free to commit as soon as the permit observes actual I/O initiation.
-                    response=Task.Run(()=>transport.SendAsync(command,permit,token),CancellationToken.None);
+                    response=Task.Run(async()=>
+                    {
+                        if(transport is IOmsFixAccountOrderTransport fix)nativeReport=await fix.SendNativeAsync(command,permit,token);
+                        else receipt=await transport.SendAsync(command,permit,token);
+                    },CancellationToken.None);
                     _=response.ContinueWith(t=>{_ = t.Exception;},TaskContinuationOptions.OnlyOnFaulted|TaskContinuationOptions.ExecuteSynchronously);
                     try
                     {
@@ -124,9 +142,20 @@ AND command_id NOT IN(SELECT command_id FROM oms_risk_settlements_v1 WHERE tenan
                         fence.Revoke();transport.Abort();throw;
                     }
                 }
-                receipt=await response.WaitAsync(token);
-                var stored=await new OmsPostgresDeribitCommandReceiptJournal(source).RecordAsync(receipt,ct);
-                if (stored is not (DeribitCommandReceiptWriteResult.Inserted or DeribitCommandReceiptWriteResult.Duplicate)) throw new InvalidOperationException("Native receipt was not retained.");
+                await response.WaitAsync(token);
+                if(fixBinding is not null)
+                {
+                    if(nativeReport is null||fixBinding.Match(nativeReport) is null)throw new InvalidOperationException("Native report does not resolve dispatch.");
+                    await using var read=await source.OpenConnectionAsync(token);await using var snapshot=await read.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead,token);
+                    var native=await OmsPostgresFixCommandEvidenceV1.ReadAsync(read,snapshot,scope,10000,clock.GetUtcNow(),token);
+                    if(!native.Bindings.Contains(fixBinding)||!native.Reports.Any(x=>x.Execution==nativeReport))throw new InvalidOperationException("Native dispatch evidence was not retained.");
+                    await snapshot.CommitAsync(token);
+                }
+                else
+                {
+                    var stored=await new OmsPostgresDeribitCommandReceiptJournal(source).RecordAsync(receipt??throw new InvalidOperationException("Missing response."),ct);
+                    if (stored is not (DeribitCommandReceiptWriteResult.Inserted or DeribitCommandReceiptWriteResult.Duplicate)) throw new InvalidOperationException("Native receipt was not retained.");
+                }
                 await new OmsPostgresJournal(source).RecordOutcomeAsync(scope,command.CommandId,OmsJournalDispatchOutcome.Acknowledged,ct);
                 recovery.RequestRecovery();
                 return new(OmsExecutionResultKind.Acknowledged,admission,"Native acknowledgement retained; fills and finality require recovery.");

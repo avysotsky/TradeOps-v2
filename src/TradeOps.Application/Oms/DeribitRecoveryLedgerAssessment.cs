@@ -39,7 +39,7 @@ public sealed partial class DeribitRecoveryEvidenceGate
         var q = ValidateRequest(request, started);
         ct.ThrowIfCancellationRequested();
         OmsRecoveryCommand[] commands = [];
-        DeribitJsonRpcCommandReceipt[] receipts = [];
+        DeribitNativeCommandView[] receipts = [];
         OmsPrivateRecoveryReadResult? privateSnapshot = null;
         var valid = false;
         var gate = new DeribitRecoveryEvidenceGate(new DeferredLedgerPrivateReader(ReadPrivate), queries, knownReader, time);
@@ -50,7 +50,7 @@ public sealed partial class DeribitRecoveryEvidenceGate
             var snapshot = await ledgerReader.ReadAsync(q.Scope, cancellationToken: ct);
             ct.ThrowIfCancellationRequested();
             commands = snapshot.Commands.ToArray();
-            receipts = snapshot.Receipts.ToArray();
+
             var ledgerProblems = snapshot.Problems.ToArray();
             privateSnapshot = snapshot.Private with {
                 Observations = snapshot.Private.Observations.ToArray(), Problems = snapshot.Private.Problems.ToArray() };
@@ -64,7 +64,7 @@ public sealed partial class DeribitRecoveryEvidenceGate
                 foreach (var group in commands.GroupBy(x => x.Request.LocalOrderId))
                     valid &= group.Select(x => x.AggregateVersion).Order().SequenceEqual(
                         Enumerable.Range(1, group.Count()).Select(x => (long)x));
-                DeribitCommandReceiptSet.Validate(q.Scope, commands, receipts, privateSnapshot.ReadAtUtc);
+                receipts = DeribitNativeCommandEvidenceV1.Read(snapshot).ToArray();
             }
             catch (Exception error) when (error is ArgumentException or OverflowException)
             { valid = false; }

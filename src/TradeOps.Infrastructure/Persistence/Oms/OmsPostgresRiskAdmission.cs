@@ -170,7 +170,25 @@ VALUES(@audit,1,@tenant,@venue,@environment,@account,@subaccount,@command,@sha,5
         q.Parameters.AddWithValue("audit",Guid.NewGuid());q.Parameters.AddWithValue("command",command.CommandId.Value);q.Parameters.AddWithValue("sha",OmsJournalCanonical.EncodeCommand(command).Sha256);await q.ExecuteNonQueryAsync(ct);
     }
 
-    internal static async Task<DeribitJsonRpcCommandReceipt?> ReadCancelParentAsync(NpgsqlConnection db,NpgsqlTransaction tx,OmsJournalCommandRequest cancel,CancellationToken ct)
+    internal static async Task<DeribitNativeCommandView?> ReadCancelParentAsync(NpgsqlConnection db,NpgsqlTransaction tx,OmsJournalCommandRequest cancel,CancellationToken ct)
+    {
+        var ws=await ReadWsCancelParentAsync(db,tx,cancel,ct);
+        var native=(await OmsPostgresFixCommandEvidenceV1.ViewsAsync(db,tx,cancel.Scope,ct)).Where(x=>
+            x.Command.Payload.Kind==OmsJournalCommandKind.Place&&x.Command.LocalOrderId==cancel.LocalOrderId&&
+            x.Order.ExchangeOrderId==cancel.Payload.TargetExchangeOrderId).ToArray();
+        if(native.Length+(ws is null?0:1)!=1)return null;
+        if(ws is not null)return DeribitNativeCommandView.FromWs(ws);
+        var view=native[0];
+        return await HasReservation(db,tx,view,ct)?view:null;
+    }
+    private static async Task<bool> HasReservation(NpgsqlConnection db,NpgsqlTransaction tx,DeribitNativeCommandView view,CancellationToken ct)
+    {
+        await using var q=Query(db,tx,view.Command.Scope,"SELECT command_sha256 FROM oms_risk_reservations_v1 WHERE "+Where+" AND command_id=@command");
+        q.Parameters.AddWithValue("command",view.Command.CommandId.Value);
+        return await q.ExecuteScalarAsync(ct) is byte[] sha&&sha.SequenceEqual(OmsJournalCanonical.EncodeCommand(view.Command).Sha256);
+    }
+
+    private static async Task<DeribitJsonRpcCommandReceipt?> ReadWsCancelParentAsync(NpgsqlConnection db,NpgsqlTransaction tx,OmsJournalCommandRequest cancel,CancellationToken ct)
     {
         if(cancel.Payload.TargetExchangeOrderId is null)return null;
         await using var q=Query(db,tx,cancel.Scope,"""
@@ -192,7 +210,7 @@ AND octet_length(c.request_json::text)<=16384 AND octet_length(p.receipt_json::t
     private static async Task RetireProvenReservationsAsync(NpgsqlConnection db, NpgsqlTransaction tx, AccountKey scope,
         OmsRecoveredAccountStateV1 baseline, OmsRecoveryPublication publication, CancellationToken ct)
     {
-        var candidates = new List<DeribitJsonRpcCommandReceipt>();
+        var candidates = new List<DeribitNativeCommandView>();
         await using (var q = Query(db, tx, scope, """
 SELECT c.request_json::text,c.payload_sha256,r.command_sha256,p.receipt_json::text,p.receipt_sha256,p.command_sha256
 FROM oms_risk_reservations_v1 r JOIN oms_commands c USING(tenant_id,venue_id,environment,account_id,subaccount_id,command_id)
@@ -212,9 +230,11 @@ AND s.command_id IS NULL AND octet_length(c.request_json::text)<=16384 AND octet
                 if (!hash.SequenceEqual(r.GetFieldValue<byte[]>(1)) || !hash.SequenceEqual(r.GetFieldValue<byte[]>(2)) ||
                     !hash.SequenceEqual(r.GetFieldValue<byte[]>(5)) || !DeribitCommandReceiptCanonical.Encode(receipt).Sha256.SequenceEqual(r.GetFieldValue<byte[]>(4)))
                     throw new InvalidOperationException("Settlement evidence integrity failure.");
-                candidates.Add(receipt);
+                candidates.Add(DeribitNativeCommandView.FromWs(receipt));
             }
         }
+        foreach(var native in (await OmsPostgresFixCommandEvidenceV1.ViewsAsync(db,tx,scope,ct)).Where(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Place))
+            if(await HasReservation(db,tx,native,ct))candidates.Add(native);
         foreach (var receipt in candidates.Where(x => OmsRiskSettlementV1.CanRetire(baseline, x)))
         {
             await using var q = Query(db, tx, scope, """

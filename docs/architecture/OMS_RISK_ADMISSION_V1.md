@@ -161,9 +161,11 @@ Runtime открывает только существующий пустой pi
 команды. Последняя проверка live revision и вызов фактического socket Send находятся
 под одним ingress barrier. После смены owner старый permit не может начать write.
 SQL locks/metadata сами по себе не объявляются fencing. Shared kill/head locks
-защищают пред-send переход; evidence counter остаётся locked через socket write,
-так что посторонняя journal mutation не коммитится между финальной проверкой и
-отправкой. OS handle защищает физическую передачу владения. Queued work
+защищают пред-send переход; evidence counter остаётся locked до фактического вызова
+socket operation под одноразовым permit. Затем SQL commit освобождает gates до
+ожидания ответа, чтобы FIX FromApp мог durable retain report до target cursor advance.
+Посторонняя journal mutation не коммитится между финальной проверкой и началом I/O;
+queued work не считается начавшимся I/O. OS handle защищает физическую передачу владения. Queued work
 bounded 128; reconnect/resend и автоматический takeover отсутствуют.
 
 ## Host и совместимость
@@ -175,6 +177,8 @@ Default mode не регистрирует этот sender. Только host п
 открывает pinned WS session; fail-stop после uncertain send, без automatic restart.
 
 Journal v1, private event v2, receipt v1 и recovery v1 encodings сохранены.
+FIX использует [отдельные native bindings/reports и общий in-memory view](DERIBIT_FIX_EXECUTION_V1.md),
+без подделки WS receipt или прибавления FIX cumulative quantities к fills/positions.
 Новые append-only risk/control/policy/settlement/cancel tables versioned v1.
 `oms_execution_bindings_v2` усиливает физическую привязку без изменения v1 данных.
 `oms_execution_dispatches_v2` расширяет admission kinds на Place/Cancel, сохраняя

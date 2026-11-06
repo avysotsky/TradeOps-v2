@@ -5,6 +5,9 @@ public static class OmsAddressedCancelPolicyV1
 {
     public static bool Allows(OmsJournalCommandRequest cancel,DeribitJsonRpcCommandReceipt placement,OmsRecoveredAccountStateV1 state,
         OmsRiskPolicyDocumentV1? policy,DateTimeOffset now)
+    {try{return Allows(cancel,DeribitNativeCommandView.FromWs(placement),state,policy,now);}catch(ArgumentException){return false;}}
+    public static bool Allows(OmsJournalCommandRequest cancel,DeribitNativeCommandView placement,OmsRecoveredAccountStateV1 state,
+        OmsRiskPolicyDocumentV1? policy,DateTimeOffset now)
     {
         try
         {
