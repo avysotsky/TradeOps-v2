@@ -24,6 +24,8 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
     private readonly Session session;
     private readonly HashSet<ulong> queued=[];
     private readonly DeribitFixFramerV1 framer;
+    private readonly Func<OmsExternalEconomicIngress>? beginIngress;
+    private readonly List<OmsExternalEconomicIngress> ingress = [];
     private OmsJournalCommandRequest? sending;
     private OmsPhysicalWritePermit? permit;
     private Message? expectedMessage;
@@ -35,13 +37,15 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
 
     internal DeribitQuickFixSessionV1(DeribitFixOptionsV1 options,IOmsFixSessionStoreV1 store,
         OmsPhysicalSessionAuthority authority,string clientId,string secret,Func<ReadOnlyMemory<byte>,Task> physicalWrite,
-        Action<string,Guid,DateTimeOffset> report,Action recoveryRequired,Action abort)
+        Action<string,Guid,DateTimeOffset> report,Action recoveryRequired,Action abort,
+        Func<OmsExternalEconomicIngress>? beginIngress=null)
     {
         options.Validate();
         if(string.IsNullOrWhiteSpace(clientId)||clientId.Length>512||clientId.Any(c=>c<33||c>126)||
             string.IsNullOrWhiteSpace(secret)||secret.Length>4096||secret.Any(char.IsControl))throw new ArgumentException("FIX credentials unavailable.");
         this.options=options;this.store=store;this.authority=authority;this.clientId=clientId;this.secret=secret;
         this.physicalWrite=physicalWrite;this.report=report;this.recoveryRequired=recoveryRequired;this.abort=abort;
+        this.beginIngress=beginIngress;
         framer=new(options.MaximumFrameBytes);id=new("FIX.4.4",options.Session.SenderCompId,options.Session.TargetCompId);
         if(Session.LookupSession(id) is not null)throw new InvalidOperationException("FIX session identity already active in this process.");
         var path=Path.Combine(AppContext.BaseDirectory,"Fix","DeribitFix44ProfileV1.xml");
@@ -73,15 +77,27 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
     {lock(sync){EnsureRunning();try{session.Next();}catch{Fail();throw;}}}
     internal void Receive(ReadOnlySpan<byte> bytes)
     {
+        // Must precede engine sync: a writer can own that lock while still awaiting I/O.
+        var ticket=bytes.IsEmpty?null:beginIngress?.Invoke();
         lock(sync)
         {
-            EnsureRunning();
+            if(ticket is not null)ingress.Add(ticket);
             try
             {
+                EnsureRunning();
                 foreach(var frame in framer.Add(bytes))
-                {session.Next(frame);queued.RemoveWhere(x=>x<session.NextTargetMsgSeqNum);EnsureRunning();}
+                {
+                    // QuickFIX may discard an old PossDup without calling FromApp. Native
+                    // journal validation must still detect changed economic payloads.
+                    var native=new Message();native.FromString(frame,false,null,null);
+                    if(native.Header.GetULong(34)<store.NextTarget && native.Header.GetString(35) is "8" or "9")
+                    {recoveryRequired();report(frame,Epoch,DateTimeOffset.UtcNow);}
+                    session.Next(frame);queued.RemoveWhere(x=>x<session.NextTargetMsgSeqNum);EnsureRunning();
+                }
+                if(!framer.HasPending&&queued.Count==0)
+                {foreach(var pending in ingress)pending.Complete();ingress.Clear();}
             }
-            catch{Fail();throw new InvalidOperationException("FIX receive stopped; recovery required.");}
+            catch{foreach(var pending in ingress)pending.Dispose();ingress.Clear();Fail();throw new InvalidOperationException("FIX receive stopped; recovery required.");}
         }
     }
     internal void SendCommand(OmsJournalCommandRequest command,OmsPhysicalWritePermit grant,DeribitFixInstrumentV1 metadata,
@@ -169,7 +185,7 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
     {if(Interlocked.Exchange(ref stopped,1)==0){try{recoveryRequired();}finally{abort();}}}
     public void Dispose()
     {
-        Fail();lock(sync){if(disposed)return;disposed=true;initiator.Stop(true);session.Dispose();initiator.Dispose();}
+        Fail();lock(sync){if(disposed)return;disposed=true;foreach(var pending in ingress)pending.Dispose();ingress.Clear();initiator.Stop(true);session.Dispose();initiator.Dispose();}
     }
     private sealed class OwnedInitiator(IApplication app,QuickFix.Store.IMessageStoreFactory stores,SessionSettings settings)
         :AbstractInitiator(app,stores,settings,Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,new QuickFix.FIX44.MessageFactory())

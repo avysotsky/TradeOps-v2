@@ -78,6 +78,7 @@ VALUES(@t,@v,@e,@a,@s,@command,2,@version,@owner)
                     started=true; await tx.CommitAsync(token);
                 }
                 DeribitJsonRpcCommandReceipt receipt;
+                Task<DeribitJsonRpcCommandReceipt> response;
                 await using (var tx=await db.BeginTransactionAsync(token))
                 {
                     var controls=await OmsPostgresRiskControls.LockAndReadAsync(db,tx,scope,token);
@@ -105,10 +106,25 @@ AND command_id NOT IN(SELECT command_id FROM oms_risk_settlements_v1 WHERE tenan
                     else allowed=risk is not null&&OmsRiskLimitsV1.Allows(command,live.Publication.StateSha256,risk,pending,margin,count,clock.GetUtcNow());
                     if(!allowed)
                         throw new InvalidOperationException("Risk changed before physical send.");
-                    // Head + shared kill locks are held through physical write/response; capture can still invalidate the local revision.
-                    receipt=await transport.SendAsync(command,live.Qualified.CreatePhysicalWritePermit(command,()=>fence.IsCurrent),token);
-                    await tx.CommitAsync(token);
+                    var permit=live.Qualified.CreatePhysicalWritePermit(command,()=>fence.IsCurrent);
+                    // The engine may synchronously wait for its physical write. Keep the SQL
+                    // owner free to commit as soon as the permit observes actual I/O initiation.
+                    response=Task.Run(()=>transport.SendAsync(command,permit,token),CancellationToken.None);
+                    _=response.ContinueWith(t=>{_ = t.Exception;},TaskContinuationOptions.OnlyOnFaulted|TaskContinuationOptions.ExecuteSynchronously);
+                    try
+                    {
+                        var first=await Task.WhenAny(permit.PhysicalIoInitiated,response).WaitAsync(token);
+                        if(first==response) { await response; if(!permit.PhysicalIoInitiated.IsCompletedSuccessfully) throw new InvalidOperationException("Transport returned without physical I/O."); }
+                        await permit.PhysicalIoInitiated.WaitAsync(token);
+                        await tx.CommitAsync(token);
+                    }
+                    catch
+                    {
+                        // Revoke queued/paused writes before rollback releases the SQL gates.
+                        fence.Revoke();transport.Abort();throw;
+                    }
                 }
+                receipt=await response.WaitAsync(token);
                 var stored=await new OmsPostgresDeribitCommandReceiptJournal(source).RecordAsync(receipt,ct);
                 if (stored is not (DeribitCommandReceiptWriteResult.Inserted or DeribitCommandReceiptWriteResult.Duplicate)) throw new InvalidOperationException("Native receipt was not retained.");
                 await new OmsPostgresJournal(source).RecordOutcomeAsync(scope,command.CommandId,OmsJournalDispatchOutcome.Acknowledged,ct);

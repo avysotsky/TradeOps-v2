@@ -28,12 +28,21 @@ public sealed class OmsPhysicalWritePermit
     private readonly byte[] commandHash;
     private readonly Func<bool> isOwner;
     private int consumed;
+    private readonly TaskCompletionSource initiated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task PhysicalIoInitiated => initiated.Task;
     internal OmsPhysicalWritePermit(OmsQualifiedRecovery recovery, OmsJournalCommandRequest command, Func<bool> isOwner)
     { this.recovery = recovery; commandHash = OmsJournalCanonical.EncodeCommand(command).Sha256; this.isOwner = isOwner; }
     public Task InitiateAsync(OmsJournalCommandRequest command, Func<Task> physicalSocketWrite)
     {
         if (Interlocked.Exchange(ref consumed, 1) != 0 || !commandHash.SequenceEqual(OmsJournalCanonical.EncodeCommand(command).Sha256))
             throw new InvalidOperationException("Physical write permit already used or terms changed.");
-        return recovery.InitiatePhysicalWrite(isOwner, physicalSocketWrite);
+        return recovery.InitiatePhysicalWrite(isOwner, () =>
+        {
+            // Signal only after the actual socket operation has been invoked, under the
+            // same revision/owner barrier. Merely entering a queued sender is insufficient.
+            var operation = physicalSocketWrite();
+            initiated.TrySetResult();
+            return operation;
+        });
     }
 }

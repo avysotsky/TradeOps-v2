@@ -39,7 +39,7 @@ public sealed partial class OmsPrivateCaptureCoordinator
             var window = cut.Window; CheckReplay(window);
             if (!ReferenceEquals(cut, window.Cut) || window.Problems.Count != 0 || window.Session != subscriptions.Session ||
                 window.Epoch != subscriptions.Epoch || subscriptions.AcknowledgedAtUtc > window.BeganAtUtc ||
-                receivedOrdinal != cut.ThroughReceipt || committedOrdinal != cut.ThroughReceipt || pendingReceipts.Count != 0 ||
+                receivedOrdinal != cut.ThroughReceipt || committedOrdinal != cut.ThroughReceipt || pendingReceipts.Count != 0 || externalIngress.Count != 0 ||
                 window.Entries.Count != cut.ThroughReceipt-window.AfterReceipt ||
                 window.Entries.Where((x, i) => x.ReceiptOrdinal != window.AfterReceipt+i+1 ||
                     x.Disposition is not (OmsPrivateCaptureResult.Inserted or OmsPrivateCaptureResult.Duplicate)).Any()) return null;
@@ -52,6 +52,6 @@ public sealed partial class OmsPrivateCaptureCoordinator
         ArgumentNullException.ThrowIfNull(revision);
         lock (replaySync) return ReferenceEquals(revision.Owner, this) && Valid(revision.Subscriptions) &&
             receivedOrdinal == revision.ThroughReceipt && committedOrdinal == revision.ThroughReceipt && pendingReceipts.Count == 0 &&
-            economicGeneration == revision.EconomicGeneration;
+            externalIngress.Count == 0 && economicGeneration == revision.EconomicGeneration;
     }
 }

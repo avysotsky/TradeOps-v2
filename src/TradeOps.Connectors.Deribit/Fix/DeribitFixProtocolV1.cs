@@ -32,6 +32,7 @@ public static class DeribitFixLogonV1
 internal sealed class DeribitFixFramerV1(int maximum=32768)
 {
     private readonly List<byte> pending=[];
+    internal bool HasPending => pending.Count != 0;
     public IReadOnlyList<string> Add(ReadOnlySpan<byte> bytes)
     {
         var frames=new List<string>();

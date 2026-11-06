@@ -216,7 +216,11 @@ public sealed partial class OmsPrivateCaptureCoordinator
                     status.Problem != OmsPrivateStreamProblem.AwaitingReconciliation || replayFault.HasValue)
                     throw new InvalidOperationException("Healthy subscribed capture epoch required.");
                 replayWindow?.Fail(OmsPrivateReplayProblem.Superseded);
-                return replayWindow = new(this, session, epoch, committedOrdinal, replayTime);
+                replayWindow = new(this, session, epoch, committedOrdinal, replayTime);
+                // A recovery whose reads overlap an uncommitted external observation cannot
+                // qualify later merely because that observation eventually drains.
+                if (externalIngress.Count != 0) replayWindow.Fail(OmsPrivateReplayProblem.AccountMutation);
+                return replayWindow;
             }
         }
         finally { gate.Release(); }

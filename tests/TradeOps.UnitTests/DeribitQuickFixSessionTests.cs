@@ -35,17 +35,19 @@ public sealed class DeribitQuickFixSessionTests
         internal int Recoveries,Aborts;
         internal bool Owner=true;
         internal readonly DeribitQuickFixSessionV1 Engine;
-        internal Rig(MemoryStore? store=null,OmsPhysicalSessionAuthority? actualAuthority=null)
+        internal Action? BeforePhysicalWrite;
+        internal Rig(MemoryStore? store=null,OmsPhysicalSessionAuthority? actualAuthority=null,Func<OmsExternalEconomicIngress>? ingress=null)
         {
             Store=store??new();
             var authority=actualAuthority??new OmsPhysicalSessionAuthority(write=>Owner?write():throw new InvalidOperationException("Revoked owner."));
             Engine=new(new(Key),Store,authority,"synthetic-client","synthetic-secret",bytes=>
             {
                 var m=Parse(Encoding.ASCII.GetString(bytes.Span));
+                BeforePhysicalWrite?.Invoke();
                 // The engine must commit the message and next sender BEFORE initiating physical I/O.
                 if(!m.Header.IsSetField(43)||!m.Header.GetBoolean(43))Assert.True(Store.NextSender>m.Header.GetULong(34));
                 Sent.Add(m);return Task.CompletedTask;
-            },(raw,epoch,received)=>{Assert.Equal(Engine!.Epoch,epoch);Reports.Add(raw);},()=>Recoveries++,()=>Aborts++);
+            },(raw,epoch,received)=>{Assert.Equal(Engine!.Epoch,epoch);Reports.Add(raw);},()=>Recoveries++,()=>Aborts++,ingress);
         }
         internal void Logon()
         {Engine.Tick();Engine.Receive(Encoding.ASCII.GetBytes(Peer("A",1,(98,"0"),(108,"30"),(141,"N"),(9001,"N"))));Assert.True(Engine.LoggedOn);}
@@ -59,6 +61,38 @@ public sealed class DeribitQuickFixSessionTests
         public void Dispose()=>Engine.Dispose();
     }
     internal static Message Parse(string text){var m=new Message();m.FromString(text,false,null,null);return m;}
+    [Fact]
+    public async Task NativeSocketIngressInvalidatesBeforeWaitingForAnOccupiedEngineLock()
+    {
+        await using var setup=await OmsPrivateAccountRevisionTests.Setup.Open();var c=setup.Coordinator;
+        var w=await c.BeginReplayAsync(setup.Session,setup.Epoch);var cut=await c.SealReplayAsync(w);
+        var revision=c.TryCreateAccountRevision(cut,setup.Subscriptions)!;c.AbandonReplay(w);
+        using var entered=new ManualResetEventSlim();using var release=new ManualResetEventSlim();
+        var observed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var r=new Rig(ingress:()=>{var token=c.BeginExternalIngress(setup.Session);observed.TrySetResult();return token;});
+        r.BeforePhysicalWrite=()=>{entered.Set();if(!release.Wait(TimeSpan.FromSeconds(10)))throw new TimeoutException();};
+        var writer=Task.Run(()=>r.Engine.Tick());Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+        Task receiver=Task.CompletedTask;
+        try
+        {
+            receiver=Task.Run(()=>r.Engine.Receive(Encoding.ASCII.GetBytes(r.Peer("A",1,(98,"0"),(108,"30"),(141,"N"),(9001,"N")))));
+            await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(receiver.IsCompleted);Assert.False(c.IsAccountRevisionCurrent(revision));
+        }
+        finally{release.Set();await Task.WhenAll(writer,receiver);}
+    }
+
+    [Fact]
+    public async Task FragmentAndQueuedGapHoldExternalBarrierUntilCompleteDrain()
+    {
+        await using var setup=await OmsPrivateAccountRevisionTests.Setup.Open();var c=setup.Coordinator;
+        using var r=new Rig(ingress:()=>c.BeginExternalIngress(setup.Session));r.Logon();
+        var bytes=Encoding.ASCII.GetBytes(r.Peer("0",3));r.Engine.Receive(bytes.AsSpan(0,12));
+        async Task<bool> Qualifies()
+        {var w=await c.BeginReplayAsync(setup.Session,setup.Epoch);var cut=await c.SealReplayAsync(w);var ok=c.TryCreateAccountRevision(cut,setup.Subscriptions) is not null;c.AbandonReplay(w);return ok;}
+        Assert.False(await Qualifies());r.Engine.Receive(bytes.AsSpan(12));Assert.True(r.Engine.HasGap);Assert.False(await Qualifies());
+        r.Engine.Receive(Encoding.ASCII.GetBytes(r.Peer("0",2)));Assert.False(r.Engine.HasGap);Assert.True(await Qualifies());
+    }
 
     [Fact]
     public void NativeLogonSignatureUsesIncreasingTimestampDotBase64NonceAndSha256Concatenation()

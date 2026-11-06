@@ -4,6 +4,53 @@
 **B6 IN_PROGRESS.** Полный B6 suite не запускался. Main пока содержит завершённый
 B5; новые FIX-компоненты не регистрируются в host и не получают торговых полномочий.
 
+## Дополнение после checkpoint 80fc7ce
+
+Этап по-прежнему **IN_PROGRESS**, end-to-end FIX gateway/host ещё не собран.
+В текущем коде устранены две prerequisite гонки и проверена отдельная DB-роль:
+
+- `OmsPhysicalWritePermit.PhysicalIoInitiated` сигнализирует только после вызова
+  actual socket operation под revision/owner barrier. Gateway удерживает SQL gates
+  до сигнала, commit-ит и лишь затем ждёт ответ. Queued sender не освобождает locks;
+  failure/timeout отзывает owner до rollback. Старый foreign-journal regression зелёный.
+- `OmsExternalEconomicIngress` закрывает revision под `replaySync`, без фиктивного
+  WS epoch/ordinal. `Receive` открывает ticket до engine lock, держит через fragments,
+  queued sequence gap и synchronous native persistence. Abandon/fault закрывает baseline.
+  WS epoch restart не стирает pending FIX bytes. Recovery, начатый во время pending,
+  не квалифицируется задним числом после drain; требуется новый cut.
+- Low-sequence native report проверяется journal callback до передачи в engine:
+  skipped FromApp у старого PossDup не скрывает изменённый payload/collision.
+- `OmsPostgresFixRuntimeGuardV1` проверяет отдельную protocol/native-capture роль:
+  только SELECT, append native/protocol evidence и UPDATE трёх cursor/logon columns.
+  Session seed/identity, commands/risk/recovery writes и DELETE/TRUNCATE запрещены.
+  Guard пока самостоятельный: production host ещё не подключён.
+
+Адресные offline/owned-PG runs, все exit/guard/peers/cleanup PASS:
+
+- `20261106T190111-targeted-20355`: 34/34 PASS (ранний вариант).
+- `20261106T190347-targeted-16233`: 36/36 PASS — gateway 13, actual engine 18,
+  account revision 5; включает occupied engine lock и fragment/gap drain.
+- `20261106T190622-targeted-14771`: 5/5 PASS — actual restricted FIX role,
+  cursor store + native insert/dedup/collision и refusal лишних column grants.
+- `20261106T190743-targeted-20558`: 8/8 PASS — native journal, включая actual
+  engine low-sequence PossDup duplicate/collision.
+- `20261106T190848-targeted-3512`: 6/6 PASS — revision, включая сохранение
+  pending native ingress через WS epoch restart.
+
+Составной актуальный охват этого дополнения: **50 уникальных cases, 0 FAIL/SKIP**.
+Полный B6 suite не запускался; торговля не запускалась. Windows build PASS;
+первый wrapper остановился до tests из-за доступа к WSL, затем owned runner
+запущен с нужным доступом. NU1900 сохраняется; security audit не заявляется.
+Старый `.tradeops/b6-checkpoint-verification.json` относится только к `80fc7ce`,
+не подтверждает новый код; новые TRX/manifests лежат в указанных run directories.
+
+Обязательный остаток: versioned native command binding/direct evidence и общий
+in-memory view; чтение FIX evidence/bindings в B4 RR transaction; coherence,
+resolution, settlement и own cancel обоих transports; actual fixed-origin pin,
+metadata, supervised TLS transport и opt-in host с раздельными identities;
+end-to-end PG/fault qualification и только затем полный B6 suite. Не объявлять
+проверку prerequisites завершением B6 или live readiness. Main остаётся на B5.
+
 ## Фактически реализовано
 
 - Закреплены `QuickFIXn.Core` + `QuickFIXn.FIX44` **1.14.1**. Существующий Windows

@@ -11,6 +11,52 @@ namespace TradeOps.UnitTests;
 public sealed class OmsPrivateAccountRevisionTests
 {
     [Fact]
+    public async Task ExternalIngressBlocksQualificationUntilDurableDrainWithoutInventingWsReceipts()
+    {
+        await using var setup=await Setup.Open();var c=setup.Coordinator;
+        var w=await c.BeginReplayAsync(setup.Session,setup.Epoch);var cut=await c.SealReplayAsync(w);
+        var old=c.TryCreateAccountRevision(cut,setup.Subscriptions)!;c.AbandonReplay(w);
+        using var ingress=c.BeginExternalIngress(setup.Session);
+        Assert.False(c.IsAccountRevisionCurrent(old));
+        var next=await c.BeginReplayAsync(setup.Session,setup.Epoch);var nextCut=await c.SealReplayAsync(next);
+        Assert.Null(c.TryCreateAccountRevision(nextCut,setup.Subscriptions));
+        ingress.Complete();
+        Assert.Null(c.TryCreateAccountRevision(nextCut,setup.Subscriptions));
+        next=await c.BeginReplayAsync(setup.Session,setup.Epoch);nextCut=await c.SealReplayAsync(next);
+        var current=c.TryCreateAccountRevision(nextCut,setup.Subscriptions)!;
+        Assert.NotNull(current);Assert.Equal(0,current.ThroughReceipt);Assert.True(c.IsAccountRevisionCurrent(current));
+        Assert.False(c.IsAccountRevisionCurrent(old));
+    }
+
+    [Fact]
+    public async Task AbandonedExternalIngressFaultsBaselineAndOtherPendingIngressCannotBeClearedEarly()
+    {
+        await using var setup=await Setup.Open();var c=setup.Coordinator;
+        using var first=c.BeginExternalIngress(setup.Session);using var second=c.BeginExternalIngress(setup.Session);
+        first.Complete();var w=await c.BeginReplayAsync(setup.Session,setup.Epoch);var cut=await c.SealReplayAsync(w);
+        Assert.Null(c.TryCreateAccountRevision(cut,setup.Subscriptions));
+        second.Dispose();Assert.False(c.ValidateAccountSubscriptions(setup.Subscriptions));
+        Assert.Null(c.TryCreateAccountRevision(cut,setup.Subscriptions));
+    }
+
+    [Fact]
+    public async Task WsEpochRestartCannotErasePendingNativeIngress()
+    {
+        await using var setup=await Setup.Open();var c=setup.Coordinator;
+        using var ingress=c.BeginExternalIngress(setup.Session);
+        var epoch=await c.BeginEpochAsync(setup.Session);
+        await c.UpdateAsync(setup.Session,epoch,OmsPrivateStreamPhase.Subscribing,OmsPrivateStreamProblem.AwaitingReconciliation);
+        await c.ConfirmAccountSubscriptionsAsync(setup.Session,setup.Runner,epoch,
+            ["user.orders.any.any.raw","user.trades.any.any.100ms"],DateTimeOffset.UtcNow);
+        await c.UpdateAsync(setup.Session,epoch,OmsPrivateStreamPhase.Recovering,OmsPrivateStreamProblem.AwaitingReconciliation);
+        var subscriptions=c.ReadAccountSubscriptions(setup.Session,epoch)!;
+        var w=await c.BeginReplayAsync(setup.Session,epoch);var cut=await c.SealReplayAsync(w);
+        Assert.Null(c.TryCreateAccountRevision(cut,subscriptions));ingress.Complete();
+        Assert.Null(c.TryCreateAccountRevision(cut,subscriptions));
+        w=await c.BeginReplayAsync(setup.Session,epoch);cut=await c.SealReplayAsync(w);
+        Assert.NotNull(c.TryCreateAccountRevision(cut,subscriptions));
+    }
+    [Fact]
     public async Task DrainedCutRevisionCannotBeImportedAndNewIngressInvalidatesItBeforeCommit()
     {
         await using var setup = await Setup.Open(); var c = setup.Coordinator;
@@ -67,7 +113,7 @@ public sealed class OmsPrivateAccountRevisionTests
         finally { stop.Cancel(); await capture.WaitAsync(Deadline); }
     }
 
-    private sealed class Setup : IAsyncDisposable
+    internal sealed class Setup : IAsyncDisposable
     {
         internal readonly OmsPrivateCaptureCoordinator Coordinator = new(new Capture(), new());
         internal OmsPrivateCaptureSession Session = null!; internal IDisposable Runner = null!;

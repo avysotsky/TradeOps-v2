@@ -17,11 +17,12 @@ public sealed class OmsExecutionGatewayPostgresTests
     { public OmsLiveExecutionBaseline? Current {get;set;} internal int Refreshes;public void RequestRecovery(){Current=null;Refreshes++;} }
     internal sealed class Wire:IOmsAccountOrderTransport
     {
-        internal int Writes;internal bool LoseAck;internal Func<Task>? BeforeWrite;internal bool Aborted;
+        internal int Writes;internal bool LoseAck;internal Func<Task>? BeforeWrite;internal Func<Task>? AfterWrite;internal bool Aborted;
         public async Task<DeribitJsonRpcCommandReceipt> SendAsync(OmsJournalCommandRequest c,OmsPhysicalWritePermit permit,CancellationToken ct)
         {
             if(BeforeWrite is not null) await BeforeWrite();
             await permit.InitiateAsync(c,()=> { if(Aborted) throw new IOException("Closed wire.");Writes++;return Task.CompletedTask; });
+            if(AfterWrite is not null)await AfterWrite();
             if(LoseAck)throw new IOException("Synthetic lost ACK.");
             return DeribitCommandReceiptFixtures.Receipt(c,sent:DateTimeOffset.UtcNow);
         }
@@ -55,6 +56,21 @@ public sealed class OmsExecutionGatewayPostgresTests
     internal static async Task<Recovery> Prepare(Live live)
     {var(t,d,q)=await live.Prepare();var p=await live.Store.PublishAsync(t,d,q);return new(){Current=new(p,q)};}
 
+    [Fact]
+    public async Task NativeEvidenceCanCommitAfterPhysicalInitiationBeforeResponseWithoutCounterDeadlock()
+    {
+        await using var db=await OmsPostgresTestDatabase.CreateAsync();using var root=new Root();await root.Bind(db.Source);
+        var clock=new FrozenClock();await using var live=await Live.Open(db,clock);var recovery=await Prepare(live);var command=Command();var wire=new Wire();
+        wire.AfterWrite=async()=>
+        {
+            await using var foreign=await db.Source.OpenConnectionAsync();
+            await using(var timeout=new NpgsqlCommand("SET lock_timeout='2s'",foreign))await timeout.ExecuteNonQueryAsync();
+            await using var update=new NpgsqlCommand("UPDATE oms_commands SET updated_at=clock_timestamp() WHERE command_id=@command",foreign);
+            update.Parameters.AddWithValue("command",command.CommandId.Value);Assert.Equal(1,await update.ExecuteNonQueryAsync());
+        };
+        await using var gateway=await OmsPostgresExecutionGateway.OpenAsync(Scope(),db.Source,recovery,new Inputs(clock),root.PathName,_=>Task.FromResult<IOmsAccountOrderTransport>(wire),clock);
+        Assert.Equal(OmsExecutionResultKind.Acknowledged,(await gateway.SubmitAsync(command)).Kind);Assert.Equal(1,wire.Writes);
+    }
     [Fact]
     public async Task OldTextOnlyBindingCannotAuthorizePhysicalOwnership()
     {
