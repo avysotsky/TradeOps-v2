@@ -49,11 +49,22 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var (json, digest) = OmsJournalCanonical.EncodeCommand(request);
+        request.Validate();
 
         await using var db = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = (NpgsqlTransaction)await db.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
+        var result = await PersistInTransactionAsync(db, tx, request, fault, cancellationToken);
+        if (result != OmsJournalWriteResult.StaleVersion) await tx.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    // Internal composition only: the caller owns rollback/commit with its durable risk reservation.
+    internal static async Task<OmsJournalWriteResult> PersistInTransactionAsync(
+        NpgsqlConnection db, NpgsqlTransaction tx, OmsJournalCommandRequest request,
+        Func<OmsJournalFailPoint, Task>? fault, CancellationToken cancellationToken)
+    {
+        var (json, digest) = OmsJournalCanonical.EncodeCommand(request);
         // Transaction-scoped, account-scoped arbitration. Locks have NO execution authority.
         // Command lock ensures same-ID races are compared, never failed by a unique error.
         // Intent lock serializes same intent racing across different aggregate identities.
@@ -71,7 +82,6 @@ tenant_id=@tenant AND venue_id=@venue AND environment=@environment
             if (result == OmsJournalWriteResult.Collision)
                 await RecordIncidentAsync(db, tx, request.Scope, "CommandCollision",
                     request.CommandId.Value.ToString("D"), cancellationToken);
-            await tx.CommitAsync(cancellationToken);
             return result;
         }
 
@@ -86,7 +96,6 @@ SELECT aggregate_id FROM oms_intents WHERE {ScopeWhere} AND intent_id=@intent
             {
                 await RecordIncidentAsync(db, tx, request.Scope, "IntentCollision",
                     request.IntentId.Value.ToString("D"), cancellationToken);
-                await tx.CommitAsync(cancellationToken);
                 return OmsJournalWriteResult.Collision;
             }
         }
@@ -153,7 +162,6 @@ RETURNING version
                     if (result == OmsJournalWriteResult.Collision)
                         await RecordIncidentAsync(db, tx, request.Scope, "CommandCollision",
                             request.CommandId.Value.ToString("D"), cancellationToken);
-                    await tx.CommitAsync(cancellationToken);
                     return result;
                 }
                 // Any tentative aggregate/intent creation must roll back on stale CAS.
@@ -193,7 +201,6 @@ VALUES (@tenant,@venue,@environment,@account,@subaccount,@command)
         }
 
         if (fault is not null) await fault(OmsJournalFailPoint.BeforeCommit);
-        await tx.CommitAsync(cancellationToken);
         return OmsJournalWriteResult.Created;
     }
 
@@ -378,7 +385,7 @@ RETURNING generation
         return (long?)await cmd.ExecuteScalarAsync(cancellationToken);
     }
 
-    private static async Task LockIdAsync(NpgsqlConnection db, NpgsqlTransaction tx,
+    internal static async Task LockIdAsync(NpgsqlConnection db, NpgsqlTransaction tx,
         AccountKey scope, string role, Guid id, CancellationToken ct)
     {
         var lockScope = JsonSerializer.Serialize(new[]

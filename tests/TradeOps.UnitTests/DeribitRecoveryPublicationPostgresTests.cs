@@ -299,7 +299,7 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow + Offset;
     }
 
-    private sealed class Live(OmsPostgresTestDatabase db, TimeProvider? clock = null) : IAsyncDisposable, IDeribitAccountInventoryReader,
+    internal sealed class Live(OmsPostgresTestDatabase db, TimeProvider? clock = null) : IAsyncDisposable, IDeribitAccountInventoryReader,
         IDeribitCurrencyRecoveryQueries, IDeribitRecoveryClockReader, IDeribitRecoveryQueries, IDeribitKnownOrderReader
     {
         private DateTimeOffset Now => (clock ?? TimeProvider.System).GetUtcNow();
