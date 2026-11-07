@@ -59,6 +59,8 @@ public sealed class FixHostAccountInspectionTests
                     "private/get_account_summaries"=>new{id=123,type=mode=="wrong-type"?"main":"subaccount",summaries=new[]{
                         new{currency="ETH",balance=.003m,equity=.003m,cross_collateral_enabled=mode=="cross",portfolio_margining_enabled=mode=="portfolio"},
                         new{currency="USDC",balance=mode=="unsupported-asset"?1m:0m,equity=mode=="unsupported-asset"?1m:0m,cross_collateral_enabled=false,portfolio_margining_enabled=false}}},
+                    "private/get_account_summary"=>new{id=123,type="subaccount",currency="ETH",margin_model=mode=="cross"?"cross_pm":"segregated_sm",
+                        cross_collateral_enabled=mode=="cross",portfolio_margining_enabled=mode=="portfolio",balance=.003m,equity=.003m,available_funds=.002m,total_equity_usd=mode=="cross"?9m:(decimal?)null},
                     "private/get_positions"=>new[]{new{user_id=mode=="wrong-owner"?999:123,instrument_name="ETH-PERPETUAL",kind="future",direction="sell",size=-1,size_currency=-.001m}},
                     "private/get_open_orders"=>new[]{new{instrument_name="ETH-PERPETUAL",order_id="synthetic-original",order_state="open",order_type="limit"}},
                     _=>throw new InvalidOperationException("Any economic endpoint is forbidden in this inspection.")};

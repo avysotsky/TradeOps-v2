@@ -62,9 +62,11 @@ internal sealed class AccountInput
     }
 }
 internal sealed record AccountDiagnostics(string Status,bool NativeBindingVerified,int PositionCount,int OpenOrderCount,int CurrencyCount,
-    bool CrossCollateralObserved,bool PortfolioMarginObserved,decimal? EstimatedEquityUsd,bool UsdEstimateComplete,DateTimeOffset ObservedUtc)
-{public bool DatabaseUsed=>false;public bool TradingStarted=>false;public bool AccountReady=>false;}
-internal sealed record AccountInspectionResult(AccountDiagnostics Diagnostics,DeribitAccountInventoryResult? Inventory,IReadOnlyDictionary<string,decimal> IndexPrices);
+    bool CrossCollateralObserved,bool PortfolioMarginObserved,decimal? EstimatedEquityUsd,bool UsdEstimateComplete,DateTimeOffset ObservedUtc,
+    string? EthMarginModel=null,decimal? NativeTotalEquityUsd=null)
+{public int SchemaVersion=>2;public bool DatabaseUsed=>false;public bool TradingStarted=>false;public bool AccountReady=>false;}
+internal sealed record AccountInspectionResult(AccountDiagnostics Diagnostics,DeribitAccountInventoryResult? Inventory,IReadOnlyDictionary<string,decimal> IndexPrices,
+    DeribitAccountModeObservationV1? NativeMode=null);
 internal static class AccountInspection
 {
     internal static async Task<AccountInspectionResult> CollectAsync(AccountInput input,HttpClient http,CancellationToken ct)
@@ -76,6 +78,7 @@ internal static class AccountInspection
         var inventory=await new DeribitAccountInventoryReader(binding,http).ReadAsync(new(scope,Guid.NewGuid(),TimeSpan.FromSeconds(45)),ct);
         if(!inventory.QueriesCompleted||!inventory.IsFreshAt(DateTimeOffset.UtcNow))
             return new(new("PINNED_ACCOUNT_INVENTORY_REFUSED",false,0,0,0,false,false,null,false,DateTimeOffset.UtcNow),null,new Dictionary<string,decimal>());
+        var nativeMode=await DeribitAccountModeReaderV1.ReadAsync(binding,http,ct);
         var prices=new Dictionary<string,decimal>(StringComparer.Ordinal);decimal total=0;var complete=true;var rpcId=0;
         foreach(var balance in inventory.Balances.Where(x=>x.Equity!=0||x.CashBalance!=0))
         {
@@ -93,6 +96,7 @@ internal static class AccountInspection
         }
         if(!inventory.IsFreshAt(DateTimeOffset.UtcNow))throw new InvalidOperationException();
         return new(new("PINNED_ACCOUNT_INVENTORY_PASS",true,inventory.Positions.Count,inventory.OpenOrders.Count,inventory.Balances.Count,
-            inventory.Balances.Any(x=>x.CrossCollateralEnabled),inventory.Balances.Any(x=>x.PortfolioMarginingEnabled),complete?total:null,complete,DateTimeOffset.UtcNow),inventory,prices);
+            inventory.Balances.Any(x=>x.CrossCollateralEnabled),inventory.Balances.Any(x=>x.PortfolioMarginingEnabled),complete?total:null,complete,DateTimeOffset.UtcNow,
+            nativeMode.MarginModel,nativeMode.NativeTotalEquityUsd),inventory,prices,nativeMode);
     }
 }

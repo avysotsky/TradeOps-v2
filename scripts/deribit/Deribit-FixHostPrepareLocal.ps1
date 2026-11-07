@@ -60,10 +60,10 @@ try{
     $payload=$null;$id=$null;$secret=$null;$pin=$null;$saved=$null
     if(!$process.WaitForExit(75000)){throw 'PREPARATION_TIMEOUT'}
     $null=$stderr.GetAwaiter().GetResult();$raw=$stdout.GetAwaiter().GetResult();if($raw.Length -gt 16384 -or $process.ExitCode -ne 0){throw 'PREPARATION_REFUSED'}
-    $result=$raw|ConvertFrom-Json -Depth 8
+    $result=$raw|ConvertFrom-Json -Depth 8 -DateKind String
     if($Action -eq 'ReadAccount'){
-        $keys=@('Status','NativeBindingVerified','PositionCount','OpenOrderCount','CurrencyCount','CrossCollateralObserved','PortfolioMarginObserved','EstimatedEquityUsd','UsdEstimateComplete','ObservedUtc','DatabaseUsed','TradingStarted','AccountReady')
-        if($result.Status -cne 'PINNED_ACCOUNT_INVENTORY_PASS' -or $result.NativeBindingVerified -cne $true -or $result.DatabaseUsed -cne $false -or $result.TradingStarted -cne $false -or $result.AccountReady -cne $false){throw 'PREPARATION_OUTPUT_REFUSED'}
+        $keys=@('Status','NativeBindingVerified','PositionCount','OpenOrderCount','CurrencyCount','CrossCollateralObserved','PortfolioMarginObserved','EstimatedEquityUsd','UsdEstimateComplete','ObservedUtc','EthMarginModel','NativeTotalEquityUsd','SchemaVersion','DatabaseUsed','TradingStarted','AccountReady')
+        if($result.SchemaVersion -ne 2 -or $result.Status -cne 'PINNED_ACCOUNT_INVENTORY_PASS' -or $result.NativeBindingVerified -cne $true -or $result.DatabaseUsed -cne $false -or $result.TradingStarted -cne $false -or $result.AccountReady -cne $false){throw 'PREPARATION_OUTPUT_REFUSED'}
     }else{
         $keys=@('SchemaVersion','NodeSha256','LockRoot','RootSha256','LockSha256')
         if($result.SchemaVersion -ne 2 -or $result.LockRoot -cne ([IO.Path]::GetFullPath($target).ToUpperInvariant())){throw 'NODE_OUTPUT_REFUSED'}
