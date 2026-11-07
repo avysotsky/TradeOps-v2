@@ -16,7 +16,10 @@ migrations. Настройки готовит разработчик; владе
 [Session v2](../architecture/DERIBIT_FIX_DIRECT_SUBACCOUNT_V2.md) поддерживает
 самостоятельный ключ этого субаккаунта с сохранением полного scope;
 [review pack и фактическое состояние окружения](FIX_RETAINED_STORE_PREPARATION_2026-11-07.md).
-Постоянная DB не менялась; live по-прежнему NOT RUN.
+После явного разрешения владельца [пакет применён к постоянной DB](FIX_RETAINED_STORE_PROVISIONING_2026-11-07.md):
+38 migrations, четыре NOLOGIN roles и exact session v2, старый журнал без
+изменений. Source SQL-проверки прав 4/4 PASS через read-only session authorization;
+это не password LOGIN или configuration PASS. Live по-прежнему NOT RUN.
 
 ## Запрошенная цель
 
@@ -44,7 +47,8 @@ placement attempts на этап, post-only, не менее 10% от рынка
 | Перенос цены `35=G` | [Versioned price-only mutation через B4/B5](../architecture/DERIBIT_FIX_PRICE_AMEND_V2.md); размер/флаги неизменны | NOT RUN |
 | Owner-launched FIX qualification runner | `Deribit-FixQualificationLocal.ps1`, отдельный host mode; по умолчанию только Status | NOT RUN |
 | Старый bounded OMS runner | Entry point намеренно возвращает отказ после B5; это исторический WS-сценарий | НЕ ИСПОЛЬЗОВАТЬ ДЛЯ FIX |
-| Permanent store/session/четыре роли/policy | Read-only проверено: B3 schema, новых четырёх identities нет; SQL review подготовлен | BLOCKED: PROVISIONING REQUIRED |
+| Permanent schema/session/четыре роли | Согласованный пакет применён: 38 migrations, четыре NOLOGIN roles, exact session v2 | PROVISIONED INACTIVE; live NOT RUN |
+| Policy / physical node / LOGIN / DB access | Не provision-ились этим пакетом; runtime gates сохраняются | BLOCKED: HOST CONFIGURATION REQUIRED |
 | Configuration preflight | Read-only DB/catalog/node inspection реализован; текущие девять env settings отсутствуют | BLOCKED: CONFIGURATION MISSING |
 
 Deribit поддерживает native изменение работающего ордера через

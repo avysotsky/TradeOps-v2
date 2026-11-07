@@ -4,6 +4,11 @@
 Настройки и DB roles подготавливает разработчик; владельцу не требуется знать
 пароли, названия ролей или искать неизвестный configuration file.
 
+**После этой подготовки владелец дал разрешение, и пакет применён.**
+[Актуальный итог: 38 migrations, четыре NOLOGIN roles, exact session и сохранность журнала](FIX_RETAINED_STORE_PROVISIONING_2026-11-07.md).
+Ниже сохранено evidence подготовки до применения; это не текущее утверждение
+об отсутствии schema/roles.
+
 ## Установленные факты
 
 Read-only Docker metadata + SELECT с `default_transaction_read_only=on`
@@ -50,7 +55,7 @@ SHA-256 актуального schema SQL:
 roles/session SQL:
 `6ee04ed1b2bd637ba5d854fe31481507da29cfef4c283bd7ac9ac84354d17ea9`.
 
-Пакет не применялся к постоянной БД. Runtime по-прежнему не мигрирует и не
+На момент подготовки пакет не применялся к постоянной БД. Runtime по-прежнему не мигрирует и не
 выдаёт себе права. Policy defaults, execution-node binding и изменение старого
 business evidence отсутствуют. Не изменяются старые три B3 identities.
 
