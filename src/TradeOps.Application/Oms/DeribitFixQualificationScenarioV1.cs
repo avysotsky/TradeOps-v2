@@ -73,7 +73,8 @@ public sealed class DeribitFixQualificationScenarioV1(IOmsOrderIntentGateway gat
         var price=decimal.Floor(q.Bid*.90m/q.PriceStep)*q.PriceStep;
         if(previous is{} old)price=Math.Min(price,old-q.PriceStep);
         price=decimal.Floor(price/q.PriceStep)*q.PriceStep;
-        if(price<=0||price<q.MinPrice||price>q.MaxPrice||price>q.Bid*.90m||price>=q.Ask||price==previous)
+        // This scenario sends buys. Deribit's lower future band clamps sells, not passive buys.
+        if(price<=0||price>q.MaxPrice||price>q.Bid*.90m||price>=q.Ask||price==previous)
             throw new InvalidOperationException("No price satisfies distance and venue limits.");
         return price;
     }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Npgsql;
 using TradeOps.Application.Interfaces;
+using TradeOps.Application.Oms;
 using TradeOps.Connectors.Deribit;
 
 namespace TradeOps.Worker;
@@ -13,7 +14,7 @@ public sealed class DeribitRecoverySources(NpgsqlDataSource capture, NpgsqlDataS
     public void Dispose() { Capture.Dispose(); Recovery.Dispose(); }
 }
 
-public sealed record DeribitRecoveryHostOptions(DateTimeOffset InitialFromUtc);
+public sealed record DeribitRecoveryHostOptions(DateTimeOffset InitialFromUtc,DeribitHistoryCoverageMode HistoryCoverage=DeribitHistoryCoverageMode.InventoryCurrenciesV1);
 
 /// <summary>Explicit, exclusive recovery composition. No legacy workers, exchange senders,
 /// automatic migrations or grants. Capture and recovery use separate database identities.</summary>
@@ -38,7 +39,10 @@ public static class DeribitRecoveryStartup
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidOperationException)
         { throw new InvalidOperationException("Invalid recovery database binding or initial outage anchor; startup refused."); }
-        builder.Services.AddSingleton(pin); builder.Services.AddSingleton(new DeribitRecoveryHostOptions(from));
+        var coverage=builder.Configuration["DeribitRecovery:HistoryCoverage"] switch
+        {null=>DeribitHistoryCoverageMode.InventoryCurrenciesV1,DeribitCollateralHistoryCoverageV2.PolicyName=>DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2,
+            _=>throw new InvalidOperationException("Unsupported explicit native history coverage policy.")};
+        builder.Services.AddSingleton(pin); builder.Services.AddSingleton(new DeribitRecoveryHostOptions(from,coverage));
         builder.Services.AddSingleton(_ => new DeribitRecoverySources(NpgsqlDataSource.Create(capture.ConnectionString), NpgsqlDataSource.Create(recovery.ConnectionString)));
         builder.Services.AddHttpClient("DeribitAccountRecovery", c => c.Timeout = TimeSpan.FromSeconds(15))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false,

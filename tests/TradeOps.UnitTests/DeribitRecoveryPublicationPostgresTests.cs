@@ -312,7 +312,9 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         internal OmsPrivateVenueFacts? NativeReport;
         internal bool LateFill, FullFill, DuplicateFill;
         internal decimal Cash,Equity;
+        internal bool CrossMargin;
         internal DateTimeOffset? FromOverride;
+        internal DeribitHistoryCoverageMode HistoryCoverage=DeribitHistoryCoverageMode.InventoryCurrenciesV1;
         internal static async Task<Live> Open(OmsPostgresTestDatabase db, TimeProvider? clock = null,AccountKey? scope=null)
         {
             var live = new Live(db, clock,scope); live.queries = await DeribitRecoveryReplayGateTests.Rig.Open();
@@ -330,12 +332,12 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
                 FromUtc = FromOverride ?? Now.AddMinutes(Mode == "long-outage" ? -40 : -5),
                 ThroughUtc = FromOverride ?? Now.AddSeconds(-1) } };
             var account = new DeribitRecoveryAccountAssessmentTests.Accounts(clock) { Transform = x => x with { Positions = [],
-                Balance = x.Balance! with { CashBalance = Cash, Equity = Equity, CrossCollateralEnabled = false, PortfolioMarginingEnabled = false } } };
+                Balance = x.Balance! with { CashBalance = Cash, Equity = Equity, CrossCollateralEnabled = CrossMargin, PortfolioMarginingEnabled = CrossMargin } } };
             IOmsRecoveryLedgerReader journal = new OmsPostgresRecoveryLedgerReader(db.Source, true);
             if (clock is not null) journal = new ClockedLedger(journal, clock);
             var engine = new DeribitRecoveryRunEngine(Store, journal, this, this,
                 account, clock, universeSources: new(this, this,
-                    [new("ETH-PERPETUAL", "ETH", "future", OmsPrivateAmountUnit.Usd, "USD", "ETH", "USD")], this));
+                    [new("ETH-PERPETUAL", "ETH", "future", OmsPrivateAmountUnit.Usd, "USD", "ETH", "USD")], this,HistoryCoverage));
             if (publish) return await engine.RecoverAndPublishAsync(q, DeribitRecoveryAccountAssessmentTests.Request(q), Coordinator, Session);
             var doc = await engine.RunAsync(q, DeribitRecoveryAccountAssessmentTests.Request(q), Coordinator, Session);
             return new(doc, DeribitRecoveryCoherencePolicy.Assess(doc, clock).Assessment, null);
@@ -352,8 +354,8 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         {
             var at = Now; inventoryCalls++; if (Mode == "pre-window") at = at.AddSeconds(-1);
             return Task.FromResult(new DeribitAccountInventoryResult(q.Scope, q.Epoch, at, at, q.MaximumObservationSpan,
-                new[] { "ETH", "BTC" }.Select(x => new DeribitCurrencyBalance(x, (x=="ETH"?Cash:0)+(Mode == "cash" && inventoryCalls > 1 ? 1 : 0),
-                    x=="ETH"?Equity:0, false, false, new(at, at))).ToArray(),
+                (HistoryCoverage==DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2?new[]{"ETH","BTC","BUIDL","MATIC"}:new[] { "ETH", "BTC" }).Select(x => new DeribitCurrencyBalance(x, (x=="ETH"?Cash:0)+(Mode == "cash" && inventoryCalls > 1 ? 1 : 0),
+                    x=="ETH"?Equity:0, CrossMargin, CrossMargin, new(at, at))).ToArray(),
                 Mode == "unmapped" ? [new("UNKNOWN", "future", "buy", 1)] : [],
                 NativeReport is { OrderState: "open" } open ? [new(open.NativeInstrument, open.ExchangeOrderId, "open", "limit", new string('A', 64))] : [], []));
         }

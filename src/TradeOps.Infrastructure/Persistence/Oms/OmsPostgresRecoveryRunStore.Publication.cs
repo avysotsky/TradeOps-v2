@@ -89,7 +89,7 @@ ORDER BY r.generation DESC LIMIT 1
         if (start.Scope != scope || rows.GetInt32(4) != 1 || rows.IsDBNull(5)) throw new InvalidOperationException("Invalid recovered state binding or bounds.");
         var digest = rows.GetFieldValue<byte[]>(6); var recovered = OmsRecoveryRunCodec.Decode<OmsRecoveredAccountStateV1>(rows.GetString(5), digest);
         if (recovered.SchemaVersion != 1 || recovered.Scope != scope || recovered.Epoch != start.Epoch || recovered.RunId != start.RunId ||
-            recovered.Policy != DeribitRecoveryCoherencePolicy.Policy) throw new InvalidOperationException("Invalid recovered state identity.");
+            !DeribitRecoveryCoherencePolicy.IsSupportedPolicy(recovered.Policy)) throw new InvalidOperationException("Invalid recovered state identity.");
         return new(new(new(start, rows.GetInt64(2)), rows.GetInt64(3), Convert.ToHexString(digest)), recovered);
     }
 

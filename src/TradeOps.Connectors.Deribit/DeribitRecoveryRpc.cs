@@ -14,7 +14,7 @@ internal sealed class DeribitRecoveryQueryException(DeribitRecoveryQueryProblem 
 }
 
 // Fixed-origin, read-only allowlist; no retries, credentials in URLs or redirect support.
-internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environment)
+internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environment,DeribitRecoveryReadBudgetV2? budget=null)
 {
     private long id;
     private int bytes;
@@ -28,8 +28,9 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
             "private/get_account_summaries" or "private/get_open_orders" or "public/get_instrument" or "public/get_order_book" or "public/ticker" or
             "private/get_margins" or "private/get_transaction_log" or "private/simulate_portfolio" or "private/pme/simulate"))
             throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Protocol);
-        if (id != 0) await Task.Delay(TimeSpan.FromMilliseconds(150), ct);
-        var requestId = ++id;
+        using var readLease=budget is null?null:await budget.EnterAsync(ct);
+        if (budget is null && id != 0) await Task.Delay(TimeSpan.FromMilliseconds(150), ct);
+        var requestId = Interlocked.Increment(ref id);
         var host = environment == OmsEnvironment.Mainnet ? "www.deribit.com" : "test.deribit.com";
         using var request = new HttpRequestMessage(HttpMethod.Post, $"https://{host}/api/v2/{method}")
         { Content = JsonContent.Create(new { jsonrpc = "2.0", id = requestId, method, @params = parameters }) };
@@ -46,8 +47,8 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
         using var buffer = new MemoryStream(); var chunk = new byte[8192]; int n;
         while ((n = await stream.ReadAsync(chunk, ct)) != 0)
         {
-            bytes += n;
-            if (buffer.Length + n > 524288 || bytes > 8 * 1024 * 1024)
+            var total=Interlocked.Add(ref bytes,n);
+            if (buffer.Length + n > 524288 || total > 8 * 1024 * 1024)
                 throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Capacity);
             buffer.Write(chunk, 0, n);
         }

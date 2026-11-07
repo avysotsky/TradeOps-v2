@@ -38,10 +38,11 @@ public sealed class DeribitFixConfigurationCheckTests
     }
     [Theory]
     [InlineData("malformed")][InlineData("shared-user")][InlineData("other-db")][InlineData("startup-sql")][InlineData("local-time")][InlineData("invalid-session")][InlineData("relative-root")]
-    [InlineData("future-anchor")][InlineData("old-anchor")][InlineData("subaccount")]
+    [InlineData("future-anchor")][InlineData("old-anchor")][InlineData("subaccount")][InlineData("history-policy")]
     public async Task UnsafeConfigurationIsSanitizedAndNeverOpensAConnection(string variant)
     {
         var data=Settings();
+        if(variant=="history-policy")data["DeribitRecovery:HistoryCoverage"]="invented";
         if(variant=="malformed")data["ConnectionStrings:TradeOpsFixDb"]="invalid-synthetic-secret";
         if(variant=="shared-user")data["ConnectionStrings:TradeOpsFixDb"]=data["ConnectionStrings:TradeOpsExecutionDb"];
         if(variant=="other-db")data["ConnectionStrings:TradeOpsFixDb"]="Host=127.0.0.1;Database=other;Username=protocol";

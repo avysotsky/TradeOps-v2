@@ -2,7 +2,7 @@ namespace TradeOps.Application.Oms;
 
 public sealed record DeribitRecoveryUniverseSources(IDeribitAccountInventoryReader Inventory,
     IDeribitCurrencyRecoveryQueries CurrencyQueries, IReadOnlyList<DeribitRecoveryInstrument> TrustedManifest,
-    IDeribitRecoveryClockReader? Clock = null);
+    IDeribitRecoveryClockReader? Clock = null,DeribitHistoryCoverageMode HistoryCoverage=DeribitHistoryCoverageMode.InventoryCurrenciesV1);
 
 public sealed record DeribitRecoveryRunOutcome(DeribitRecoveryRunDocumentV1 Document,
     DeribitRecoveryCoherenceAssessment Coherence,
@@ -162,7 +162,7 @@ public sealed class DeribitRecoveryRunEngine(IOmsRecoveryRunStore store, IOmsRec
             var receivedInventory = time.GetUtcNow();
             var observed = raw with { Balances = raw.Balances.ToArray(), Positions = raw.Positions.ToArray(),
                 OpenOrders = raw.OpenOrders.ToArray(), Problems = raw.Problems.ToArray() };
-            universe = DeribitRecoveryUniverseBuilder.Build(start.Scope, start.Epoch, ledger.Snapshot!, observed, manifest, time.GetUtcNow());
+            universe = DeribitRecoveryUniverseBuilder.Build(start.Scope, start.Epoch, ledger.Snapshot!, observed, manifest, time.GetUtcNow(),sources.HistoryCoverage);
             // A misbound port result must not archive another account's private data under this scope.
             if (observed.Scope == start.Scope && observed.Epoch == start.Epoch) InitialInventory = Inventory = observed;
             if (observed.StartedAtUtc < calledInventory || observed.CompletedAtUtc > receivedInventory)
@@ -202,7 +202,7 @@ public sealed class DeribitRecoveryRunEngine(IOmsRecoveryRunStore store, IOmsRec
             receivedInventory = time.GetUtcNow();
             var finalInventory = finalRaw with { Balances = finalRaw.Balances.ToArray(), Positions = finalRaw.Positions.ToArray(),
                 OpenOrders = finalRaw.OpenOrders.ToArray(), Problems = finalRaw.Problems.ToArray() };
-            var finalUniverse = DeribitRecoveryUniverseBuilder.Build(start.Scope, start.Epoch, ledger.Snapshot!, finalInventory, manifest, time.GetUtcNow());
+            var finalUniverse = DeribitRecoveryUniverseBuilder.Build(start.Scope, start.Epoch, ledger.Snapshot!, finalInventory, manifest, time.GetUtcNow(),sources.HistoryCoverage);
             if (finalInventory.Scope == start.Scope && finalInventory.Epoch == start.Epoch) Inventory = finalInventory;
             if (finalInventory.StartedAtUtc < calledInventory || finalInventory.CompletedAtUtc > receivedInventory)
                 issues.Add(new(DeribitRecoveryUniverseProblem.InvalidInventory));
@@ -215,7 +215,7 @@ public sealed class DeribitRecoveryRunEngine(IOmsRecoveryRunStore store, IOmsRec
             if (universe is null) return null;
             // Check freshness at use time, after every query and capture drain has completed.
             var final = Inventory is null ? universe : DeribitRecoveryUniverseBuilder.Build(start.Scope, start.Epoch,
-                ledger.Snapshot!, Inventory, manifest, time.GetUtcNow());
+                ledger.Snapshot!, Inventory, manifest, time.GetUtcNow(),sources.HistoryCoverage);
             var symbols = final.RequiredInstruments.Concat(CurrencyReads.SelectMany(x => x.Observations).Select(x => x.Facts.NativeInstrument))
                 .Concat(CurrencyReads.SelectMany(x => x.UnmappedInstruments ?? [])).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
             return final with { Issues = final.Issues.Concat(issues).Distinct().ToArray(), RequiredInstruments = symbols,

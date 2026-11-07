@@ -50,7 +50,7 @@ public sealed record DeribitRecoveryRunDocumentV1(int SchemaVersion, OmsRecovery
         Start.Validate();
         var a = Assessment.Ledger.Orders;
         if (SchemaVersion != 1 || a.Scope != Start.Scope || a.Epoch != Start.Epoch ||
-            Coherence is not null && (Coherence.Policy != DeribitRecoveryCoherencePolicy.Policy ||
+            Coherence is not null && (Coherence.Policy != (Universe?.HistoryCoverage is null?DeribitRecoveryCoherencePolicy.Policy:DeribitRecoveryCoherencePolicy.CollateralPolicyV2) ||
                 Coherence.Problems.Any(x => !Enum.IsDefined(x)) || Coherence.AssessedAtUtc.Offset != TimeSpan.Zero) ||
             a.NativeInstrument != Start.NativeInstrument || a.FromUtc != Start.FromUtc || a.ThroughUtc != Start.ThroughUtc ||
             a.SnapshotId != Ledger.Private.SnapshotId || Ledger.Private.Scope != Start.Scope ||

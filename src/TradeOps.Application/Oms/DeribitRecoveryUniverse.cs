@@ -10,7 +10,8 @@ public enum DeribitRecoveryUniverseProblem { InvalidInventory = 1, StaleInventor
 public sealed record DeribitRecoveryUniverseIssue(DeribitRecoveryUniverseProblem Problem, string? NativeInstrument = null, string? Currency = null);
 public sealed record DeribitRecoveryUniverse(AccountKey Scope, Guid Epoch, Guid SnapshotId,
     IReadOnlyList<string> RequiredInstruments, IReadOnlyList<string> RequiredCurrencies,
-    IReadOnlyList<DeribitRecoveryUniverseIssue> Issues, IReadOnlyList<DeribitRecoveryInstrument>? InstrumentTerms = null)
+    IReadOnlyList<DeribitRecoveryUniverseIssue> Issues, IReadOnlyList<DeribitRecoveryInstrument>? InstrumentTerms = null,
+    [property:System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] DeribitCollateralHistoryCoverageV2? HistoryCoverage=null)
 {
     public bool UniverseResolved => Issues.Count == 0;
     public bool AccountReady => false;
@@ -19,10 +20,13 @@ public sealed record DeribitRecoveryUniverse(AccountKey Scope, Guid Epoch, Guid 
 public static class DeribitRecoveryUniverseBuilder
 {
     public static DeribitRecoveryUniverse Build(AccountKey scope, Guid epoch, OmsRecoveryLedgerSnapshot ledger,
-        DeribitAccountInventoryResult inventory, IReadOnlyList<DeribitRecoveryInstrument> trustedManifest, DateTimeOffset now)
+        DeribitAccountInventoryResult inventory, IReadOnlyList<DeribitRecoveryInstrument> trustedManifest, DateTimeOffset now,
+        DeribitHistoryCoverageMode coverageMode=DeribitHistoryCoverageMode.InventoryCurrenciesV1)
     {
         var issues = new HashSet<DeribitRecoveryUniverseIssue>();
         var symbols = new HashSet<string>(StringComparer.Ordinal); var currencies = new HashSet<string>(StringComparer.Ordinal);
+        DeribitCollateralHistoryCoverageV2? history=null;
+        if(!Enum.IsDefined(coverageMode))throw new ArgumentException("Unsupported native history coverage policy.");
         if (scope.Venue.Value != "DERIBIT" || scope.Environment is not (OmsEnvironment.Mainnet or OmsEnvironment.Testnet) || epoch == Guid.Empty || now.Offset != TimeSpan.Zero ||
             inventory.Scope != scope || inventory.Epoch != epoch || !inventory.QueriesCompleted ||
             inventory.StartedAtUtc.Offset != TimeSpan.Zero || inventory.CompletedAtUtc.Offset != TimeSpan.Zero ||
@@ -69,7 +73,16 @@ public static class DeribitRecoveryUniverseBuilder
             inventory.OpenOrders.Any(x => !Opaque(x.NativeInstrument, 160) || !Opaque(x.ExchangeOrderId, 160) ||
                 x.NativeState is not ("open" or "untriggered" or "triggered") || !Opaque(x.NativeOrderType, 32)))
         { issues.Add(new(DeribitRecoveryUniverseProblem.InvalidInventory)); return Finish(); }
-        foreach (var balance in inventory.Balances) currencies.Add(balance.Currency); // Includes zero balances: outage activity is not inferred from today's holdings.
+        if(coverageMode==DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2)
+        {
+            // Always enumerate all derivative settlement currencies, including zero holdings.
+            // Keep every collateral row in inventory and in the explicit versioned coverage record.
+            history=DeribitCollateralHistoryCoverageV2.Create(inventory.Balances);
+            foreach(var currency in DeribitCollateralHistoryCoverageV2.Settlements)currencies.Add(currency);
+            foreach(var balance in inventory.Balances)
+                if(!DeribitCollateralHistoryCoverageV2.Known(balance.Currency))issues.Add(new(DeribitRecoveryUniverseProblem.UnsupportedCurrency,Currency:balance.Currency));
+        }
+        else foreach (var balance in inventory.Balances) currencies.Add(balance.Currency); // v1 remains byte/behavior compatible.
         foreach (var position in inventory.Positions)
         {
             symbols.Add(position.NativeInstrument);
@@ -92,7 +105,7 @@ public static class DeribitRecoveryUniverseBuilder
         DeribitRecoveryUniverse Finish() => new(scope, epoch, ledger.Private.SnapshotId,
             symbols.Order(StringComparer.Ordinal).ToArray(), currencies.Order(StringComparer.Ordinal).ToArray(),
             issues.OrderBy(x => x.Problem).ThenBy(x => x.NativeInstrument, StringComparer.Ordinal).ThenBy(x => x.Currency, StringComparer.Ordinal).ToArray(),
-            trustedManifest.Where(x => x is not null && symbols.Contains(x.NativeInstrument)).OrderBy(x => x.NativeInstrument, StringComparer.Ordinal).ToArray());
+            trustedManifest.Where(x => x is not null && symbols.Contains(x.NativeInstrument)).OrderBy(x => x.NativeInstrument, StringComparer.Ordinal).ToArray(),history);
     }
     private static bool Opaque(string? value, int max) => value is { Length: > 0 } && value.Length <= max && value == value.Trim() && !value.Any(char.IsControl);
     private static bool Token(string? value) => Opaque(value, 32) && value!.All(x => char.IsAsciiLetterUpper(x) || char.IsAsciiDigit(x) || x == '_');

@@ -97,7 +97,7 @@ public sealed class DeribitAccountRecoveryWorker(DeribitRecoverySources sources,
                 return (new(store, new OmsPostgresRecoveryLedgerReader(sources.Recovery, true),
                     new DeribitRecoveryQueries(b, http), new DeribitKnownOrderReader(b, http), new DeribitAccountSnapshotReader(b, http),
                     universeSources: new(new DeribitAccountInventoryReader(b, http), new DeribitCurrencyRecoveryQueries(b, http),
-                        m.Manifest, new DeribitRecoveryClockReader(b, http))), accountExpected);
+                        m.Manifest, new DeribitRecoveryClockReader(b, http),options.HistoryCoverage)), accountExpected);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }

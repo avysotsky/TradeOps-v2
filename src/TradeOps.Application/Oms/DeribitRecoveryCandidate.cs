@@ -2,7 +2,7 @@ using TradeOps.Domain.Oms;
 
 namespace TradeOps.Application.Oms;
 
-public enum DeribitRecoveryCandidateScope { Instrument = 1, InventoryCurrencies }
+public enum DeribitRecoveryCandidateScope { Instrument = 1, InventoryCurrencies, ListedDerivativeSettlementsV2 }
 
 /// <summary>Reproducible provisional model of the archived evidence. Unresolved coverage, absent
 /// observations and external orders remain issues. A candidate is never a published account baseline.</summary>
@@ -130,9 +130,9 @@ public static class DeribitRecoveryCandidateBuilder
                 }
             }
         }
-        return new(1, document.Start.Scope, document.Start.Epoch, evidence.SnapshotId, orders,
+        return new(universe?.HistoryCoverage is null?1:2, document.Start.Scope, document.Start.Epoch, evidence.SnapshotId, orders,
             fills.AsReadOnly(), positions, wide ? null : account?.Balance, evidence.Blockers.ToArray(),
-            wide ? DeribitRecoveryCandidateScope.InventoryCurrencies : DeribitRecoveryCandidateScope.Instrument,
+            wide ? universe?.HistoryCoverage is null?DeribitRecoveryCandidateScope.InventoryCurrencies:DeribitRecoveryCandidateScope.ListedDerivativeSettlementsV2 : DeribitRecoveryCandidateScope.Instrument,
             balances, scopeIssues.Distinct().ToArray());
     }
 }

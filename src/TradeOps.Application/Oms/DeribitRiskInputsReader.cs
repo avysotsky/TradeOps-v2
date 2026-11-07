@@ -5,7 +5,8 @@ namespace TradeOps.Application.Oms;
 
 public sealed record OmsRiskPolicyDocumentV1(int SchemaVersion, OmsAccountRiskPolicyV1 Limits,
     IReadOnlyList<string> AllowedInstruments, DateTimeOffset ValidFromUtc, DateTimeOffset ValidThroughUtc,
-    decimal FxStressFactor, decimal MarginMultiplier, decimal MaxLimitDeviationFraction);
+    decimal FxStressFactor, decimal MarginMultiplier, decimal MaxLimitDeviationFraction,
+    [property:System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] OmsCrossPortfolioPolicyV2? CrossPortfolio=null);
 public interface IOmsRiskPolicyReader
 {
     Task<OmsRiskPolicyDocumentV1?> ReadAsync(AccountKey scope, CancellationToken ct = default);
@@ -34,9 +35,11 @@ public interface IDeribitRiskObservationReader
 /// <summary>Supported policy: standard segregated BTC/ETH inverse futures. Unknown products,
 /// margin modes, units, incomplete daily loss traversal or missing policy return no valuation.</summary>
 public sealed class DeribitRiskInputsReader(IOmsRiskPolicyReader policies, IDeribitRiskObservationReader observations,
-    TimeProvider? clock = null,IOmsPendingRiskReader? pendingRisk=null) : IOmsRiskInputsReader
+    TimeProvider? clock = null,IOmsPendingRiskReader? pendingRisk=null,
+    IDeribitCrossPortfolioRiskObservationReaderV2? crossPortfolio=null) : IOmsRiskInputsReader
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string,DeribitRiskObservationV1> cache = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string,DeribitCrossPmRiskObservationV2> crossCache = new();
     private readonly object cacheSync=new();
     public async Task<OmsRiskInputsV1?> ReadAsync(OmsJournalCommandRequest command, OmsRecoveredAccountStateV1 baseline, CancellationToken ct = default)
     {
@@ -46,6 +49,19 @@ public sealed class DeribitRiskInputsReader(IOmsRiskPolicyReader policies, IDeri
         var pending=pendingRisk is null?null:await pendingRisk.ReadAsync(command.Scope,command.CommandId,ct);
         var key=Convert.ToHexString(OmsJournalCanonical.EncodeCommand(command).Sha256)+":"+Convert.ToHexString(OmsRecoveryRunCodec.Encode(baseline).Sha256)+":"+
             (pending is null?Guid.NewGuid().ToString("N"):Convert.ToHexString(OmsRecoveryRunCodec.Encode(pending.OrderBy(x=>x.Instrument,StringComparer.Ordinal).ThenBy(x=>x.LimitPrice).ThenBy(x=>x.NativeUsd).ToArray()).Sha256));
+        if(policy.SchemaVersion==2)
+        {
+            if(crossPortfolio is null||pending is null||!DeribitCrossPortfolioRiskV2.PolicyValid(policy))return null;
+            foreach(var old in crossCache.Where(x=>now<x.Value.StartedUtc||now-x.Value.StartedUtc>TimeSpan.FromSeconds(5)).ToArray())crossCache.TryRemove(old.Key,out _);
+            if(!crossCache.TryGetValue(key,out var observed))
+            {
+                observed=await crossPortfolio.ReadAsync(command,baseline,ct);if(observed is null)return null;
+                static string Hash(IReadOnlyList<OmsPendingNativeRiskV1> rows)=>Convert.ToHexString(OmsRecoveryRunCodec.Encode(rows.OrderBy(x=>x.Instrument,StringComparer.Ordinal).ThenBy(x=>x.LimitPrice).ThenBy(x=>x.NativeUsd).ToArray()).Sha256);
+                if(Hash(pending)!=Hash(observed.Pending))return null;
+                lock(cacheSync)if(crossCache.Count<128)crossCache.TryAdd(key,observed);
+            }
+            return DeribitCrossPortfolioRiskV2.Evaluate(command,baseline,policy,observed,(clock??TimeProvider.System).GetUtcNow());
+        }
         if (!cache.TryGetValue(key,out var native))
         {
             native=await observations.ReadAsync(command,baseline,ct); if(native is null) return null;
@@ -79,7 +95,7 @@ public sealed class DeribitRiskInputsReader(IOmsRiskPolicyReader policies, IDeri
                 p.OrderType != OrderType.Limit || p.LimitPrice is not { } price || p.TriggerPrice is not null ||
                 p.QuantityUnit != OmsQuantityUnit.QuoteAsset || p.TimeInForce is not ("GTC" or "good_til_cancelled") ||
                 p.TargetClientOrderId is null ||p.TargetClientOrderId.Length>64||p.TargetClientOrderId.Any(char.IsControl)|| (p.Kind==OmsJournalCommandKind.Place?p.TargetExchangeOrderId is not null:p.TargetExchangeOrderId is null) || p.FixOrigClOrdId is not null ||
-                policy.SchemaVersion != 1 || policy.Limits.SchemaVersion != 1 || policy.FxStressFactor < 1 || policy.MarginMultiplier < 1 ||
+                policy.SchemaVersion != 1 || policy.Limits.SchemaVersion != 1 || policy.CrossPortfolio is not null || policy.FxStressFactor < 1 || policy.MarginMultiplier < 1 ||
                 policy.MaxLimitDeviationFraction is <= 0 or >= 1 || now < policy.ValidFromUtc || now > policy.ValidThroughUtc ||
                 policy.ValidFromUtc.Offset != TimeSpan.Zero || policy.ValidThroughUtc.Offset != TimeSpan.Zero ||
                 !policy.AllowedInstruments.Contains(p.Instrument, StringComparer.Ordinal) || policy.AllowedInstruments.Distinct().Count() != policy.AllowedInstruments.Count ||

@@ -6,6 +6,13 @@ namespace TradeOps.UnitTests;
 
 public sealed class DeribitFixQualificationScenarioTests
 {
+    [Fact]
+    public void PassiveQualificationBuyCanRestBelowTheNativeSellClampingBand()
+    {
+        var q=new Rig().Quote with{MinPrice=1980,MaxPrice=2020};
+        Assert.Equal(1800,DeribitFixQualificationScenarioV1.Price(q,DeribitRiskInputsTests.Now));
+        Assert.Equal(1799.5m,DeribitFixQualificationScenarioV1.Price(q,DeribitRiskInputsTests.Now,1800));
+    }
     private sealed class Clock:TimeProvider { public override DateTimeOffset GetUtcNow()=>DeribitRiskInputsTests.Now; }
     private sealed class Rig:IOmsOrderIntentGateway,IDeribitFixQualificationMarketV1,IOmsFixQualificationLeaseV1
     {
@@ -74,7 +81,7 @@ public sealed class DeribitFixQualificationScenarioTests
     public void InvalidQuotesNeverRelaxNativeSizeDistanceOrVenueBand(string problem)
     {
         var q=new Rig().Quote;q=problem switch{"contract"=>q with{ContractUsd=10},"amount"=>q with{AmountStep=3},"tick"=>q with{PriceStep=0},
-            "band"=>q with{MinPrice=1900},"crossed"=>q with{Ask=q.Bid},_=>q with{VenueUtc=q.ReceivedUtc.AddSeconds(3)}};
+            "band"=>q with{MinPrice=1600,MaxPrice=1700},"crossed"=>q with{Ask=q.Bid},_=>q with{VenueUtc=q.ReceivedUtc.AddSeconds(3)}};
         Assert.Throws<InvalidOperationException>(()=>DeribitFixQualificationScenarioV1.Price(q,DeribitRiskInputsTests.Now));
     }
 }

@@ -28,7 +28,8 @@ public sealed class OmsRiskPolicyAndRolePostgresTests
     internal static async Task InsertPolicy(OmsPostgresTestDatabase db,OmsRiskPolicyDocumentV1 p,long revision)
     {
         var encoded=OmsRecoveryRunCodec.Encode(p);var s=p.Limits.Scope;
-        await using var q=db.Source.CreateCommand("INSERT INTO oms_account_risk_policies_v1(tenant_id,venue_id,environment,account_id,subaccount_id,revision,schema_version,policy_json,policy_sha256) VALUES(@t,@v,@e,@a,@s,@r,1,@json,@sha)");
+        await using var q=db.Source.CreateCommand("INSERT INTO oms_account_risk_policies_v1(tenant_id,venue_id,environment,account_id,subaccount_id,revision,schema_version,policy_json,policy_sha256) VALUES(@t,@v,@e,@a,@s,@r,@schema,@json,@sha)");
+        q.Parameters.AddWithValue("schema",p.SchemaVersion);
         q.Parameters.AddWithValue("t",s.Tenant.Value);q.Parameters.AddWithValue("v",s.Venue.Value);q.Parameters.AddWithValue("e",(short)s.Environment);q.Parameters.AddWithValue("a",s.Account.Value);q.Parameters.AddWithValue("s",s.Subaccount?.Value??"");q.Parameters.AddWithValue("r",revision);q.Parameters.AddWithValue("json",NpgsqlDbType.Jsonb,encoded.Json);q.Parameters.AddWithValue("sha",encoded.Sha256);await q.ExecuteNonQueryAsync();
     }
     [Fact]

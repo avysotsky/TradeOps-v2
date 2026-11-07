@@ -102,10 +102,13 @@ public sealed class DeribitOmsExecutionWorker(DeribitOmsExecutionSource store,ID
             var policy=await policies.ReadAsync(binding.Scope,ct);
             if(policy is null||DateTimeOffset.UtcNow<policy.ValidFromUtc||DateTimeOffset.UtcNow>policy.ValidThroughUtc)
                 throw new InvalidOperationException("Explicit current account policy required; no generic or qualification defaults.");
+            if(policy.SchemaVersion==2&&services.GetRequiredService<DeribitRecoveryHostOptions>().HistoryCoverage!=DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2)
+                throw new InvalidOperationException("Cross portfolio execution requires explicit collateral/history coverage v2.");
             if(policy.AllowedInstruments.Any(x=>!instruments.Any(m=>m.Name==x)))throw new InvalidOperationException("Policy contains an unsupported execution instrument.");
             using var client=http.CreateClient("DeribitAccountRecovery");
             var pending=new OmsPostgresPendingRiskReader(store.Source);
-            var risk=new DeribitRiskInputsReader(policies,new DeribitRiskObservationReader(binding,client,pendingRisk:pending),pendingRisk:pending);
+            var risk=new DeribitRiskInputsReader(policies,new DeribitRiskObservationReader(binding,client,pendingRisk:pending),pendingRisk:pending,
+                crossPortfolio:new DeribitCrossPortfolioRiskObservationReaderV2(binding,client,pending));
             DeribitOmsFixTransportV1? fixTransport=null;
             var fixOptions=services.GetService<DeribitOmsFixHostOptions>();
             if(fixOptions is not null)

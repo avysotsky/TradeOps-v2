@@ -28,6 +28,7 @@ public static class DeribitFixConfigurationCheck
             var session=new OmsFixSessionKeyV1(sub is null?1:2,scope,config["DeribitFix:SenderCompId"]!,"DERIBITSERVER");session.Validate();
             if(!DateTimeOffset.TryParse(config["DeribitRecovery:InitialFromUtc"],CultureInfo.InvariantCulture,DateTimeStyles.None,out var from)||
                 from.Offset!=TimeSpan.Zero||from>DateTimeOffset.UtcNow.AddSeconds(-1)||from<DateTimeOffset.UtcNow.AddDays(-7))throw new InvalidOperationException();
+            if(config["DeribitRecovery:HistoryCoverage"] is{} coverage&&coverage!=DeribitCollateralHistoryCoverageV2.PolicyName)throw new InvalidOperationException();
             if(!Path.IsPathFullyQualified(config["DeribitOms:LockRoot"]!)||!Directory.Exists(config["DeribitOms:LockRoot"]))throw new InvalidOperationException();
             var builders=new List<NpgsqlConnectionStringBuilder>();
             foreach(var name in new[]{"Capture","Recovery","Execution","Fix"})

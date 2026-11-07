@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 using TradeOps.Application.Interfaces;
+using TradeOps.Application.Oms;
 using TradeOps.Worker;
 using Xunit;
 
@@ -9,6 +10,17 @@ namespace TradeOps.UnitTests;
 
 public sealed class DeribitRecoveryHostStartupTests
 {
+    [Theory]
+    [InlineData(null)][InlineData(DeribitCollateralHistoryCoverageV2.PolicyName)][InlineData("invented")]
+    public void HistoryCoverageIsAnExplicitVersionedHostChoice(string? value)
+    {
+        var data=Configuration();if(value is not null)data["DeribitRecovery:HistoryCoverage"]=value;
+        var builder=DeribitCaptureHostTests.Builder(data);
+        if(value=="invented"){Assert.Throws<InvalidOperationException>(()=>DeribitRecoveryStartup.TryConfigure(builder));return;}
+        Assert.True(DeribitRecoveryStartup.TryConfigure(builder));using var host=builder.Build();
+        Assert.Equal(value is null?DeribitHistoryCoverageMode.InventoryCurrenciesV1:DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2,
+            host.Services.GetRequiredService<DeribitRecoveryHostOptions>().HistoryCoverage);
+    }
     [Fact]
     public void ExistingModesDoNotReadRecoverySettings()
     {

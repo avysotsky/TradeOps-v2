@@ -67,10 +67,14 @@ public sealed record DeribitRecoveryCoherenceResult(DeribitRecoveryCoherenceAsse
 public static class DeribitRecoveryCoherencePolicy
 {
     public const string Policy = "deribit-quiescent-recent-v1";
+    public const string CollateralPolicyV2="deribit-quiescent-recent-collateral-v2";
+    public static bool IsSupportedPolicy(string policy)=>policy is Policy or CollateralPolicyV2;
     public static DeribitRecoveryCoherenceResult Assess(DeribitRecoveryRunDocumentV1 document, TimeProvider? clock = null)
     {
         document.Validate(); var time = clock ?? TimeProvider.System; var now = time.GetUtcNow();
         var problems = new HashSet<DeribitRecoveryCoherenceProblem>();
+        var collateral=document.Universe?.HistoryCoverage;
+        var policy=collateral is null?Policy:CollateralPolicyV2;
         var replay = document.Assessment.Account.Replay; var revision = replay?.Revision;
         if (revision is null || revision.Profile != OmsAccountSubscriptionProfile.EconomicAccountV2 ||
             revision.Scope != document.Start.Scope || revision.Epoch != document.Start.Epoch ||
@@ -95,6 +99,9 @@ public static class DeribitRecoveryCoherencePolicy
             venue.ReceivedAtUtc-venue.RequestedAtUtc > TimeSpan.FromSeconds(2) || native > venue.ReceivedAtUtc || native < venue.RequestedAtUtc.AddSeconds(-2))
             problems.Add(DeribitRecoveryCoherenceProblem.NativeClockUnavailable);
         var batches = document.CurrencyObservations ?? [];
+        if(collateral is not null&&(before is null||after is null||!DeribitCollateralHistoryCoverageV2.IsValid(collateral,before.Balances)||
+            !DeribitCollateralHistoryCoverageV2.IsValid(collateral,after.Balances)||!document.Universe!.RequiredCurrencies.SequenceEqual(collateral.DerivativeSettlementCurrencies)))
+            problems.Add(DeribitRecoveryCoherenceProblem.CurrencyCoverageUnavailable);
         if (batches.Count == 0 || document.Universe is null ||
             !batches.Select(x => x.Currency).Order(StringComparer.Ordinal).SequenceEqual(document.Universe.RequiredCurrencies.Order(StringComparer.Ordinal)) ||
             batches.Any(x => !x.TraversalComplete || x.Kind != "any" || x.QueryFromUtc > document.Start.FromUtc || x.ThroughUtc != venue?.VenueTimeUtc ||
@@ -108,7 +115,7 @@ public static class DeribitRecoveryCoherencePolicy
         var model = document.Candidate;
         var rebuilt = DeribitRecoveryCandidateBuilder.Build(document);
         if (model is null || rebuilt is null || !OmsRecoveryRunCodec.Encode(model).Sha256.SequenceEqual(OmsRecoveryRunCodec.Encode(rebuilt).Sha256) ||
-            model.CoverageScope != DeribitRecoveryCandidateScope.InventoryCurrencies || model.CurrencyBalances is null)
+            model.SchemaVersion!=(collateral is null?1:2)||model.CoverageScope != (collateral is null?DeribitRecoveryCandidateScope.InventoryCurrencies:DeribitRecoveryCandidateScope.ListedDerivativeSettlementsV2) || model.CurrencyBalances is null)
             problems.Add(DeribitRecoveryCoherenceProblem.ModelUnavailable);
         if (!document.Ledger.IsUsable) problems.Add(DeribitRecoveryCoherenceProblem.JournalUnavailable);
         if (document.Ledger.EvidenceVersion is null or < 0) problems.Add(DeribitRecoveryCoherenceProblem.EvidenceVersionUnavailable);
@@ -203,7 +210,7 @@ public static class DeribitRecoveryCoherencePolicy
         if (after is null || !projectedOpen.SequenceEqual(after.OpenOrders.Select(x => (x.NativeInstrument, x.ExchangeOrderId)).OrderBy(x => x.NativeInstrument).ThenBy(x => x.ExchangeOrderId)) ||
             after.OpenOrders.Any(x => string.IsNullOrEmpty(x.NativeFingerprint))) problems.Add(DeribitRecoveryCoherenceProblem.InconsistentOrderLedger);
         var stateModel = problems.Count == 0 ? new OmsRecoveredAccountStateV1(1, document.Start.Scope, document.Start.Epoch, document.Start.RunId,
-            Policy, now, document.Start.FromUtc, venue!.VenueTimeUtc!.Value, orders.AsReadOnly(), model.Executions, model.Positions,
+            policy, now, document.Start.FromUtc, venue!.VenueTimeUtc!.Value, orders.AsReadOnly(), model.Executions, model.Positions,
             model.CurrencyBalances!, document.Ledger.Commands.Where(x => x.Phase == OmsRecoveryDispatchPhase.PersistedNotSent).Select(x => x.Request.CommandId).ToArray(),
             reviews.Where(x => acceptedExternal.Contains((x.Currency, x.ExchangeOrderId))).Select(x => x.DecisionId).ToArray(),
             reviews.Where(x => acceptedExternal.Contains((x.Currency, x.ExchangeOrderId))).Select(x => x.RecordedAtUtc.AddMinutes(10)).Append(now.AddSeconds(5)).Min()) : null;
@@ -211,7 +218,7 @@ public static class DeribitRecoveryCoherencePolicy
 
         DeribitRecoveryCoherenceResult Finish(OmsRecoveredAccountStateV1? state, IReadOnlyList<OmsRecoveryCommandResolution>? resolved = null)
         {
-            var assessment = new DeribitRecoveryCoherenceAssessment(Policy, now, problems.Order().ToArray());
+            var assessment = new DeribitRecoveryCoherenceAssessment(policy, now, problems.Order().ToArray());
             var assessedDocument = document with { Coherence = assessment };
             var publication = state is null ? null : new OmsQualifiedRecovery(assessedDocument,
                 document.Ledger.EvidenceVersion!.Value, state, resolved ?? [], revision!, time);

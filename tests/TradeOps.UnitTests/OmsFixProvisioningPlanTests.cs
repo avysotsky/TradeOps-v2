@@ -44,7 +44,7 @@ public sealed class OmsFixProvisioningPlanTests
             return rows.ToArray();
         }
         var before=await RetainedRows();var plan=OmsFixProvisioningReviewPlan.Generate(applied,scope,db.Name,"tradeops-tests:database:v1:"+db.Name,"tradeops_tests_v1");
-        Assert.Equal(sub?2:1,plan.Session.SchemaVersion);Assert.Equal(18,plan.MigrationCount);
+        Assert.Equal(sub?2:1,plan.Session.SchemaVersion);Assert.Equal(19,plan.MigrationCount);
         var wrongTarget=OmsFixProvisioningReviewPlan.Generate(applied,scope,"foreign_database","tradeops-tests:database:v1:"+db.Name,"tradeops_tests_v1");
         await using(var q=db.Source.CreateCommand(wrongTarget.MigrationSql))await Assert.ThrowsAsync<PostgresException>(()=>q.ExecuteNonQueryAsync());
         await using(var connection=await db.Source.OpenConnectionAsync())

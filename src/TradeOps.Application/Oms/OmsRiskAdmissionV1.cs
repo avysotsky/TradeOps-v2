@@ -14,7 +14,8 @@ public sealed record OmsRiskValuationV1(int SchemaVersion, AccountKey Scope, str
     bool InstrumentEligible, bool AccountEligible, bool UnitsVerified, bool ReduceOnlyVerified,
     decimal OrderNotionalUsd, decimal PositionDeltaUsd, decimal PortfolioGrossUsd,
     decimal InstrumentGrossUsd, decimal EquityUsd, decimal MarginUsedUsd,
-    decimal IncrementalMarginUsd, decimal DailyLossUsd);
+    decimal IncrementalMarginUsd, decimal DailyLossUsd,
+    [property:System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] OmsCrossPortfolioEvidenceV2? CrossPortfolio=null);
 
 public sealed record OmsRiskInputsV1(OmsAccountRiskPolicyV1 Policy, OmsRiskValuationV1 Valuation);
 
@@ -34,7 +35,10 @@ public static class OmsRiskLimitsV1
         decimal pendingUsd, decimal pendingMarginUsd, long pendingCount, DateTimeOffset now)
     {
         var p = inputs.Policy; var v = inputs.Valuation;
-        if (p.SchemaVersion != 1 || v.SchemaVersion != (command.Payload.Kind==OmsJournalCommandKind.Replace?2:1) || p.Scope != command.Scope || v.Scope != command.Scope ||
+        var cross=p.SchemaVersion==2;
+        if (p.SchemaVersion is not(1 or 2) || v.SchemaVersion != (command.Payload.Kind==OmsJournalCommandKind.Replace?2:1)+(cross?2:0) || p.Scope != command.Scope || v.Scope != command.Scope ||
+            (cross?!OmsCrossPortfolioEvidenceV2.Valid(v.CrossPortfolio):v.CrossPortfolio is not null)||
+            cross&&(p.MaxOrderUsd>1||p.MaxPendingUsd>2||p.MaxPendingCommands>2||command.Payload.Instrument!="ETH-PERPETUAL"||!command.Payload.PostOnly)||
             string.IsNullOrWhiteSpace(p.Revision) || p.Revision.Length > 128 ||
             v.StateSha256 != stateSha || v.CommandSha256 != Convert.ToHexString(OmsJournalCanonical.EncodeCommand(command).Sha256) ||
             v.ObservedAtUtc.Offset != TimeSpan.Zero || v.ValidThroughUtc.Offset != TimeSpan.Zero ||

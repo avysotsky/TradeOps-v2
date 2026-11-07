@@ -24,8 +24,14 @@ WHERE {ScopeWhere} ORDER BY r.generation DESC LIMIT 1
         if (rows.IsDBNull(4)) throw new ArgumentOutOfRangeException(nameof(maximumRows), "Retained document capacity exceeded.");
         var digest = rows.GetFieldValue<byte[]>(5);
         var document = OmsRecoveryRunCodec.Decode<DeribitRecoveryRunDocumentV1>(rows.GetString(4), digest); document.Validate();
+        var collateral=document.Universe?.HistoryCoverage;
+        var coverage=collateral is null?document.Candidate is{SchemaVersion:1,CoverageScope:DeribitRecoveryCandidateScope.InventoryCurrencies}:
+            document.Candidate is{SchemaVersion:2,CoverageScope:DeribitRecoveryCandidateScope.ListedDerivativeSettlementsV2}&&
+            document.InitialInventoryObservations is{} before&&document.InventoryObservations is{} after&&
+            DeribitCollateralHistoryCoverageV2.IsValid(collateral,before.Balances)&&DeribitCollateralHistoryCoverageV2.IsValid(collateral,after.Balances)&&
+            document.Universe!.RequiredCurrencies.SequenceEqual(collateral.DerivativeSettlementCurrencies);
         if (rows.GetInt32(3) != 1 || document.Start.Scope != scope || document.Start.RunId != rows.GetGuid(0) || rows.GetInt64(1) <= 0 ||
-            document.Coherence is not { EvidenceSufficient: true } coherence || document.Candidate?.CoverageScope != DeribitRecoveryCandidateScope.InventoryCurrencies ||
+            document.Coherence is not { EvidenceSufficient: true } coherence || !coverage ||
             document.VenueClock?.VenueTimeUtc != new DateTimeOffset(rows.GetDateTime(6)) ||
             document.Ledger.EvidenceVersion is not >= 0 || document.Ledger.EvidenceVersion > rows.GetInt64(2) || rows.GetInt64(2) > version ||
             document.Ledger.RecoveryArchive is { } prior && (prior.SourceGeneration >= rows.GetInt64(1) || prior.SourceRunId == document.Start.RunId))

@@ -13,7 +13,7 @@ public static class OmsAddressedCancelPolicyV1
         {
             cancel.Validate();placement.Validate();var p=cancel.Payload;var original=placement.Command;var o=original.Payload;
             var amended=o.Kind==OmsJournalCommandKind.Replace&&placement.FixBinding?.SchemaVersion==2;
-            if(policy is null||policy.SchemaVersion!=1||policy.Limits.SchemaVersion!=1||policy.Limits.Scope!=cancel.Scope||
+            if(policy is null||!(policy.SchemaVersion==1&&policy.Limits.SchemaVersion==1&&policy.CrossPortfolio is null||DeribitCrossPortfolioRiskV2.PolicyValid(policy))||policy.Limits.Scope!=cancel.Scope||
                 policy.ValidFromUtc.Offset!=TimeSpan.Zero||policy.ValidThroughUtc.Offset!=TimeSpan.Zero||now<policy.ValidFromUtc||now>policy.ValidThroughUtc||
                 !policy.AllowedInstruments.Contains(p.Instrument,StringComparer.Ordinal)||cancel.Scope!=state.Scope||cancel.Scope!=original.Scope||
                 p.Kind!=OmsJournalCommandKind.Cancel||!amended&&original.Payload.Kind!=OmsJournalCommandKind.Place||cancel.LocalOrderId!=original.LocalOrderId||

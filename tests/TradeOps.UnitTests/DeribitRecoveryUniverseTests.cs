@@ -77,4 +77,34 @@ public sealed class DeribitRecoveryUniverseTests
         var result = DeribitRecoveryUniverseBuilder.Build(Account, Epoch, Ledger(), inventory, [], Now);
         Assert.Contains(result.Issues, x => x.Problem == DeribitRecoveryUniverseProblem.UnsupportedCurrency && x.Currency == "UNSUPPORTED");
     }
+
+    [Fact]
+    public void ExplicitV2KeepsCollateralInventorySeparateFromEveryDerivativeSettlementHistory()
+    {
+        var inventory=Inventory() with{Balances=[..Inventory().Balances,new("BUIDL",0,0,true,true,new(Now,Now)),new("SOL",1,1,true,true,new(Now,Now))]};
+        var result=DeribitRecoveryUniverseBuilder.Build(Account,Epoch,Ledger(),inventory,[],Now,DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2);
+        Assert.True(result.UniverseResolved);Assert.Equal(new[]{"BTC","ETH","EURR","USDC","USDT"},result.RequiredCurrencies);
+        var coverage=result.HistoryCoverage!;Assert.Equal(2,coverage.SchemaVersion);
+        Assert.Equal(new[]{"BTC","BUIDL","ETH","SOL","USDC"},coverage.CollateralCurrencies);
+        Assert.Equal(new[]{"BUIDL","SOL"},coverage.UnqueriedCollateralCashCurrencies);
+        Assert.Equal(5,inventory.Balances.Count);Assert.False(result.AccountReady);
+        var v1=DeribitRecoveryUniverseBuilder.Build(Account,Epoch,Ledger(),inventory,[],Now);
+        Assert.False(v1.UniverseResolved);Assert.Null(v1.HistoryCoverage);
+        Assert.DoesNotContain("historyCoverage",OmsRecoveryRunCodec.Encode(v1).Json);
+    }
+    [Theory]
+    [InlineData("unknown-collateral")][InlineData("unknown-instrument")][InlineData("unsupported-settlement")]
+    public void V2DoesNotHideUnrecognizedCurrenciesOrInferHistoryForUnsupportedInstruments(string problem)
+    {
+        var inventory=Inventory();DeribitRecoveryInstrument[] manifest=[];
+        if(problem=="unknown-collateral")inventory=inventory with{Balances=[new("UNKNOWN",0,0,false,false,new(Now,Now))]};
+        else
+        {
+            inventory=inventory with{Positions=[new("SOL-TEST","future","buy",1)]};
+            if(problem=="unsupported-settlement")manifest=[new("SOL-TEST","SOL","future",OmsPrivateAmountUnit.BaseCoin,"SOL")];
+        }
+        var result=DeribitRecoveryUniverseBuilder.Build(Account,Epoch,Ledger(),inventory,manifest,Now,DeribitHistoryCoverageMode.ListedDerivativeSettlementsV2);
+        Assert.False(result.UniverseResolved);
+        Assert.Contains(result.Issues,x=>x.Problem==(problem=="unknown-instrument"?DeribitRecoveryUniverseProblem.UnmappedInstrument:DeribitRecoveryUniverseProblem.UnsupportedCurrency));
+    }
 }

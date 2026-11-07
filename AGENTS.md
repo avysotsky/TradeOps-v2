@@ -24,6 +24,8 @@ B6 завершён по реализации/offline-приёмке в `TradeOp
 
 - Решение владельца 2026-11-07 после реального read-only чтения: **сохранить cross/portfolio margin на существующем счёте и добавить поддержку в коде**. [Границы расширения](docs/architecture/DERIBIT_CROSS_PORTFOLIO_MARGIN_V2.md). Не переключать margin model и не выдавать готовность старого SM risk path. Host preparation/read-only инструменты находятся в существующей B6 ветке; исходные B6/SM PASS не являются PM readiness.
 
+- [Текущий прогресс PM](docs/orchestration/workstreams/FIX_CROSS_PM_PROGRESS_2026-11-07.md): native risk reader, policy2/valuation3–4, collateral/history coverage и archive integration подключены, составные245 affected cases PASS; новая миграция39 проверена только на clones. Расширение IN_PROGRESS, retained DB остаётся на38/NOLOGIN; configuration/recovery/live gates не закрыты. Не повторять полный suite до завершения оставшегося кода.
+
 - Решение владельца 2026-11-06: выполнить весь B5 до завершения, не останавливаться на внутренних частях и не докладывать о каждой микроитерации. В разработке запускать только непосредственно затронутые проверки; полный набор — после окончания всех работ B5, перед закрытием этапа.
 
 - Общаться по-русски. Работать самостоятельно, без субагентов, worker-чатов и очередей.
