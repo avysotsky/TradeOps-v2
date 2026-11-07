@@ -33,3 +33,4 @@ deploy/tradingview-gateway/tls/
 node_modules/
 dist/
 *.tsbuildinfo
+__pycache__/

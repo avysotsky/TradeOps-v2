@@ -193,6 +193,7 @@ capture_paths=(
   tools/TradeOps.DeribitMainnetEthQualification
   tools/TradeOps.OmsPhysicalOwnerProbe
   tools/TradeOps.FixProvisioningPlan
+  tools/TradeOps.FixHostPreparation
   src/TradeOps.Application/Properties
   apps/TradeOps.TerminalApi/Controllers/DeribitTerminalController.cs
   scripts/deribit/Deribit-MainnetEthLocal.ps1
@@ -204,6 +205,8 @@ capture_paths=(
   scripts/deribit/Deribit-BoundedOmsLocal.ps1
   scripts/deribit/Deribit-FixQualificationLocal.ps1
   scripts/deribit/Deribit-FixConfigurationCheck.ps1
+  scripts/deribit/Deribit-FixHostPrepareLocal.ps1
+  scripts/deribit/fix_sql_relay.py
   scripts/deribit/Deribit-TestnetOrderLocal.ps1
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
