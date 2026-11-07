@@ -12,6 +12,8 @@ B6 завершён по реализации/offline-приёмке в `TradeOp
 Расширение 2026-11-07: [native price-only FIX amendment v2](docs/architecture/DERIBIT_FIX_PRICE_AMEND_V2.md), [owner qualification procedure и оставшийся live gate](docs/testing/DERIBIT_FIX_LIVE_QUALIFICATION_READINESS_2026-11-07.md). [Отдельная приёмка расширения](docs/orchestration/workstreams/FIX_PRICE_AMEND_QUALIFICATION_2026-11-07.md): один полный 2418/2418, Windows107/107, validators30+30, guard/peers/cleanup и504+1source hashes PASS. G меняет только цену ETH-PERPETUAL без fills; количество не поддержано. Постоянное provisioning и live trading не выполнялись. Не выдавать offline PASS за live readiness. Main остаётся на B5.
 Сохранять границы модулей и направление зависимостей. Коннекторы не зависят от PostgreSQL/EF или Infrastructure. Стратегии не обходят risk/OMS. Изменение durable contracts требует явного версионирования и проверки совместимости.
 
+Перед owner qualification доступен [read-only configuration preflight](docs/testing/FIX_CONFIGURATION_PREFLIGHT_2026-11-07.md): `Deribit-FixQualificationLocal.ps1 -Action Preflight`, без vault/Deribit/ownership/provisioning. Отдельные affected39/39, Windows22/22, output32/32, 511hashes и guard/peers/cleanup PASS; исходный full2418 относится к a243ffc. Текущие девять host env settings отсутствуют, состояние постоянных DB/ролей не установлено. CONFIGURATION_CHECK_PASS не является live authority или native account verification.
+
 ## Работа и публикация
 
 - Решение владельца 2026-11-06: выполнить весь B5 до завершения, не останавливаться на внутренних частях и не докладывать о каждой микроитерации. В разработке запускать только непосредственно затронутые проверки; полный набор — после окончания всех работ B5, перед закрытием этапа.

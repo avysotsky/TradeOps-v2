@@ -148,7 +148,7 @@ public sealed class DeribitRecoveryHostPostgresTests
         }
     }
 
-    private sealed class Roles : IAsyncDisposable
+    internal sealed class Roles : IAsyncDisposable
     {
         internal OmsPostgresTestDatabase Db = null!;
         internal readonly string CaptureName = "to_capture_" + Guid.NewGuid().ToString("N"), RecoveryName = "to_recovery_" + Guid.NewGuid().ToString("N");

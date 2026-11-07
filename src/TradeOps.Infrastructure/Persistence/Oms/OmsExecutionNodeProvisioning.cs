@@ -10,6 +10,16 @@ public sealed record OmsExecutionNodeDescriptorV2(int SchemaVersion,string NodeS
 /// <summary>Explicit operator aid: prepares a local empty fence file, never database rights or trading authority.</summary>
 public static class OmsExecutionNodeProvisioning
 {
+    /// <summary>Read existing object identities only. Never creates a file or grants ownership.</summary>
+    public static OmsExecutionNodeDescriptorV2 Inspect(string root,AccountKey scope)
+    {
+        root=OmsSingleHostPhysicalFence.CanonicalRoot(root);var rootHash=RootIdentity(root);var path=LockPath(root,scope);
+        if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("Linked fence refused.");
+        using var file=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
+        if(file.Length!=0||RootIdentity(root)!=rootHash||(File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0)
+            throw new InvalidOperationException("Pinned empty fence object required.");
+        return new(2,OmsSingleHostPhysicalFence.NodeSha256(),root,rootHash,FileIdentity(file.SafeFileHandle));
+    }
     public static OmsExecutionNodeDescriptorV2 Prepare(string root,AccountKey scope)
     {
         root=OmsSingleHostPhysicalFence.CanonicalRoot(root);var rootHash=RootIdentity(root);var path=LockPath(root,scope);

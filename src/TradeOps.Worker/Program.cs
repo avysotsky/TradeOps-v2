@@ -10,6 +10,15 @@ using TradeOps.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// This branch returns before any hosted service, exchange client or execution owner is composed.
+if(builder.Configuration["Worker:Mode"]==DeribitFixConfigurationCheck.Mode)
+{
+    var check=await DeribitFixConfigurationCheck.RunAsync(builder.Configuration);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(check));
+    if(check.Status!="FIX_CONFIGURATION_CHECK_PASS")Environment.ExitCode=1;
+    return;
+}
+
 if(DeribitOmsExecutionStartup.TryConfigure(builder))
 {
     using var omsHost=builder.Build(); var omsWorker=omsHost.Services.GetRequiredService<DeribitOmsExecutionWorker>();

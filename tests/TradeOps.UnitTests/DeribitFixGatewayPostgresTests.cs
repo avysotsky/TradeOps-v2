@@ -212,9 +212,9 @@ public sealed class DeribitFixGatewayPostgresTests
             return risk with{Valuation=risk.Valuation with{SchemaVersion=command.Payload.Kind==OmsJournalCommandKind.Replace?2:1}};
         }
     }
-    private sealed class Roles(OmsPostgresTestDatabase db):IAsyncDisposable
+    internal sealed class Roles(OmsPostgresTestDatabase db):IAsyncDisposable
     {
-        private readonly string execution="to_fixexec_"+Guid.NewGuid().ToString("N"),protocol="to_fixproto_"+Guid.NewGuid().ToString("N");
+        internal readonly string execution="to_fixexec_"+Guid.NewGuid().ToString("N"),protocol="to_fixproto_"+Guid.NewGuid().ToString("N");
         internal NpgsqlDataSource Execution=null!,Protocol=null!;
         internal static async Task<Roles> Open(OmsPostgresTestDatabase db)
         {

@@ -1,9 +1,13 @@
 #requires -Version 7.5
 [CmdletBinding()]
-param([ValidateSet('Status','Run')][string]$Action='Status',[switch]$OwnerLaunch,
+param([ValidateSet('Status','Preflight','Run')][string]$Action='Status',[switch]$OwnerLaunch,
       [ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedHead)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+if($Action -eq 'Preflight'){
+    & (Join-Path $PSScriptRoot 'Deribit-FixConfigurationCheck.ps1')
+    exit $LASTEXITCODE
+}
 if($Action -eq 'Status'){
     [ordered]@{Mode='OwnerLaunchOnly';Stage='owner-fix-eth-qualification-v1';Instrument='ETH-PERPETUAL';
         MaximumNativeUsd=1;MaximumPlacements=3;MinimumDistanceFraction=.10;PostOnly=$true;

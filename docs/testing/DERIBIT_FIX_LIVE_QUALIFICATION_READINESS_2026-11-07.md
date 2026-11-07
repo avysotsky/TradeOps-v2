@@ -7,6 +7,10 @@
 **2418/2418 full + 107/107 Windows PASS**, guard/peers/cleanup PASS.
 Документ не является live evidence.
 
+Добавлен [безопасный configuration preflight](FIX_CONFIGURATION_PREFLIGHT_2026-11-07.md):
+39/39 affected + 22/22 Windows + 32/32 output checks PASS. Это отдельная адресная
+приёмка диагностики после `a243ffc`, а не новый полный 2418-case run.
+
 ## Запрошенная цель
 
 Владелец запросил live-проверку размещения, снятия/отмены и переноса ордеров
@@ -34,6 +38,7 @@ placement attempts на этап, post-only, не менее 10% от рынка
 | Owner-launched FIX qualification runner | `Deribit-FixQualificationLocal.ps1`, отдельный host mode; по умолчанию только Status | NOT RUN |
 | Старый bounded OMS runner | Entry point намеренно возвращает отказ после B5; это исторический WS-сценарий | НЕ ИСПОЛЬЗОВАТЬ ДЛЯ FIX |
 | Permanent store/session/четыре роли/policy | B6 их автоматически не мигрировал и не provision-ил | NOT VERIFIED |
+| Configuration preflight | Read-only DB/catalog/node inspection реализован; текущие девять env settings отсутствуют | BLOCKED: CONFIGURATION MISSING |
 
 Deribit поддерживает native изменение работающего ордера через
 [`Order Cancel/Replace Request (35=G)`](https://docs.deribit.com/fix-api/production/order-cancel-replace).
@@ -93,6 +98,9 @@ untracked исключение — пользовательский `launchSetti
 ```powershell
 # Без credentials, network или trading.
 & D:\Projects\TradeOps-v2\scripts\deribit\Deribit-FixQualificationLocal.ps1 -Action Status
+
+# Без trading vault/Deribit. При наличии DB config — только SELECT/readonly sessions.
+& D:\Projects\TradeOps-v2\scripts\deribit\Deribit-FixQualificationLocal.ps1 -Action Preflight
 
 # Реальные финансовые заявки. Запускает только владелец.
 # Значение должно совпадать с квалифицированным commit из итогового отчёта.

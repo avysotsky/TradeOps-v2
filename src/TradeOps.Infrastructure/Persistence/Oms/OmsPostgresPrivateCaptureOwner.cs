@@ -30,33 +30,7 @@ public sealed class OmsPostgresPrivateCaptureOwner : IOmsPrivateEventCapture, IA
         try
         {
             db = await source.OpenConnectionAsync(ct);
-            await using var role = new NpgsqlCommand("""
-SELECT NOT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
- AND current_user=session_user AND NOT has_schema_privilege(current_user,'public','CREATE')
-FROM pg_roles WHERE rolname=current_user
-""", db);
-            if (await role.ExecuteScalarAsync(ct) is not true) throw new InvalidOperationException();
-            await using var grants = new NpgsqlCommand("""
-SELECT bool_and(has_table_privilege(current_user, relation, privilege)) FROM (VALUES
- ('public.oms_inbox','SELECT'),('public.oms_inbox','INSERT'),('public.oms_inbox','UPDATE'),
- ('public.oms_private_capture_observations','SELECT'),('public.oms_private_capture_observations','INSERT'),
- ('public.oms_private_capture_observations','UPDATE'),
- ('public.oms_integrity_incidents','SELECT'),('public.oms_integrity_incidents','INSERT')
-) required(relation,privilege)
-""", db);
-            if (await grants.ExecuteScalarAsync(ct) is not true) throw new InvalidOperationException();
-            await using var forbidden = new NpgsqlCommand("""
-SELECT NOT EXISTS (
- SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
- WHERE n.nspname='public' AND (
-  (c.relname IN ('oms_inbox','oms_private_capture_observations','oms_integrity_incidents')
-   AND has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')) OR
-  (c.relname='oms_integrity_incidents' AND has_table_privilege(current_user,c.oid,'UPDATE')) OR
-  (c.relname IN ('Orders','Fills','oms_intents','oms_commands','oms_outbox','oms_attempts','oms_aggregates','oms_account_leases','oms_deribit_command_receipts_v1')
-   AND has_table_privilege(current_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE'))))
- AND has_sequence_privilege(current_user,'public.oms_integrity_incidents_incident_id_seq','USAGE')
-""", db);
-            if (await forbidden.ExecuteScalarAsync(ct) is not true) throw new InvalidOperationException();
+            await ValidateRoleAsync(db, ct);
 
             // Separate namespace from all event/capture arbitration keys. Full scope, never a symbol.
             var identity = JsonSerializer.SerializeToUtf8Bytes(new[] { "OMS-B3-readonly-host:v1", scope.Tenant.Value,
@@ -78,6 +52,44 @@ SELECT NOT EXISTS (
             if (db is not null) await db.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>Catalog-only inspection; does not acquire capture ownership or write evidence.</summary>
+    public static async Task ValidateRoleAsync(NpgsqlDataSource source,CancellationToken ct=default)
+    {
+        await using var db=await source.OpenConnectionAsync(ct);
+        await ValidateRoleAsync(db,ct);
+    }
+    private static async Task ValidateRoleAsync(NpgsqlConnection db,CancellationToken ct)
+    {
+        await using var role = new NpgsqlCommand("""
+SELECT NOT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
+ AND current_user=session_user AND NOT has_schema_privilege(current_user,'public','CREATE')
+FROM pg_roles WHERE rolname=current_user
+""", db);
+        if (await role.ExecuteScalarAsync(ct) is not true) throw new InvalidOperationException();
+        await using var grants = new NpgsqlCommand("""
+SELECT bool_and(has_table_privilege(current_user, relation, privilege)) FROM (VALUES
+ ('public.oms_inbox','SELECT'),('public.oms_inbox','INSERT'),('public.oms_inbox','UPDATE'),
+ ('public.oms_private_capture_observations','SELECT'),('public.oms_private_capture_observations','INSERT'),
+ ('public.oms_private_capture_observations','UPDATE'),
+ ('public.oms_integrity_incidents','SELECT'),('public.oms_integrity_incidents','INSERT')
+) required(relation,privilege)
+""", db);
+        if (await grants.ExecuteScalarAsync(ct) is not true) throw new InvalidOperationException();
+        await using var forbidden = new NpgsqlCommand("""
+SELECT NOT EXISTS (
+ SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='public' AND (
+  (c.relname IN ('oms_inbox','oms_private_capture_observations','oms_integrity_incidents')
+   AND has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')) OR
+  (c.relname='oms_integrity_incidents' AND has_table_privilege(current_user,c.oid,'UPDATE')) OR
+  (c.relname IN ('Orders','Fills','oms_intents','oms_commands','oms_outbox','oms_attempts','oms_aggregates','oms_account_leases','oms_deribit_command_receipts_v1')
+   AND has_table_privilege(current_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE'))))
+ AND has_sequence_privilege(current_user,'public.oms_integrity_incidents_incident_id_seq','USAGE')
+""", db);
+        if (await forbidden.ExecuteScalarAsync(ct) is not true) throw new InvalidOperationException();
+
     }
 
     public async Task<OmsPrivateCaptureResult> CaptureAsync(OmsPrivateEventEnvelope envelope, CancellationToken ct = default)
