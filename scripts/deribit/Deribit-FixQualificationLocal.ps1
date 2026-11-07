@@ -50,7 +50,8 @@ try{
     $secret=([Management.Automation.PSCredential]::new('local',$secretSecure)).GetNetworkCredential().Password
     $pin=([Management.Automation.PSCredential]::new('local',$pinSecure)).GetNetworkCredential().Password|ConvertFrom-Json
     $fingerprint=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($id))).ToLowerInvariant()
-    if($pin.environment -cne 'Mainnet' -or $pin.expectedAccountId -le 0 -or $pin.accountType -cne 'main' -or $pin.credentialIdSha256 -cne $fingerprint){throw 'NATIVE_PIN_REFUSED'}
+    if($pin.environment -cne 'Mainnet' -or $pin.expectedAccountId -le 0 -or $pin.accountType -cnotin @('main','subaccount') -or $pin.credentialIdSha256 -cne $fingerprint){throw 'NATIVE_PIN_REFUSED'}
+    if($pin.accountType -ceq 'subaccount' -and $env:DeribitCapture__Account -cne ('observed-native:'+[string]$pin.expectedAccountId)){throw 'NATIVE_SCOPE_REFUSED'}
     Assert-Source
     $process=[Diagnostics.Process]::new();$process.StartInfo=[Diagnostics.ProcessStartInfo]::new('D:\DotNet\dotnet.exe')
     $process.StartInfo.ArgumentList.Add((Join-Path $bin 'TradeOps.Worker.dll'))
@@ -59,11 +60,13 @@ try{
     $process.StartInfo.RedirectStandardOutput=$true;$process.StartInfo.RedirectStandardError=$true
     $child=@{Worker__Mode='DeribitFixOwnerQualification';DeribitOms__Enabled='true';DeribitFix__Enabled='true';
         DeribitFixQualification__OwnerLaunch='true';DeribitFixQualification__ExpectedSourceCommit=$ExpectedHead;DeribitFixQualification__ObservedSourceCommit=$ExpectedHead;
-        DeribitCapture__Environment='Mainnet';DeribitCapture__ExpectedAccountId=[string]$pin.expectedAccountId;DeribitCapture__ExpectedAccountType='main';
+        DeribitCapture__Environment='Mainnet';DeribitCapture__ExpectedAccountId=[string]$pin.expectedAccountId;DeribitCapture__ExpectedAccountType=$pin.accountType;
         DeribitCapture__Instruments__0__Name='ETH-PERPETUAL';DeribitCapture__Instruments__0__Kind='future';DeribitCapture__Instruments__0__Currency='ETH';
         DeribitCapture__Instruments__0__AmountUnit='Usd';DeribitCapture__Instruments__0__AmountCurrency='USD';
         DeribitCapture__ClientId=$id;DeribitCapture__ClientSecret=$secret;DeribitTerminal__ExecutionEnabled='false';DeribitTerminal__MainnetExecutionEnabled='false'}
     foreach($key in $child.Keys){$process.StartInfo.Environment[$key]=$child[$key]}
+    if($pin.accountType -ceq 'subaccount'){$process.StartInfo.Environment['DeribitCapture__Subaccount']=$env:DeribitCapture__Account}
+    else{$null=$process.StartInfo.Environment.Remove('DeribitCapture__Subaccount')}
     if(!$process.Start()){throw 'OWNER_RUN_START_REFUSED'}
     $started=$true
     $stdout=$process.StandardOutput.ReadToEndAsync();$stderr=$process.StandardError.ReadToEndAsync()

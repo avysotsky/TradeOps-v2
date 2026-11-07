@@ -8,11 +8,13 @@ namespace TradeOps.UnitTests;
 
 public sealed class OmsFixQualificationPostgresTests
 {
-    [Fact]
-    public async Task StageLeaseIsExclusiveAndUnresolvedBudgetSurvivesLeaseRestart()
+    [Theory]
+    [InlineData(false)][InlineData(true)]
+    public async Task StageLeaseIsExclusiveAndUnresolvedBudgetSurvivesLeaseRestart(bool sub)
     {
         await using var db=await OmsPostgresTestDatabase.CreateAsync();var original=DeribitFixCommandTests.Command();
-        var scope=new AccountKey(original.Scope.Tenant,original.Scope.Venue,OmsEnvironment.Mainnet,original.Scope.Account);
+        var scope=new AccountKey(original.Scope.Tenant,original.Scope.Venue,OmsEnvironment.Mainnet,original.Scope.Account,
+            sub?new TradingSubaccountId(original.Scope.Account.Value):null);
         var current=DeribitRiskInputsTests.Baseline() with{Scope=scope,UsableThroughUtc=DateTimeOffset.UtcNow.AddMinutes(1)};
         await using(var lease=await OmsPostgresFixQualificationLeaseV1.AcquireAsync(db.Source,scope,default))
         {
@@ -26,6 +28,8 @@ public sealed class OmsFixQualificationPostgresTests
         await Assert.ThrowsAsync<InvalidOperationException>(()=>restarted.CheckBudgetAsync(current,default));
         Assert.Single((await new OmsPostgresRecoveryLedgerReader(db.Source).ReadAsync(scope)).Commands);
         await Assert.ThrowsAsync<ArgumentException>(()=>OmsPostgresFixQualificationLeaseV1.AcquireAsync(db.Source,original.Scope,default));
+        var parentSelected=new AccountKey(scope.Tenant,scope.Venue,scope.Environment,scope.Account,new TradingSubaccountId("other-subaccount"));
+        await Assert.ThrowsAsync<ArgumentException>(()=>OmsPostgresFixQualificationLeaseV1.AcquireAsync(db.Source,parentSelected,default));
     }
     [Fact]
     public async Task VersionTwoGAndVersionOneMessagesShareDurableSequenceWithoutRewritingOldRows()

@@ -11,6 +11,13 @@
 39/39 affected + 22/22 Windows + 32/32 output checks PASS. Это отдельная адресная
 приёмка диагностики после `a243ffc`, а не новый полный 2418-case run.
 
+Следующее обследование нашло сохранённый **subaccount** pin и B3 schema с 20
+migrations. Настройки готовит разработчик; владельцу не требуется искать роли.
+[Session v2](../architecture/DERIBIT_FIX_DIRECT_SUBACCOUNT_V2.md) поддерживает
+самостоятельный ключ этого субаккаунта с сохранением полного scope;
+[review pack и фактическое состояние окружения](FIX_RETAINED_STORE_PREPARATION_2026-11-07.md).
+Постоянная DB не менялась; live по-прежнему NOT RUN.
+
 ## Запрошенная цель
 
 Владелец запросил live-проверку размещения, снятия/отмены и переноса ордеров
@@ -37,7 +44,7 @@ placement attempts на этап, post-only, не менее 10% от рынка
 | Перенос цены `35=G` | [Versioned price-only mutation через B4/B5](../architecture/DERIBIT_FIX_PRICE_AMEND_V2.md); размер/флаги неизменны | NOT RUN |
 | Owner-launched FIX qualification runner | `Deribit-FixQualificationLocal.ps1`, отдельный host mode; по умолчанию только Status | NOT RUN |
 | Старый bounded OMS runner | Entry point намеренно возвращает отказ после B5; это исторический WS-сценарий | НЕ ИСПОЛЬЗОВАТЬ ДЛЯ FIX |
-| Permanent store/session/четыре роли/policy | B6 их автоматически не мигрировал и не provision-ил | NOT VERIFIED |
+| Permanent store/session/четыре роли/policy | Read-only проверено: B3 schema, новых четырёх identities нет; SQL review подготовлен | BLOCKED: PROVISIONING REQUIRED |
 | Configuration preflight | Read-only DB/catalog/node inspection реализован; текущие девять env settings отсутствуют | BLOCKED: CONFIGURATION MISSING |
 
 Deribit поддерживает native изменение работающего ордера через
@@ -77,8 +84,8 @@ price G ниже прежней цены минимум на tick → own F → 
 unsent тоже блокируют повтор до разбора. Дополнительная DB session lease ограничивает
 параллельный сценарий, а физическим владельцем остаётся обязательный B5 OS fence.
 
-До запуска владелец подготавливает постоянную DB с B6 migrations и
-`20261107010000_AddFixPriceAmendV2`, четыре ограниченные identities, current scoped
+До запуска разработчик подготавливает постоянную DB с B6 migrations,
+`20261107010000_AddFixPriceAmendV2` и `20261107180000_AddFixSubaccountSessionV2`, четыре ограниченные identities, current scoped
 policy, immutable FIX session row/key SHA и physical node objects. Protocol role
 дополнительно требует SELECT/INSERT на `oms_fix_amend_messages_v2`, без mutation/
 delete/truncate. Для одной изменяемой заявки policy должна допускать два pending
@@ -110,7 +117,7 @@ $qualifiedCommit = (git -C D:\Projects\TradeOps-v2 rev-parse HEAD).Trim()
 ```
 
 Launcher использует существующий SDK и DPAPI vault/native pin, сверяет fingerprint
-credentials и native main account, source/DLL hashes, передаёт ключ только дочернему
+credentials и native account/type из сохранённого pin, source/DLL hashes, передаёт ключ только дочернему
 процессу. Host независимо проверяет fixed-origin pin и public metadata. Обычные
 execution switches остаются false; обычный FIX mode квалификацию не запускает.
 Сценарий ограничен 150s, transport 240s. Timeout launcher не убивает процесс и не

@@ -9,19 +9,19 @@ namespace TradeOps.UnitTests;
 public sealed class OmsFixConfigurationInspectionPostgresTests
 {
     [Theory]
-    [InlineData("valid")][InlineData("missing-session")][InlineData("missing-policy")][InlineData("protocol-write")][InlineData("missing-node")]
+    [InlineData("valid")][InlineData("subaccount")][InlineData("missing-session")][InlineData("missing-policy")][InlineData("protocol-write")][InlineData("missing-node")]
     public async Task ActualFourRolesAreInspectedWithoutOwnershipOrAnyDatabaseMutation(string mode)
     {
         await using var recovery=await DeribitRecoveryHostPostgresTests.Roles.Open();var db=recovery.Db;
         await using var execution=await DeribitFixGatewayPostgresTests.Roles.Open(db);using var root=new OmsExecutionGatewayPostgresTests.Root();
-        var scope=new AccountKey(new("tenant"),new("DERIBIT"),OmsEnvironment.Mainnet,new("account"));
-        var key=OmsFixSessionStorePostgresTests.Key() with{Scope=scope};
+        var scope=new AccountKey(new("tenant"),new("DERIBIT"),OmsEnvironment.Mainnet,new("account"),mode=="subaccount"?new TradingSubaccountId("account"):null);
+        var key=OmsFixSessionStorePostgresTests.Key() with{Scope=scope,SchemaVersion=scope.Subaccount is null?1:2};
         var password=Guid.NewGuid().ToString("N");
         await using(var q=db.Source.CreateCommand($"""
 ALTER ROLE "{execution.execution}" LOGIN PASSWORD '{password}';
 ALTER ROLE "{execution.protocol}" LOGIN PASSWORD '{password}';
 GRANT CONNECT ON DATABASE "{db.Name}" TO "{execution.execution}","{execution.protocol}";
-INSERT INTO oms_risk_control_permissions_v1 VALUES(3,'tenant','DERIBIT',4,'account','',2,'{execution.execution}',true,false);
+INSERT INTO oms_risk_control_permissions_v1 VALUES(3,'tenant','DERIBIT',4,'account','{scope.Subaccount?.Value??""}',2,'{execution.execution}',true,false);
 """))await q.ExecuteNonQueryAsync();
         Assert.Equal(4,(int)OmsEnvironment.Mainnet);
         if(mode!="missing-session")await OmsFixSessionStorePostgresTests.Seed(db.Source,key);
@@ -38,6 +38,7 @@ INSERT INTO oms_risk_control_permissions_v1 VALUES(3,'tenant','DERIBIT',4,'accou
         }
         if(mode=="protocol-write"){await using var q=db.Source.CreateCommand($"GRANT INSERT ON oms_commands TO \"{execution.protocol}\"");await q.ExecuteNonQueryAsync();}
         var data=DeribitFixConfigurationCheckTests.Settings();data["DeribitOms:LockRoot"]=root.PathName;
+        if(scope.Subaccount is not null)data["DeribitCapture:Subaccount"]=scope.Subaccount.Value.Value;
         data["DeribitFix:SenderCompId"]=key.SenderCompId;
         data["ConnectionStrings:TradeOpsCaptureDb"]=recovery.CaptureConnection;data["ConnectionStrings:TradeOpsRecoveryDb"]=recovery.RecoveryConnection;
         data["ConnectionStrings:TradeOpsExecutionDb"]=new NpgsqlConnectionStringBuilder(db.ConnectionString){Username=execution.execution,Password=password,Options="",Pooling=false}.ConnectionString;
@@ -53,7 +54,7 @@ SELECT jsonb_build_array((SELECT count(*) FROM oms_commands),(SELECT count(*) FR
         }
         var before=await State();var files=Directory.GetFiles(root.PathName).ToDictionary(x=>x,File.GetLastWriteTimeUtc);
         var result=await DeribitFixConfigurationCheck.RunAsync(DeribitFixConfigurationCheckTests.Config(data));
-        Assert.True(result.Status==(mode=="valid"?"FIX_CONFIGURATION_CHECK_PASS":"FIX_CONFIGURATION_CHECK_BLOCKED"),System.Text.Json.JsonSerializer.Serialize(result));
+        Assert.True(result.Status==(mode is "valid" or "subaccount"?"FIX_CONFIGURATION_CHECK_PASS":"FIX_CONFIGURATION_CHECK_BLOCKED"),System.Text.Json.JsonSerializer.Serialize(result));
         var blocked=result.Checks.Where(x=>!x.Passed).Select(x=>x.Code).ToArray();
         var expected=mode switch{"missing-session"=>new[]{"ProvisionedFixSession"},"missing-policy"=>["CurrentEthAmendmentRiskPolicy"],"protocol-write"=>["ProtocolRole"],"missing-node"=>["ExistingNodeObjectBinding"],_=>[]};
         Assert.True(expected.SequenceEqual(blocked),System.Text.Json.JsonSerializer.Serialize(result));

@@ -5,6 +5,10 @@ The additive [price-only mutation v2](DERIBIT_FIX_PRICE_AMEND_V2.md) extends it 
 native G and Cancel-after-G. Its separate owner qualification procedure remains
 LIVE NOT RUN; the historical 2351-case B6 acceptance does not certify that extension.
 
+The later [direct-subaccount session v2](DERIBIT_FIX_DIRECT_SUBACCOUNT_V2.md)
+preserves the retained standalone credential scope. Main-only statements below
+describe the original v1 boundary; parent-key account selection remains unsupported.
+
 The opt-in FIX transport uses the existing B4 live recovery capability, durable B5
 policy/admission/reservation, dispatch revalidation and the same provisioned OS
 physical owner as WS. The connector depends on Application/Domain only. No FIX

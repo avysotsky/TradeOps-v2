@@ -192,6 +192,7 @@ capture_paths=(
   tools/TradeOps.DeribitTestnetOrderQualification
   tools/TradeOps.DeribitMainnetEthQualification
   tools/TradeOps.OmsPhysicalOwnerProbe
+  tools/TradeOps.FixProvisioningPlan
   src/TradeOps.Application/Properties
   apps/TradeOps.TerminalApi/Controllers/DeribitTerminalController.cs
   scripts/deribit/Deribit-MainnetEthLocal.ps1

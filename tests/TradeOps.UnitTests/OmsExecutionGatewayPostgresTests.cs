@@ -33,11 +33,11 @@ public sealed class OmsExecutionGatewayPostgresTests
     {
         internal readonly string PathName=Path.Combine(Path.GetTempPath(),"tradeops-b5-"+Guid.NewGuid().ToString("N"));
         internal Root()=>Directory.CreateDirectory(PathName);
-        internal async Task Bind(NpgsqlDataSource source)
+        internal async Task Bind(NpgsqlDataSource source,TradeOps.Domain.Oms.AccountKey? scope=null)
         {
-            var binding=OmsExecutionNodeProvisioning.Prepare(PathName,Scope());
+            scope??=Scope();var binding=OmsExecutionNodeProvisioning.Prepare(PathName,scope);
             await using var q=source.CreateCommand("INSERT INTO oms_execution_bindings_v2(venue_id,environment,schema_version,node_sha256,lock_root,root_sha256,lock_sha256) VALUES('DERIBIT',@env,2,@node,@root,@rootHash,@fileHash)");
-            q.Parameters.AddWithValue("env",(short)Scope().Environment);q.Parameters.AddWithValue("node",binding.NodeSha256);
+            q.Parameters.AddWithValue("env",(short)scope.Environment);q.Parameters.AddWithValue("node",binding.NodeSha256);
             q.Parameters.AddWithValue("root",binding.LockRoot);q.Parameters.AddWithValue("rootHash",binding.RootSha256);q.Parameters.AddWithValue("fileHash",binding.LockSha256);await q.ExecuteNonQueryAsync();
         }
         public void Dispose()

@@ -27,7 +27,7 @@ public sealed class OmsPostgresFixSessionStoreV1:IOmsFixSessionStoreV1
     private (DateTime Created,ulong Sender,ulong Target,long Logon) State(NpgsqlConnection db,NpgsqlTransaction? tx,bool locked=false)
     {
         using var q=Query(db,tx,"SELECT schema_version,key_sha256,created_at,next_sender,next_target,last_logon_ms FROM oms_fix_sessions_v1 WHERE "+Where+(locked?" FOR UPDATE":""));
-        using var r=q.ExecuteReader();if(!r.Read()||r.GetInt32(0)!=1||!CryptographicOperations.FixedTimeEquals(r.GetFieldValue<byte[]>(1),digest))
+        using var r=q.ExecuteReader();if(!r.Read()||r.GetInt32(0)!=key.SchemaVersion||!CryptographicOperations.FixedTimeEquals(r.GetFieldValue<byte[]>(1),digest))
             throw new InvalidOperationException("Provisioned FIX session binding required.");
         var sender=r.GetInt64(3);var target=r.GetInt64(4);if(sender<1||target<1)throw new InvalidOperationException("Invalid FIX cursor.");
         return(r.GetDateTime(2),(ulong)sender,(ulong)target,r.GetInt64(5));

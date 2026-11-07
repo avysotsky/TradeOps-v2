@@ -7,7 +7,8 @@ public sealed record OmsFixSessionKeyV1(int SchemaVersion,AccountKey Scope,strin
 {
     public void Validate()
     {
-        if(SchemaVersion!=1||Scope.Venue.Value!="DERIBIT"||Scope.Subaccount is not null||
+        if(Scope.Venue.Value!="DERIBIT"||
+            (SchemaVersion==1?Scope.Subaccount is not null:SchemaVersion!=2||Scope.Subaccount is null||Scope.Subaccount.Value.Value!=Scope.Account.Value)||
             Scope.Environment is not(OmsEnvironment.Mainnet or OmsEnvironment.Testnet)||TargetCompId!="DERIBITSERVER"||
             string.IsNullOrWhiteSpace(SenderCompId)||SenderCompId.Length>64||SenderCompId.Any(c=>c<33||c>126||c=='='))
             throw new ArgumentException("Invalid pinned FIX session identity.");

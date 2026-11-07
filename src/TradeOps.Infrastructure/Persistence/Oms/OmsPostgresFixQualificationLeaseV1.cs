@@ -18,7 +18,7 @@ public sealed class OmsPostgresFixQualificationLeaseV1:IAsyncDisposable,IOmsFixQ
     {this.connection=connection;this.source=source;this.scope=scope;this.key=key;backend=connection.ProcessID;}
     public static async Task<OmsPostgresFixQualificationLeaseV1> AcquireAsync(NpgsqlDataSource source,AccountKey scope,CancellationToken ct)
     {
-        if(scope.Venue.Value!="DERIBIT"||scope.Environment!=OmsEnvironment.Mainnet||scope.Subaccount is not null)throw new ArgumentException("Pinned main-account mainnet scope required.");
+        if(scope.Venue.Value!="DERIBIT"||scope.Environment!=OmsEnvironment.Mainnet||scope.Subaccount is{} sub&&sub.Value!=scope.Account.Value)throw new ArgumentException("Pinned standalone-account mainnet scope required.");
         var key=BinaryPrimitives.ReadInt64BigEndian(SHA256.HashData(Encoding.UTF8.GetBytes("owner-fix-eth-qualification-v1:"+OmsRecoveryRunCodec.Encode(scope).Json)));
         var c=await source.OpenConnectionAsync(ct);
         try

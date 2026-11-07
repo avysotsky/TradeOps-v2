@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using QuickFix;
 using Npgsql;
 using TradeOps.Application.Oms;
+using TradeOps.Domain.Oms;
 using TradeOps.Connectors.Deribit;
 using TradeOps.Connectors.Deribit.Fix;
 using TradeOps.Infrastructure.Persistence.Oms;
@@ -19,7 +20,7 @@ public sealed class DeribitFixGatewayPostgresTests
 {
     internal sealed class Http : HttpMessageHandler
     {
-        internal long Account=123;internal decimal Contract=1;internal int PrivateCalls;internal Action? OnMetadata;
+        internal string AccountType="main";internal long Account=123;internal decimal Contract=1;internal int PrivateCalls;internal Action? OnMetadata;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)
         {
             Assert.Equal("test.deribit.com",request.RequestUri!.Host);Assert.Equal("https",request.RequestUri.Scheme);
@@ -29,7 +30,7 @@ public sealed class DeribitFixGatewayPostgresTests
             {
                 case "public/auth":result=new{access_token="synthetic-token",expires_in=300,scope=p.GetProperty("scope").GetString()};break;
                 case "private/get_account_summary":PrivateCalls++;Assert.Equal("Bearer",request.Headers.Authorization!.Scheme);
-                    result=new{id=Account,type="main",currency="ETH",cross_collateral_enabled=false,portfolio_margining_enabled=false};break;
+                    result=new{id=Account,type=AccountType,currency="ETH",cross_collateral_enabled=false,portfolio_margining_enabled=false};break;
                 case "public/get_instrument":OnMetadata?.Invoke();result=new{instrument_name=p.GetProperty("instrument_name").GetString(),kind="future",instrument_type="reversed",settlement_currency="ETH",base_currency="ETH",quote_currency="USD",
                     contract_size=Contract,min_trade_amount=1,is_active=true,expiration_timestamp=DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeMilliseconds()};break;
                 default:throw new InvalidOperationException("Unexpected HTTP operation.");
@@ -81,35 +82,37 @@ public sealed class DeribitFixGatewayPostgresTests
         public Task<OmsRiskPolicyDocumentV1?> ReadAsync(TradeOps.Domain.Oms.AccountKey scope,CancellationToken ct=default)
         {var p=DeribitRiskInputsTests.Policy();return Task.FromResult<OmsRiskPolicyDocumentV1?>(p with{Limits=p.Limits with{Scope=scope},ValidFromUtc=DateTimeOffset.UtcNow.AddMinutes(-1),ValidThroughUtc=DateTimeOffset.UtcNow.AddHours(1)});}
     }
-    internal static DeribitPrivateCaptureBinding Binding()=>new(Scope(),new DeribitOptions{ClientId="synthetic-client",ClientSecret="synthetic-secret",AccountCurrency="ETH"},new(123,false,
+    internal static DeribitPrivateCaptureBinding Binding(AccountKey? scope=null)=>new(scope??Scope(),new DeribitOptions{ClientId="synthetic-client",ClientSecret="synthetic-secret",AccountCurrency="ETH"},new(123,scope?.Subaccount is not null,
         [new("ETH-PERPETUAL","future","ETH",OmsPrivateAmountUnit.Usd,"USD")]));
 
     [Theory]
-    [InlineData("amend-restricted")][InlineData("amend-unknown")][InlineData("amend-reject")][InlineData("amend-partial")][InlineData("amend-kill")]
+    [InlineData("amend-subaccount")][InlineData("amend-restricted")][InlineData("amend-unknown")][InlineData("amend-reject")][InlineData("amend-partial")][InlineData("amend-kill")]
     [InlineData("amend")][InlineData("normal")][InlineData("lost-ack")][InlineData("unknown")][InlineData("partial")][InlineData("cancel-unknown")][InlineData("restricted")][InlineData("ingress-race")][InlineData("cancel-under-kill")]
     public async Task ActualEngineUsesDurableAdmissionNativeEvidenceRecoveryAndAddressedCancelWithoutWsReceiptFabrication(string mode)
     {
-        await using var db=await OmsPostgresTestDatabase.CreateAsync();using var root=new OmsExecutionGatewayPostgresTests.Root();await root.Bind(db.Source);
-        await using var live=await Live.Open(db);var recovery=new OmsExecutionGatewayPostgresTests.Recovery();
+        var scope=mode=="amend-subaccount"?new AccountKey(new("tenant"),new("DERIBIT"),OmsEnvironment.Testnet,new("account"),new TradingSubaccountId("account")):Scope();
+        await using var db=await OmsPostgresTestDatabase.CreateAsync();using var root=new OmsExecutionGatewayPostgresTests.Root();await root.Bind(db.Source,scope);
+        await using var live=await Live.Open(db,scope:scope);var recovery=new OmsExecutionGatewayPostgresTests.Recovery();
 
-        var key=OmsFixSessionStorePostgresTests.Key("gateway-"+Guid.NewGuid().ToString("N"));await OmsFixSessionStorePostgresTests.Seed(db.Source,key);
-        await using var roles=mode is "restricted" or "amend-restricted"?await Roles.Open(db):null;
+        var key=OmsFixSessionStorePostgresTests.Key("gateway-"+Guid.NewGuid().ToString("N")) with{Scope=scope,SchemaVersion=scope.Subaccount is null?1:2};await OmsFixSessionStorePostgresTests.Seed(db.Source,key);
+        await using var roles=mode is "restricted" or "amend-restricted" or "amend-subaccount"?await Roles.Open(db):null;
         var execution=roles?.Execution??db.Source;var protocolSource=roles?.Protocol??db.Source;
-        using var protocol=new OmsPostgresFixSessionStoreV1(protocolSource,key);using var handler=new Http();using var http=new HttpClient(handler);
+        using var protocol=new OmsPostgresFixSessionStoreV1(protocolSource,key);using var handler=new Http{AccountType=scope.Subaccount is null?"main":"subaccount"};using var http=new HttpClient(handler);
         var wire=new Wire(key){IgnorePlace=mode=="unknown",IgnoreCancel=mode=="cancel-unknown",Partial=mode=="partial",
             IgnoreAmend=mode=="amend-unknown",RejectAmend=mode=="amend-reject",PartialAmend=mode=="amend-partial"};
         wire.BeforeWrite=async m=>
         {if(m.Header.GetString(35) is "D" or "F" or "G"){Assert.True(await OmsExecutionGatewayPostgresTests.Count(db,"oms_deribit_fix_command_bindings_v1")>=1);Assert.InRange(await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_reservations_v1"),1,2);}};
         DeribitOmsFixTransportV1? transport=null;
-        await using var gateway=await OmsPostgresExecutionGateway.OpenAsync(Scope(),execution,recovery,new AmendmentInputs(),root.PathName,
-            async(authority,ct)=>transport=await DeribitOmsFixTransportV1.OpenCoreAsync(Binding(),new(key),protocol,
+        await using var gateway=await OmsPostgresExecutionGateway.OpenAsync(scope,execution,recovery,new AmendmentInputs(),root.PathName,
+            async(authority,ct)=>transport=await DeribitOmsFixTransportV1.OpenCoreAsync(Binding(scope),new(key),protocol,
                 new Journal(new OmsPostgresDeribitFixReportJournalV1(protocolSource,key),mode=="lost-ack"),authority,
                 ()=>live.Coordinator.BeginExternalIngress(live.Session),http,(c,t)=>OmsPostgresFixParentReaderV1.ReadAsync(execution,c,t),
                 recovery.RequestRecovery,_=>Task.FromResult<IDeribitFixWireV1>(wire),ct),cancelPolicies:new Policies());
         async Task Refresh()
         {
             DeribitRecoveryRunOutcome? r=null;
-            for(var attempt=0;attempt<3;attempt++)
+            var deadline=DateTimeOffset.UtcNow+Deadline;
+            do
             {
                 r=await live.Recover(true);
                 if(r.Coherence.EvidenceSufficient){recovery.Current=r.ExecutionBaseline;Assert.NotNull(recovery.Current);return;}
@@ -118,13 +121,14 @@ public sealed class DeribitFixGatewayPostgresTests
                 if(r.Coherence.Problems.Any(p=>p is not(DeribitRecoveryCoherenceProblem.MissingLiveCapture or
                     DeribitRecoveryCoherenceProblem.ActivityDuringRecovery or DeribitRecoveryCoherenceProblem.InventoryUnavailable or
                     DeribitRecoveryCoherenceProblem.NativeClockUnavailable or DeribitRecoveryCoherenceProblem.StaleEvidence)))break;
+                Assert.True(transport!.IsRunning,"FIX stopped before a coherent recovery cut.");
                 await Task.Delay(25);
-            }
-            Assert.True(r!.Coherence.EvidenceSufficient,string.Join(",",r.Coherence.Problems));
+            }while(DateTimeOffset.UtcNow<deadline);
+            Assert.True(r!.Coherence.EvidenceSufficient,string.Join(",",r.Coherence.Problems)+"; capture="+live.Coordinator.Status);
         }
         await Refresh();OmsExternalEconomicIngress? ingress=null;
         if(mode=="ingress-race")handler.OnMetadata=()=>ingress=live.Coordinator.BeginExternalIngress(live.Session);
-        var command=OmsExecutionGatewayPostgresTests.Command();var result=await gateway.SubmitAsync(command);
+        var command=OmsExecutionGatewayPostgresTests.Command() with{Scope=scope};var result=await gateway.SubmitAsync(command);
         if(mode=="ingress-race")
         {
             Assert.Equal(OmsExecutionResultKind.Unknown,result.Kind);Assert.Equal(0,wire.Placements);Assert.NotNull(ingress);ingress.Dispose();
@@ -132,7 +136,7 @@ public sealed class DeribitFixGatewayPostgresTests
         }
         Assert.Equal(mode is "lost-ack" or "unknown"?OmsExecutionResultKind.Unknown:OmsExecutionResultKind.Acknowledged,result.Kind);
         Assert.Equal(1,wire.Placements);Assert.Equal(0,await OmsExecutionGatewayPostgresTests.Count(db,"oms_deribit_command_receipts_v1"));
-        var ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(Scope());Assert.True(ledger.IsUsable,string.Join(",",ledger.Problems));
+        var ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(scope);Assert.True(ledger.IsUsable,string.Join(",",ledger.Problems));
         Assert.Single(ledger.FixBindings!);Assert.Empty(ledger.Private.Observations);
         if(mode=="unknown")
         {
@@ -149,15 +153,15 @@ public sealed class DeribitFixGatewayPostgresTests
         {
             // A callback fault poisons the old ingress baseline. Restart creates fresh WS
             // capture/recovery authority; durable FIX evidence survives without resending.
-            await using var restarted=await Live.Open(db);restarted.NativeReport=view.Order;
+            await using var restarted=await Live.Open(db,scope:scope);restarted.NativeReport=view.Order;
             var recovered=await restarted.Recover(true);Assert.True(recovered.Coherence.EvidenceSufficient,string.Join(",",recovered.Coherence.Problems));
-            Assert.Equal(OmsRecoveryDispatchPhase.Acknowledged,Assert.Single((await new OmsPostgresRecoveryLedgerReader(db.Source).ReadAsync(Scope())).Commands).Phase);
+            Assert.Equal(OmsRecoveryDispatchPhase.Acknowledged,Assert.Single((await new OmsPostgresRecoveryLedgerReader(db.Source).ReadAsync(scope)).Commands).Phase);
             Assert.Equal(1,wire.Placements);
             await gateway.DisposeAsync();
             using var nextProtocol=new OmsPostgresFixSessionStoreV1(db.Source,key);var nextWire=new Wire(key,nextProtocol.NextTarget);
             var nextRecovery=new OmsExecutionGatewayPostgresTests.Recovery();
-            await using var nextGateway=await OmsPostgresExecutionGateway.OpenAsync(Scope(),db.Source,nextRecovery,new OmsRiskAdmissionPostgresTests.Inputs(),root.PathName,
-                async(authority,ct)=>await DeribitOmsFixTransportV1.OpenCoreAsync(Binding(),new(key),nextProtocol,
+            await using var nextGateway=await OmsPostgresExecutionGateway.OpenAsync(scope,db.Source,nextRecovery,new OmsRiskAdmissionPostgresTests.Inputs(),root.PathName,
+                async(authority,ct)=>await DeribitOmsFixTransportV1.OpenCoreAsync(Binding(scope),new(key),nextProtocol,
                     new OmsPostgresDeribitFixReportJournalV1(db.Source,key),authority,()=>restarted.Coordinator.BeginExternalIngress(restarted.Session),http,
                     (c,t)=>OmsPostgresFixParentReaderV1.ReadAsync(db.Source,c,t),nextRecovery.RequestRecovery,_=>Task.FromResult<IDeribitFixWireV1>(nextWire),ct));
             var fresh=await restarted.Recover(true);Assert.NotNull(fresh.ExecutionBaseline);nextRecovery.Current=fresh.ExecutionBaseline;
@@ -167,7 +171,7 @@ public sealed class DeribitFixGatewayPostgresTests
         if(mode is "cancel-under-kill" or "amend-kill")
         {
             await using(var q=db.Source.CreateCommand("INSERT INTO oms_risk_control_permissions_v1 VALUES(3,'tenant','DERIBIT',3,'account','',1,current_user,true,false)"))await q.ExecuteNonQueryAsync();
-            await new OmsPostgresRiskControls(db.Source).SetAsync(new(OmsRiskControlScopeV1.ForAccount(Scope()),OmsRiskControlKind.KillSwitch,Guid.NewGuid(),0,true,"Operator test stop"));
+            await new OmsPostgresRiskControls(db.Source).SetAsync(new(OmsRiskControlScopeV1.ForAccount(scope),OmsRiskControlKind.KillSwitch,Guid.NewGuid(),0,true,"Operator test stop"));
         }
         OmsJournalCommandRequest? amendedCommand=null;
         if(mode.StartsWith("amend",StringComparison.Ordinal))
@@ -183,7 +187,7 @@ public sealed class DeribitFixGatewayPostgresTests
                 Assert.Equal(0,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));return;
             }
             Assert.Equal(OmsExecutionResultKind.Acknowledged,outcome.Kind);
-            Assert.Equal(1,wire.Amendments);ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(Scope());
+            Assert.Equal(1,wire.Amendments);ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(scope);
             Assert.True(ledger.IsUsable,string.Join(",",ledger.Problems));
             var changed=DeribitNativeCommandEvidenceV1.Read(ledger).Single(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Replace);
             live.NativeReport=changed.Order;await Refresh();
@@ -194,13 +198,13 @@ public sealed class DeribitFixGatewayPostgresTests
         Assert.Equal(mode=="cancel-unknown"?OmsExecutionResultKind.Unknown:OmsExecutionResultKind.Acknowledged,cancelled.Kind);Assert.Equal(1,wire.Cancels);
         if(mode=="cancel-unknown")
         {Assert.Null((await live.Recover(true)).ExecutionBaseline);Assert.Equal(0,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));return;}
-        ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(Scope());
+        ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(scope);
         var views=DeribitNativeCommandEvidenceV1.Read(ledger);Assert.Equal(amendedCommand is not null?3:2,views.Count);live.NativeReport=views.Single(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Cancel).Order;
-        await Refresh();Assert.True(OmsRiskSettlementV1.CanRetire((await live.Store.ReadPublishedAsync(Scope()))!.State,view));
+        await Refresh();Assert.True(OmsRiskSettlementV1.CanRetire((await live.Store.ReadPublishedAsync(scope))!.State,view));
         if(mode=="cancel-under-kill")
         {Assert.Equal(OmsExecutionResultKind.Denied,(await gateway.SubmitAsync(OmsExecutionGatewayPostgresTests.Command())).Kind);Assert.Equal(1,wire.Placements);return;}
         Assert.Equal(OmsRiskAdmissionResult.Reserved,await new OmsPostgresRiskAdmission(db.Source,new OmsRiskAdmissionPostgresTests.Inputs()).AdmitAsync(
-            OmsExecutionGatewayPostgresTests.Command(),recovery.Current!.Publication,recovery.Current.Qualified));
+            OmsExecutionGatewayPostgresTests.Command() with{Scope=scope},recovery.Current!.Publication,recovery.Current.Qualified));
         Assert.Equal(amendedCommand is not null?2:1,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));
     }
 

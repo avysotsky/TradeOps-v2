@@ -41,8 +41,8 @@ public sealed class DeribitOmsFixTransportV1:IOmsFixAccountOrderTransport
         Func<CancellationToken,Task<IDeribitFixWireV1>> openWire,CancellationToken ct)
     {
         options.Validate();_ = binding.Plan.Validate(binding.Options,binding.Scope);
-        if(binding.Scope!=options.Session.Scope||binding.Plan.IsSubaccount||http.DefaultRequestHeaders.Authorization is not null||http.DefaultRequestHeaders.Contains("Cookie"))
-            throw new InvalidOperationException("Pinned main-account FIX transport required.");
+        if(binding.Scope!=options.Session.Scope||options.Session.SchemaVersion!=(binding.Plan.IsSubaccount?2:1)||http.DefaultRequestHeaders.Authorization is not null||http.DefaultRequestHeaders.Contains("Cookie"))
+            throw new InvalidOperationException("Pinned standalone-account FIX transport required.");
         var t=new DeribitOmsFixTransportV1(binding,options,http,journal,parent,recovery);
         try
         {
@@ -68,7 +68,7 @@ public sealed class DeribitOmsFixTransportV1:IOmsFixAccountOrderTransport
             string.IsNullOrWhiteSpace(token)||token.Length>8192||token.Any(char.IsControl))throw new InvalidOperationException("FIX account pin grant refused.");
         rpc.Token=token;
         var summary=await rpc.Call("private/get_account_summary",new{currency=binding.Options.AccountCurrency,extended=true},ct);
-        if(summary.GetProperty("id").GetInt64()!=binding.Plan.ExpectedAccountId||summary.GetProperty("type").GetString()!="main"||
+        if(summary.GetProperty("id").GetInt64()!=binding.Plan.ExpectedAccountId||summary.GetProperty("type").GetString()!=(binding.Plan.IsSubaccount?"subaccount":"main")||
             summary.GetProperty("currency").GetString()!=binding.Options.AccountCurrency||summary.GetProperty("cross_collateral_enabled").GetBoolean()||
             summary.GetProperty("portfolio_margining_enabled").GetBoolean())throw new InvalidOperationException("FIX native account pin mismatch.");
         return rpc;

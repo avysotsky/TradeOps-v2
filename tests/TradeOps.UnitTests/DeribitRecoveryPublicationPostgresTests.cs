@@ -299,7 +299,7 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow + Offset;
     }
 
-    internal sealed class Live(OmsPostgresTestDatabase db, TimeProvider? clock = null) : IAsyncDisposable, IDeribitAccountInventoryReader,
+    internal sealed class Live(OmsPostgresTestDatabase db, TimeProvider? clock = null,AccountKey? scope=null) : IAsyncDisposable, IDeribitAccountInventoryReader,
         IDeribitCurrencyRecoveryQueries, IDeribitRecoveryClockReader, IDeribitRecoveryQueries, IDeribitKnownOrderReader
     {
         private DateTimeOffset Now => (clock ?? TimeProvider.System).GetUtcNow();
@@ -313,19 +313,20 @@ CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON oms_recovery_event
         internal bool LateFill, FullFill, DuplicateFill;
         internal decimal Cash,Equity;
         internal DateTimeOffset? FromOverride;
-        internal static async Task<Live> Open(OmsPostgresTestDatabase db, TimeProvider? clock = null)
+        internal static async Task<Live> Open(OmsPostgresTestDatabase db, TimeProvider? clock = null,AccountKey? scope=null)
         {
-            var live = new Live(db, clock); live.queries = await DeribitRecoveryReplayGateTests.Rig.Open();
-            live.Session = await live.Coordinator.SwitchAsync(Scope()); var socket = new Socket();
+            var live = new Live(db, clock,scope); live.queries = await DeribitRecoveryReplayGateTests.Rig.Open();
+            live.Session = await live.Coordinator.SwitchAsync(scope??Scope()); var socket = new Socket();
+            if(scope?.Subaccount is not null){socket.AccountType="subaccount";socket.GrantedScope=ReadScope.Replace("mainaccount","subaccount",StringComparison.Ordinal);}
             live.capture = new DeribitPrivateWebSocketStream(Options(), NullLogger<DeribitPrivateWebSocketStream>.Instance, () => socket, clock).RunCaptureAsync(live.Coordinator, live.Session,
-                DeribitPrivateCapturePlan.ForAccountRecovery(123, false, Plan().Instruments.Values, Plan().Limits), live.stop.Token);
+                DeribitPrivateCapturePlan.ForAccountRecovery(123, scope?.Subaccount is not null, Plan().Instruments.Values, Plan().Limits), live.stop.Token);
             using var deadline = new CancellationTokenSource(Deadline);
             while (live.Coordinator.Status?.Phase != OmsPrivateStreamPhase.Recovering) await Task.Delay(5, deadline.Token);
             return live;
         }
         internal async Task<DeribitRecoveryRunOutcome> Recover(bool publish)
         {
-            var q = queries.Request(); q = q with { Query = q.Query with { Epoch = Coordinator.Status!.Epoch,
+            var q = queries.Request(); q = q with { Query = q.Query with { Scope=scope??Scope(),Epoch = Coordinator.Status!.Epoch,
                 FromUtc = FromOverride ?? Now.AddMinutes(Mode == "long-outage" ? -40 : -5),
                 ThroughUtc = FromOverride ?? Now.AddSeconds(-1) } };
             var account = new DeribitRecoveryAccountAssessmentTests.Accounts(clock) { Transform = x => x with { Positions = [],

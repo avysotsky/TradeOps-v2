@@ -64,7 +64,7 @@ AND sender_comp_id=@sender AND target_comp_id=@target
             q.Parameters.AddWithValue("a",scope.Account.Value);q.Parameters.AddWithValue("s",scope.Subaccount?.Value??"");
             q.Parameters.AddWithValue("sender",session.SenderCompId);q.Parameters.AddWithValue("target",session.TargetCompId);
             await using var row=await q.ExecuteReaderAsync(ct);
-            if(!await row.ReadAsync(ct)||row.GetInt32(0)!=1||!CryptographicOperations.FixedTimeEquals(row.GetFieldValue<byte[]>(1),OmsRecoveryRunCodec.Encode(session).Sha256)||
+            if(!await row.ReadAsync(ct)||row.GetInt32(0)!=session.SchemaVersion||!CryptographicOperations.FixedTimeEquals(row.GetFieldValue<byte[]>(1),OmsRecoveryRunCodec.Encode(session).Sha256)||
                 row.GetInt64(2)<1||row.GetInt64(3)<1||await row.ReadAsync(ct))throw new InvalidOperationException();
         });
         await Check("CurrentEthAmendmentRiskPolicy",async()=>

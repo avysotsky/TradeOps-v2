@@ -23,11 +23,11 @@ public static class DeribitFixConfigurationCheck
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(45));
         try
         {
-            var scope=new AccountKey(new(config["DeribitCapture:Tenant"]!),new("DERIBIT"),OmsEnvironment.Mainnet,new(config["DeribitCapture:Account"]!));
-            var session=new OmsFixSessionKeyV1(1,scope,config["DeribitFix:SenderCompId"]!,"DERIBITSERVER");session.Validate();
+            var sub=config["DeribitCapture:Subaccount"];
+            var scope=new AccountKey(new(config["DeribitCapture:Tenant"]!),new("DERIBIT"),OmsEnvironment.Mainnet,new(config["DeribitCapture:Account"]!),sub is null?null:new TradingSubaccountId(sub));
+            var session=new OmsFixSessionKeyV1(sub is null?1:2,scope,config["DeribitFix:SenderCompId"]!,"DERIBITSERVER");session.Validate();
             if(!DateTimeOffset.TryParse(config["DeribitRecovery:InitialFromUtc"],CultureInfo.InvariantCulture,DateTimeStyles.None,out var from)||
-                from.Offset!=TimeSpan.Zero||from>DateTimeOffset.UtcNow.AddSeconds(-1)||from<DateTimeOffset.UtcNow.AddDays(-7)||
-                config["DeribitCapture:Subaccount"] is not null)throw new InvalidOperationException();
+                from.Offset!=TimeSpan.Zero||from>DateTimeOffset.UtcNow.AddSeconds(-1)||from<DateTimeOffset.UtcNow.AddDays(-7))throw new InvalidOperationException();
             if(!Path.IsPathFullyQualified(config["DeribitOms:LockRoot"]!)||!Directory.Exists(config["DeribitOms:LockRoot"]))throw new InvalidOperationException();
             var builders=new List<NpgsqlConnectionStringBuilder>();
             foreach(var name in new[]{"Capture","Recovery","Execution","Fix"})

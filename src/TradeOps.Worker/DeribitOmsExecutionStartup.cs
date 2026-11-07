@@ -24,7 +24,8 @@ public static class DeribitOmsExecutionStartup
         var root=builder.Configuration["DeribitOms:LockRoot"];
         if(string.IsNullOrWhiteSpace(root)||!Path.IsPathFullyQualified(root)||!Directory.Exists(root)) throw new InvalidOperationException("Provisioned physical owner root required.");
         DeribitRecoveryStartup.TryConfigure(builder);
-        if(DeribitCaptureStartup.ReadBinding(builder.Configuration).Plan.IsSubaccount)throw new InvalidOperationException("OMS execution v1 supports a pinned main account only.");
+        if(DeribitCaptureStartup.ReadBinding(builder.Configuration).Plan.IsSubaccount&&builder.Configuration["Worker:Mode"]==Mode)
+            throw new InvalidOperationException("WebSocket execution v1 supports a pinned main account only.");
         NpgsqlConnectionStringBuilder execution;
         try
         {
@@ -45,7 +46,7 @@ public static class DeribitOmsExecutionStartup
             {
             if(!builder.Configuration.GetValue<bool>("DeribitFix:Enabled"))throw new InvalidOperationException("Explicit FIX opt-in required.");
             var pin=DeribitCaptureStartup.ReadBinding(builder.Configuration);
-            var key=new OmsFixSessionKeyV1(1,pin.Scope,builder.Configuration["DeribitFix:SenderCompId"]??"","DERIBITSERVER");key.Validate();
+            var key=new OmsFixSessionKeyV1(pin.Plan.IsSubaccount?2:1,pin.Scope,builder.Configuration["DeribitFix:SenderCompId"]??"","DERIBITSERVER");key.Validate();
             var protocol=new NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("TradeOpsFixDb")??throw new InvalidOperationException("Separate FIX protocol identity required."))
             {Pooling=true,MinPoolSize=0,MaxPoolSize=8,Multiplexing=false,SearchPath="public",IncludeErrorDetail=false,LogParameters=false,Timeout=10,CommandTimeout=15};
             foreach(var name in new[]{"TradeOpsCaptureDb","TradeOpsRecoveryDb","TradeOpsExecutionDb"})
@@ -63,7 +64,7 @@ public static class DeribitOmsExecutionStartup
         if(builder.Configuration["Worker:Mode"]==QualificationMode)
         {
             var pin=DeribitCaptureStartup.ReadBinding(builder.Configuration);
-            if(!builder.Configuration.GetValue<bool>("DeribitFixQualification:OwnerLaunch")||pin.Scope.Environment!=TradeOps.Domain.Oms.OmsEnvironment.Mainnet||pin.Plan.IsSubaccount||
+            if(!builder.Configuration.GetValue<bool>("DeribitFixQualification:OwnerLaunch")||pin.Scope.Environment!=TradeOps.Domain.Oms.OmsEnvironment.Mainnet||
                 builder.Configuration["DeribitFixQualification:ExpectedSourceCommit"] is not{} expected||expected.Length!=40||!expected.All(Uri.IsHexDigit)||
                 builder.Configuration["DeribitFixQualification:ObservedSourceCommit"]!=expected)
                 throw new InvalidOperationException("Explicit owner launch and exact source binding required.");

@@ -1,4 +1,6 @@
 using Npgsql;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using TradeOps.Application.Oms;
 using TradeOps.Infrastructure.Persistence.Oms;
 using TradeOps.UnitTests.Support;
@@ -8,17 +10,38 @@ using static TradeOps.UnitTests.Support.DeribitCaptureTestRig;
 namespace TradeOps.UnitTests;
 public sealed class OmsFixSessionStorePostgresTests
 {
+    [Fact]
+    public async Task VersionTwoSubaccountHasIndependentDurableCursorsAndCannotBeReboundOrDowngraded()
+    {
+        await using var db=await OmsPostgresTestDatabase.CreateAsync();
+        var main=Key();var sub=main with{SchemaVersion=2,Scope=DeribitFixSubaccountTests.Scope()};
+        await Seed(db.Source,main);await Seed(db.Source,sub);
+        using(var first=new OmsPostgresFixSessionStoreV1(db.Source,sub))
+        {first.SaveAndAdvance(1,"0",null);first.AdvanceTarget(8);Assert.Equal(1000,first.ReserveLogonTimestamp(1000));}
+        using var restarted=new OmsPostgresFixSessionStoreV1(db.Source,sub);using var separate=new OmsPostgresFixSessionStoreV1(db.Source,main);
+        Assert.Equal(2UL,restarted.NextSender);Assert.Equal(8UL,restarted.NextTarget);Assert.Single(restarted.Read(1,1));Assert.Equal(1001,restarted.ReserveLogonTimestamp(999));
+        Assert.Equal(1UL,separate.NextSender);Assert.Equal(1UL,separate.NextTarget);Assert.Empty(separate.Read(1,1));
+        foreach(var sql in new[]{"UPDATE oms_fix_sessions_v1 SET schema_version=1 WHERE subaccount_id<>''",
+            "UPDATE oms_fix_sessions_v1 SET subaccount_id='' WHERE schema_version=2"})
+        {await using var q=db.Source.CreateCommand(sql);await Assert.ThrowsAsync<PostgresException>(()=>q.ExecuteNonQueryAsync());}
+        await using var context=new TradeOps.Infrastructure.Persistence.TradeOpsDbContext(
+            new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TradeOps.Infrastructure.Persistence.TradeOpsDbContext>()
+                .UseNpgsql(db.ConnectionString).Options);
+        await Assert.ThrowsAsync<PostgresException>(()=>context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+            .MigrateAsync("20261107010000_AddFixPriceAmendV2"));
+        Assert.Equal(2UL,restarted.NextSender);
+    }
     internal static OmsFixSessionKeyV1 Key(string sender="tradeops-test")=>new(1,Scope(),sender,"DERIBITSERVER");
     internal static async Task Seed(NpgsqlDataSource source,OmsFixSessionKeyV1 key)
     {
         var hash=OmsRecoveryRunCodec.Encode(key).Sha256;
         await using var q=source.CreateCommand("""
 INSERT INTO oms_fix_sessions_v1(tenant_id,venue_id,environment,account_id,subaccount_id,sender_comp_id,target_comp_id,schema_version,key_sha256)
-VALUES(@t,@v,@e,@a,@s,@sender,@target,1,@hash)
+VALUES(@t,@v,@e,@a,@s,@sender,@target,@schema,@hash)
 """);
         q.Parameters.AddWithValue("t",key.Scope.Tenant.Value);q.Parameters.AddWithValue("v",key.Scope.Venue.Value);q.Parameters.AddWithValue("e",(short)key.Scope.Environment);
         q.Parameters.AddWithValue("a",key.Scope.Account.Value);q.Parameters.AddWithValue("s",key.Scope.Subaccount?.Value??"");q.Parameters.AddWithValue("sender",key.SenderCompId);
-        q.Parameters.AddWithValue("target",key.TargetCompId);q.Parameters.AddWithValue("hash",hash);await q.ExecuteNonQueryAsync();
+        q.Parameters.AddWithValue("target",key.TargetCompId);q.Parameters.AddWithValue("hash",hash);q.Parameters.AddWithValue("schema",key.SchemaVersion);await q.ExecuteNonQueryAsync();
     }
     [Fact]
     public async Task ProvisioningIsRequiredAndRestartKeepsAtomicSenderAndAuthenticationTimestamp()
