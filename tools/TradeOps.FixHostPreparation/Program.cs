@@ -15,7 +15,7 @@ internal static class EntryPoint
 {
     public static async Task<int> Main(string[] args)
     {
-        if(args.Length!=2||args[0] is not("--read-account" or "--prepare-node"))
+        if(args.Length!=2||args[0] is not("--read-account" or "--prepare-node" or "--read-cross-pm"))
         {Console.WriteLine("{\"Status\":\"PREPARATION_MODE_REQUIRED\",\"TradingStarted\":false}");return 1;}
         AccountInput? input=null;using var bytes=new MemoryStream();
         try
@@ -35,15 +35,28 @@ internal static class EntryPoint
                 Console.WriteLine(JsonSerializer.Serialize(node));return 0;
             }
             var path=Path.GetFullPath(args[1]);var folder=Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,".tradeops","fix-host"));
-            if(Path.GetDirectoryName(path)!=folder||!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(path),"^account-[a-f0-9]{32}\\.private\\.json$"))throw new ArgumentException();
+            var prefix=args[0]=="--read-cross-pm"?"crosspm":"account";
+            if(Path.GetDirectoryName(path)!=folder||!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(path),"^"+prefix+"-[a-f0-9]{32}\\.private\\.json$"))throw new ArgumentException();
             for(DirectoryInfo? d=new(folder);d is not null;d=d.Parent)if(!d.Exists||(d.Attributes&FileAttributes.ReparsePoint)!=0)throw new ArgumentException();
             using var handler=new HttpClientHandler{AllowAutoRedirect=false,UseCookies=false,UseDefaultCredentials=false,AutomaticDecompression=DecompressionMethods.None};
             using var http=new HttpClient(handler){Timeout=TimeSpan.FromSeconds(10)};
+            if(args[0]=="--read-cross-pm")
+            {
+                AccountInspection.ValidateInput(input,"READ_ONLY_FIX_CROSS_PM_V1");
+                var binding=AccountInspection.Binding(input);
+                var preview=await DeribitCrossPortfolioPreviewReaderV1.ReadAsync(binding,http,[-1m,0m,1m],ct);
+                using(var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None))await JsonSerializer.SerializeAsync(file,preview,cancellationToken:ct);
+                Console.WriteLine(JsonSerializer.Serialize(new{SchemaVersion=1,Status="NATIVE_CROSS_PM_PREVIEW_PASS",MarginModel="cross_pm",NativeBindingVerified=true,
+                    NativeTotalEquityUsd=preview.After.EquityUsd,NativeMarginBalanceUsd=preview.After.MarginBalanceUsd,NativeInitialMarginUsd=preview.After.InitialMarginUsd,
+                    ScenarioCount=preview.Scenarios.Count,MinimumSimulatedMarginUsd=preview.Scenarios.Min(x=>x.Totals.InitialMarginUsd),MaximumSimulatedMarginUsd=preview.Scenarios.Max(x=>x.Totals.InitialMarginUsd),
+                    IndexCount=preview.IndexPrices.Count,ObservedUtc=preview.CompletedUtc,BusinessMessagesSent=0,AccountReady=false,TradingReady=false,TradingStarted=false,DatabaseUsed=false}));return 0;
+            }
             var result=await AccountInspection.CollectAsync(input,http,ct);
             if(result.Inventory is not null)
             {using var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None);await JsonSerializer.SerializeAsync(file,result, cancellationToken:ct);}
             Console.WriteLine(JsonSerializer.Serialize(result.Diagnostics));return result.Diagnostics.Status=="PINNED_ACCOUNT_INVENTORY_PASS"?0:1;
         }
+        catch(DeribitCrossPortfolioReadException error){Console.WriteLine(JsonSerializer.Serialize(new{Status="NATIVE_CROSS_PM_PREVIEW_REFUSED",Stage=error.Stage,VenueCode=error.VenueCode,TradingStarted=false,DatabaseUsed=false}));return 1;}
         catch{Console.WriteLine("{\"Status\":\"HOST_PREPARATION_REFUSED\",\"TradingStarted\":false}");return 1;}
         finally{if(input is not null){input.ClientId="";input.ClientSecret="";}CryptographicOperations.ZeroMemory(bytes.GetBuffer());}
     }
@@ -69,12 +82,18 @@ internal sealed record AccountInspectionResult(AccountDiagnostics Diagnostics,De
     DeribitAccountModeObservationV1? NativeMode=null);
 internal static class AccountInspection
 {
+    internal static void ValidateInput(AccountInput input,string purpose)
+    {
+        if(input.Purpose!=purpose||string.IsNullOrWhiteSpace(input.ClientId)||input.ClientId.Length>512||input.ClientId.Any(char.IsControl)||
+            string.IsNullOrWhiteSpace(input.ClientSecret)||input.ClientSecret.Length>4096||input.ClientSecret.Any(char.IsControl))throw new ArgumentException();
+        _=input.Scope();
+    }
+    internal static DeribitPrivateCaptureBinding Binding(AccountInput input)=>new(input.Scope(),new(){WebSocketUrl="wss://www.deribit.com/ws/api/v2",ClientId=input.ClientId,ClientSecret=input.ClientSecret},
+        DeribitPrivateCapturePlan.ForAccountRecovery(input.ExpectedAccountId,input.AccountType=="subaccount",[new("ETH-PERPETUAL","future","ETH",OmsPrivateAmountUnit.Usd,"USD")]));
     internal static async Task<AccountInspectionResult> CollectAsync(AccountInput input,HttpClient http,CancellationToken ct)
     {
-        if(input.Purpose!="READ_ONLY_FIX_ACCOUNT_INVENTORY_V1"||string.IsNullOrWhiteSpace(input.ClientId)||input.ClientId.Length>512||input.ClientId.Any(char.IsControl)||
-            string.IsNullOrWhiteSpace(input.ClientSecret)||input.ClientSecret.Length>4096||input.ClientSecret.Any(char.IsControl))throw new ArgumentException();
-        var scope=input.Scope();var binding=new DeribitPrivateCaptureBinding(scope,new(){WebSocketUrl="wss://www.deribit.com/ws/api/v2",ClientId=input.ClientId,ClientSecret=input.ClientSecret},
-            DeribitPrivateCapturePlan.ForAccountRecovery(input.ExpectedAccountId,input.AccountType=="subaccount",[new("ETH-PERPETUAL","future","ETH",OmsPrivateAmountUnit.Usd,"USD")]));
+        ValidateInput(input,"READ_ONLY_FIX_ACCOUNT_INVENTORY_V1");
+        var scope=input.Scope();var binding=Binding(input);
         var inventory=await new DeribitAccountInventoryReader(binding,http).ReadAsync(new(scope,Guid.NewGuid(),TimeSpan.FromSeconds(45)),ct);
         if(!inventory.QueriesCompleted||!inventory.IsFreshAt(DateTimeOffset.UtcNow))
             return new(new("PINNED_ACCOUNT_INVENTORY_REFUSED",false,0,0,0,false,false,null,false,DateTimeOffset.UtcNow),null,new Dictionary<string,decimal>());

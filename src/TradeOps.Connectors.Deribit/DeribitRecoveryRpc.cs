@@ -26,7 +26,7 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
             "private/get_order_history_by_instrument" or "private/get_user_trades_by_instrument" or "private/get_order_state" or "private/get_positions" or
             "private/get_open_orders_by_currency" or "private/get_order_history_by_currency" or "private/get_user_trades_by_currency" or
             "private/get_account_summaries" or "private/get_open_orders" or "public/get_instrument" or "public/get_order_book" or "public/ticker" or
-            "private/get_margins" or "private/get_transaction_log"))
+            "private/get_margins" or "private/get_transaction_log" or "private/simulate_portfolio" or "private/pme/simulate"))
             throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Protocol);
         if (id != 0) await Task.Delay(TimeSpan.FromMilliseconds(150), ct);
         var requestId = ++id;
@@ -38,7 +38,7 @@ internal sealed class DeribitRecoveryRpc(HttpClient http, OmsEnvironment environ
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token ?? throw new InvalidOperationException());
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (response.RequestMessage?.RequestUri != request.RequestUri ||
-            (!response.IsSuccessStatusCode && (method != "private/get_order_state" || (int)response.StatusCode != 400)))
+            (!response.IsSuccessStatusCode && (method is not("private/get_order_state" or "private/simulate_portfolio" or "private/pme/simulate") || (int)response.StatusCode != 400)))
             throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Transport, (int)response.StatusCode);
         if (response.Content.Headers.ContentLength > 524288)
             throw new DeribitRecoveryQueryException(DeribitRecoveryQueryProblem.Capacity);

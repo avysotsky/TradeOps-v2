@@ -1,10 +1,10 @@
 #requires -Version 7.5
 [CmdletBinding()]
-param([ValidateSet('Status','ReadAccount','PrepareNode')][string]$Action='Status')
+param([ValidateSet('Status','ReadAccount','ReadCrossPm','PrepareNode')][string]$Action='Status')
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if($Action -eq 'Status'){
-    [ordered]@{Status='HOST_PREPARATION_ONLY';Actions=@('ReadAccount','PrepareNode');DatabaseUsed=$false;TradingStarted=$false}|ConvertTo-Json -Compress
+    [ordered]@{Status='HOST_PREPARATION_ONLY';Actions=@('ReadAccount','ReadCrossPm','PrepareNode');DatabaseUsed=$false;TradingStarted=$false}|ConvertTo-Json -Compress
     return
 }
 $head=(& git -C $repo rev-parse HEAD).Trim();if($LASTEXITCODE -ne 0){throw 'SOURCE_REQUIRED'}
@@ -42,13 +42,14 @@ try{
     if(!$inventory.readonly -or @($inventory.scopes).Count -ne 1){throw 'RETAINED_SCOPE_REFUSED'}
     $scope=$inventory.scopes[0];$label='observed-native:'+[string]$pin.expectedAccountId
     if($scope.environment -ne 4 -or $scope.venue_id -cne 'DERIBIT' -or $scope.account_id -cne $label -or $scope.subaccount_id -cne $(if($pin.accountType -ceq 'subaccount'){$label}else{''})){throw 'RETAINED_SCOPE_REFUSED'}
-    $private=Join-Path $folder ('account-'+[Guid]::NewGuid().ToString('N')+'.private.json')
-    $target=if($Action -eq 'ReadAccount'){$private}else{Join-Path $repo '.tradeops/oms-execution'}
-    $purpose=if($Action -eq 'ReadAccount'){'READ_ONLY_FIX_ACCOUNT_INVENTORY_V1'}else{'PREPARE_FIX_LOCAL_NODE_V1'}
-    $mode=if($Action -eq 'ReadAccount'){'--read-account'}else{'--prepare-node'}
-    $secret='';if($Action -eq 'ReadAccount'){$secretSecure=ConvertTo-SecureString $saved.client_secret_dpapi;$secret=([Management.Automation.PSCredential]::new('local',$secretSecure)).GetNetworkCredential().Password}
+    $isRead=$Action -in @('ReadAccount','ReadCrossPm');$prefix=if($Action -eq 'ReadCrossPm'){'crosspm'}else{'account'}
+    $private=Join-Path $folder ($prefix+'-'+[Guid]::NewGuid().ToString('N')+'.private.json')
+    $target=if($isRead){$private}else{Join-Path $repo '.tradeops/oms-execution'}
+    $purpose=switch($Action){'ReadAccount'{'READ_ONLY_FIX_ACCOUNT_INVENTORY_V1'}'ReadCrossPm'{'READ_ONLY_FIX_CROSS_PM_V1'}default{'PREPARE_FIX_LOCAL_NODE_V1'}}
+    $mode=switch($Action){'ReadAccount'{'--read-account'}'ReadCrossPm'{'--read-cross-pm'}default{'--prepare-node'}}
+    $secret='';if($isRead){$secretSecure=ConvertTo-SecureString $saved.client_secret_dpapi;$secret=([Management.Automation.PSCredential]::new('local',$secretSecure)).GetNetworkCredential().Password}
     $payload=@{Purpose=$purpose;Environment='Mainnet';Tenant=$scope.tenant_id;ExpectedAccountId=$pin.expectedAccountId;AccountType=$pin.accountType;
-        ClientId=$(if($Action -eq 'ReadAccount'){$id}else{''});ClientSecret=$secret}|ConvertTo-Json -Compress
+        ClientId=$(if($isRead){$id}else{''});ClientSecret=$secret}|ConvertTo-Json -Compress
     Assert-Source
     $process=[Diagnostics.Process]::new();$process.StartInfo=[Diagnostics.ProcessStartInfo]::new('D:\DotNet\dotnet.exe')
     foreach($arg in @($assembly,$mode,$target)){$process.StartInfo.ArgumentList.Add($arg)}
@@ -59,11 +60,24 @@ try{
     $stdout=$process.StandardOutput.ReadToEndAsync();$stderr=$process.StandardError.ReadToEndAsync();$process.StandardInput.WriteLine($payload);$process.StandardInput.Close()
     $payload=$null;$id=$null;$secret=$null;$pin=$null;$saved=$null
     if(!$process.WaitForExit(75000)){throw 'PREPARATION_TIMEOUT'}
-    $null=$stderr.GetAwaiter().GetResult();$raw=$stdout.GetAwaiter().GetResult();if($raw.Length -gt 16384 -or $process.ExitCode -ne 0){throw 'PREPARATION_REFUSED'}
+    $null=$stderr.GetAwaiter().GetResult();$raw=$stdout.GetAwaiter().GetResult();if($raw.Length -gt 16384){throw 'PREPARATION_REFUSED'}
     $result=$raw|ConvertFrom-Json -Depth 8 -DateKind String
+    if($process.ExitCode -ne 0){
+        if($Action -eq 'ReadCrossPm' -and $result.Status -ceq 'NATIVE_CROSS_PM_PREVIEW_REFUSED' -and @($result.PSObject.Properties).Count -eq 5 -and
+            $result.Stage -cin @('Authentication','NativeAccount','ContractUnits','NativeRiskMatrix','NativeSimulation','NativeAccountRecheck') -and
+            $result.TradingStarted -ceq $false -and $result.DatabaseUsed -ceq $false -and ($null -eq $result.VenueCode -or $result.VenueCode -is [long] -or $result.VenueCode -is [int])){
+            $result|ConvertTo-Json -Compress;[IO.File]::WriteAllText((Join-Path $folder ('crosspm-refused-'+[Guid]::NewGuid().ToString('N')+'.json')),($result|ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+        };throw 'PREPARATION_REFUSED'
+    }
     if($Action -eq 'ReadAccount'){
         $keys=@('Status','NativeBindingVerified','PositionCount','OpenOrderCount','CurrencyCount','CrossCollateralObserved','PortfolioMarginObserved','EstimatedEquityUsd','UsdEstimateComplete','ObservedUtc','EthMarginModel','NativeTotalEquityUsd','SchemaVersion','DatabaseUsed','TradingStarted','AccountReady')
         if($result.SchemaVersion -ne 2 -or $result.Status -cne 'PINNED_ACCOUNT_INVENTORY_PASS' -or $result.NativeBindingVerified -cne $true -or $result.DatabaseUsed -cne $false -or $result.TradingStarted -cne $false -or $result.AccountReady -cne $false){throw 'PREPARATION_OUTPUT_REFUSED'}
+    }elseif($Action -eq 'ReadCrossPm'){
+        $keys=@('SchemaVersion','Status','MarginModel','NativeBindingVerified','NativeTotalEquityUsd','NativeMarginBalanceUsd','NativeInitialMarginUsd',
+            'ScenarioCount','MinimumSimulatedMarginUsd','MaximumSimulatedMarginUsd','IndexCount','ObservedUtc','BusinessMessagesSent','AccountReady','TradingReady','TradingStarted','DatabaseUsed')
+        if($result.SchemaVersion -ne 1 -or $result.Status -cne 'NATIVE_CROSS_PM_PREVIEW_PASS' -or $result.MarginModel -cne 'cross_pm' -or
+            $result.NativeBindingVerified -cne $true -or $result.ScenarioCount -ne 3 -or $result.BusinessMessagesSent -ne 0 -or $result.AccountReady -cne $false -or
+            $result.TradingReady -cne $false -or $result.TradingStarted -cne $false -or $result.DatabaseUsed -cne $false){throw 'CROSS_PM_PREVIEW_OUTPUT_REFUSED'}
     }else{
         $keys=@('SchemaVersion','NodeSha256','LockRoot','RootSha256','LockSha256')
         if($result.SchemaVersion -ne 2 -or $result.LockRoot -cne ([IO.Path]::GetFullPath($target).ToUpperInvariant())){throw 'NODE_OUTPUT_REFUSED'}
@@ -72,9 +86,9 @@ try{
     if(@($result.PSObject.Properties).Count -ne $keys.Count -or @($result.PSObject.Properties.Name|Where-Object {$_ -cnotin $keys}).Count){throw 'PREPARATION_OUTPUT_SCHEMA_REFUSED'}
     Assert-Source;foreach($path in $hashes.Keys){if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $hashes[$path]){throw 'PREPARATION_ASSEMBLY_CHANGED'}}
     $summary=@{SourceCommit=$head;Action=$Action;Diagnostics=$result;AssemblyHashes=$hashes;TradingStarted=$false;DatabaseUsed=$false}
-    if($Action -eq 'ReadAccount'){$summary['PrivateArtifact']=$private;$summary['PrivateArtifactSha256']=(Get-FileHash -LiteralPath $private -Algorithm SHA256).Hash}
+    if($isRead){$summary['PrivateArtifact']=$private;$summary['PrivateArtifactSha256']=(Get-FileHash -LiteralPath $private -Algorithm SHA256).Hash}
     [IO.File]::WriteAllText((Join-Path $folder ('latest-'+$Action.ToLowerInvariant()+'.json')),($summary|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-    if($Action -eq 'ReadAccount'){$result|ConvertTo-Json -Compress}else{[ordered]@{Status='LOCAL_NODE_PREPARED';DatabaseUsed=$false;TradingStarted=$false}|ConvertTo-Json -Compress}
+    if($isRead){$result|ConvertTo-Json -Compress}else{[ordered]@{Status='LOCAL_NODE_PREPARED';DatabaseUsed=$false;TradingStarted=$false}|ConvertTo-Json -Compress}
 }finally{
     $payload=$null;$id=$null;$secret=$null;$pin=$null;$saved=$null;$raw=$null
     foreach($secure in @($idSecure,$secretSecure,$pinSecure)){if($secure){$secure.Dispose()}}
