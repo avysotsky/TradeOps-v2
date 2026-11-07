@@ -124,7 +124,7 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
             {
                 var bytes=Encoding.ASCII.GetBytes(text);
                 if(Message.IsAdminMsgType(type))return physicalWrite(bytes);
-                if(sending is null||permit is null||type is not("D" or "F")||message.Header.IsSetField(43)&&message.Header.GetBoolean(43))
+                if(sending is null||permit is null||type is not("D" or "F" or "G")||message.Header.IsSetField(43)&&message.Header.GetBoolean(43))
                     throw new InvalidOperationException("Unqualified FIX business write refused.");
                 return permit.InitiateAsync(sending,()=>physicalWrite(bytes));
             }).GetAwaiter().GetResult();

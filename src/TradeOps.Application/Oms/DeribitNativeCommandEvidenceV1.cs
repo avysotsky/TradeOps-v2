@@ -14,6 +14,10 @@ public sealed record DeribitFixCommandBindingV1(int SchemaVersion, OmsJournalCom
     public void Validate()
     {
         Command.Validate();Session.Validate();Parent?.Validate();var p=Command.Payload;
+        if(SchemaVersion==2)
+        {
+            ValidateMutation();return;
+        }
         if(SchemaVersion!=1||Session.Scope!=Command.Scope||ConnectionEpoch==Guid.Empty||PreparedAtUtc.Offset!=TimeSpan.Zero||
             PreparedAtUtc< p.RequestedAtUtc||Currency is not("ETH" or "BTC")||VerifiedContractUsd!=1||ClientClOrdId!=ClientId(Command)||
             p.QuantityUnit!=OmsQuantityUnit.QuoteAsset||p.OrderType!=OrderType.Limit||p.LimitPrice is not >0||p.TriggerPrice is not null||
@@ -29,6 +33,23 @@ public sealed record DeribitFixCommandBindingV1(int SchemaVersion, OmsJournalCom
             throw new ArgumentException("Invalid native FIX command binding.");
     }
 
+    private void ValidateMutation()
+    {
+        var p=Command.Payload;var r=Parent;
+        if(Session.Scope!=Command.Scope||ConnectionEpoch==Guid.Empty||PreparedAtUtc.Offset!=TimeSpan.Zero||PreparedAtUtc<p.RequestedAtUtc||
+            Currency!="ETH"||VerifiedContractUsd!=1||ClientClOrdId!=ClientId(Command)||p.Instrument!="ETH-PERPETUAL"||
+            Command.ExpectedAggregateVersion.Value<1||p.Kind is not(OmsJournalCommandKind.Replace or OmsJournalCommandKind.Cancel)||
+            r is null||r.Session!=Session||r.NativeOrderId is null||r.ServerAssignedClOrdId is null||r.OriginalClientClOrdId is null||
+            r.NativeOrderId!=p.TargetExchangeOrderId||r.Instrument!=p.Instrument||r.Side!=p.Side||r.OrderQty!=p.Quantity||
+            !r.HasUnambiguousUsdAmounts(1)||r.OrderStatus!="0"||r.CumQty!=0||r.RejectReason!=0||
+            p.OrderType!=OrderType.Limit||p.LimitPrice is not>0||p.QuantityUnit!=OmsQuantityUnit.QuoteAsset||p.TriggerPrice is not null||
+            p.TimeInForce is not("GTC" or "good_til_cancelled")||p.FixClOrdId is not null||p.FixOrigClOrdId is not null||
+            p.TargetClientOrderId!=r.Label||p.TargetClientOrderId is null||p.TargetClientOrderId.Length>64||
+            p.PostOnly!=r.ExecutionInstructions.Contains('6')||p.PostOnly!=r.ExecutionInstructions.Contains('A')||p.ReduceOnly!=r.ExecutionInstructions.Contains('E')||
+            (p.Kind==OmsJournalCommandKind.Replace?p.LimitPrice==r.Price:p.LimitPrice!=r.Price))
+            throw new ArgumentException("Invalid version 2 native price-mutation binding.");
+    }
+
     public DeribitNativeCommandView? Match(DeribitFixExecutionReportV1 report)
     {
         Validate();report.Validate();var p=Command.Payload;
@@ -41,7 +62,10 @@ public sealed record DeribitFixCommandBindingV1(int SchemaVersion, OmsJournalCom
             report.ExecutionInstructions.Contains('6')!=p.PostOnly||report.ExecutionInstructions.Contains('A')!=p.PostOnly||report.ExecutionInstructions.Contains('E')!=p.ReduceOnly||
             (p.Kind==OmsJournalCommandKind.Place?report.OriginalClientClOrdId!=ClientClOrdId:
                 report.ConnectionEpoch!=ConnectionEpoch||report.NativeOrderId!=Parent!.NativeOrderId||
-                report.ServerAssignedClOrdId!=Parent.ServerAssignedClOrdId||report.OrderStatus!="4")) return null;
+                (p.Kind==OmsJournalCommandKind.Replace?
+                    report.OriginalClientClOrdId!=Parent.OriginalClientClOrdId||report.OrderStatus!="0"||report.CumQty!=0||
+                    report.TransactTimeUtc<=Parent.TransactTimeUtc||report.ChangeId is null||report.ChangeId==Parent.ChangeId:
+                    report.ServerAssignedClOrdId!=Parent.ServerAssignedClOrdId||report.OrderStatus!="4"))) return null;
         var order=new OmsPrivateVenueFacts(OmsJournalEventKind.Order,Currency,report.Instrument,report.NativeOrderId,report.Side,
             report.OrderQty,OmsPrivateAmountUnit.Usd,"USD",report.TransactTimeUtc,OrderState:report.OrderStatus switch
             {"0" or "1"=>"open","2"=>"filled","4"=>"cancelled","8"=>"rejected",_=>throw new ArgumentException("Unknown FIX state.")},
@@ -76,7 +100,7 @@ public static class DeribitNativeCommandEvidenceV1
         var bindings=snapshot.FixBindings??[];var reports=snapshot.FixReports??[];
         if(bindings.Count>10000||reports.Count>10000)throw new ArgumentException("FIX evidence capacity exceeded.");
         var ids=new HashSet<OmsCommandId>(views.Select(x=>x.Command.CommandId));
-        foreach(var binding in bindings)
+        foreach(var binding in bindings.OrderBy(x=>x.Command.ExpectedAggregateVersion.Value))
         {
             binding.Validate();
             if(binding.Command.Scope!=scope||binding.PreparedAtUtc>snapshot.Private.ReadAtUtc||
@@ -87,13 +111,16 @@ public static class DeribitNativeCommandEvidenceV1
                 .OrderBy(x=>x!.Order.VenueTimestampUtc).ThenBy(x=>x!.ReceivedAtUtc).ToArray();
             if(matches.Length>0)views.Add(matches[0]!);
         }
-        foreach(var cancel in bindings.Where(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Cancel))
+        foreach(var mutation in bindings.Where(x=>x.Command.Payload.Kind!=OmsJournalCommandKind.Place))
         {
-            var parents=views.Where(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Place&&x.Command.Scope==cancel.Command.Scope&&
-                x.Command.LocalOrderId==cancel.Command.LocalOrderId&&x.Command.IntentId==cancel.Command.IntentId&&
-                x.Order.ExchangeOrderId==cancel.Command.Payload.TargetExchangeOrderId).ToArray();
-            if(parents.Length!=1||parents[0].FixBinding is null||parents[0].FixBinding!.Match(cancel.Parent!) is null||
-                !reports.Any(x=>x.Execution==cancel.Parent))throw new ArgumentException("Cancel lacks retained own native placement evidence.");
+            var parents=views.Where(x=>x.Command.Payload.Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace&&
+                x.Command.Scope==mutation.Command.Scope&&x.Command.LocalOrderId==mutation.Command.LocalOrderId&&
+                x.Command.IntentId==mutation.Command.IntentId&&x.Command.ExpectedAggregateVersion.Value+1==mutation.Command.ExpectedAggregateVersion.Value&&
+                x.Order.ExchangeOrderId==mutation.Command.Payload.TargetExchangeOrderId).ToArray();
+            if(parents.Length!=1||parents[0].FixBinding is null||parents[0].FixBinding!.Match(mutation.Parent!) is null||
+                !reports.Any(x=>x.Execution==mutation.Parent))throw new ArgumentException("Mutation lacks retained immediately preceding native evidence.");
+            if(mutation.Command.Payload.Kind==OmsJournalCommandKind.Replace&&!DeribitFixPriceAmendPolicyV2.Terms(mutation.Command,parents[0]))
+                throw new ArgumentException("Unsupported amendment terms.");
         }
         foreach(var report in reports)
         {report.Validate();if(report.GetSession().Scope!=scope||(report.Execution?.ReceivedAtUtc??report.CancelReject!.ReceivedAtUtc)>snapshot.Private.ReadAtUtc)

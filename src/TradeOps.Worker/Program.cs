@@ -14,6 +14,12 @@ if(DeribitOmsExecutionStartup.TryConfigure(builder))
 {
     using var omsHost=builder.Build(); var omsWorker=omsHost.Services.GetRequiredService<DeribitOmsExecutionWorker>();
     await omsHost.RunAsync();
+    var qualifier=omsHost.Services.GetServices<IHostedService>().OfType<DeribitFixQualificationWorker>().SingleOrDefault();
+    if(qualifier is not null)
+    {
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(qualifier.Result));
+        if(qualifier.Result?.Status!="FIX_QUALIFICATION_SCENARIO_PASS")Environment.ExitCode=1;
+    }
     if(omsWorker.ExecuteTask?.IsFaulted==true) Environment.ExitCode=1;
     return;
 }

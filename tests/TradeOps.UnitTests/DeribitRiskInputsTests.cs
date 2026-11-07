@@ -10,7 +10,7 @@ public sealed class DeribitRiskInputsTests
     internal static OmsRecoveredAccountStateV1 Baseline()=>new(1,Command().Scope,Guid.NewGuid(),Guid.NewGuid(),DeribitRecoveryCoherencePolicy.Policy,Now,Now.AddMinutes(-5),Now,
         [],[],[new("ETH-PERPETUAL","future","sell",-100,"USD",-.05m,"ETH")],[new("ETH",1,1,false,false,new(Now,Now))],[],[],Now.AddSeconds(5));
     internal static OmsRiskPolicyDocumentV1 Policy()=>new(1,new(1,Command().Scope,"1",100,1000,10000,20,2000,10000,500,100,5),["ETH-PERPETUAL"],Now.AddMinutes(-1),Now.AddHours(1),2,1.5m,.2m);
-    internal static DeribitRiskObservationV1 Observation(OmsRecoveredAccountStateV1 b)=>new(b.Scope,b.Epoch,Now,Now,Now.Date,Now,
+    internal static DeribitRiskObservationV1 Observation(OmsRecoveredAccountStateV1 b)=>new(b.Scope,b.Epoch,Now,Now,new(Now.UtcDateTime.Date,TimeSpan.Zero),Now,
         [new("ETH-PERPETUAL","future","reversed","ETH","USD","ETH",true,Now.AddYears(5),1,.5m,[],2000,2000)],
         [new("ETH",1,1,1,.88m,false,false,.1m,.12m,-.01m,-.02m,.03m,2000)],.01m,.02m,.001m,1700,2300,[new("ETH-PERPETUAL","ETH",10,.01m,.02m,.001m)]);
 

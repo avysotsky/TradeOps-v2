@@ -79,6 +79,11 @@ SELECT EXISTS(SELECT 1 FROM oms_recovered_account_states_v1 p JOIN oms_recovery_
                 return await Reject(OmsRiskAdmissionResult.StaleBaseline);
         }
         var baseline = OmsRecoveryRunCodec.Decode<OmsRecoveredAccountStateV1>(qualified.StateJson, qualified.StateSha256);
+        if(command.Payload.Kind==OmsJournalCommandKind.Replace)
+        {
+            var current=await ReadCancelParentAsync(db,tx,command,ct);
+            if(current is null||!DeribitFixPriceAmendPolicyV2.Allows(command,current,baseline))return await Reject(OmsRiskAdmissionResult.Denied);
+        }
         if(command.Payload.Kind==OmsJournalCommandKind.Cancel)
         {
             var parent=await ReadCancelParentAsync(db,tx,command,ct);
@@ -127,10 +132,10 @@ WHERE {Where} AND command_id NOT IN (SELECT command_id FROM oms_risk_settlements
         await using (var reserve = Query(db, tx, command.Scope, """
 INSERT INTO oms_risk_reservations_v1(tenant_id,venue_id,environment,account_id,subaccount_id,command_id,
  run_id,generation,schema_version,command_sha256,state_sha256,evidence_before,evidence_after,reserved_usd,margin_usd,inputs_json,inputs_sha256)
-VALUES(@tenant,@venue,@environment,@account,@subaccount,@command,@run,@generation,1,@commandSha,@stateSha,@before,@after,@usd,@margin,@json,@auditSha)
+VALUES(@tenant,@venue,@environment,@account,@subaccount,@command,@run,@generation,@version,@commandSha,@stateSha,@before,@after,@usd,@margin,@json,@auditSha)
 """))
         {
-            reserve.Parameters.AddWithValue("command", command.CommandId.Value); reserve.Parameters.AddWithValue("run", publication.Token.Start.RunId);
+            reserve.Parameters.AddWithValue("version",command.Payload.Kind==OmsJournalCommandKind.Replace?2:1);reserve.Parameters.AddWithValue("command", command.CommandId.Value); reserve.Parameters.AddWithValue("run", publication.Token.Start.RunId);
             reserve.Parameters.AddWithValue("generation", publication.Token.Generation); reserve.Parameters.AddWithValue("commandSha", encoded.Sha256);
             reserve.Parameters.AddWithValue("stateSha", qualified.StateSha256); reserve.Parameters.AddWithValue("before", before); reserve.Parameters.AddWithValue("after", after);
             reserve.Parameters.AddWithValue("usd", risk.Valuation.OrderNotionalUsd); reserve.Parameters.AddWithValue("margin", risk.Valuation.IncrementalMarginUsd);
@@ -174,7 +179,8 @@ VALUES(@audit,1,@tenant,@venue,@environment,@account,@subaccount,@command,@sha,5
     {
         var ws=await ReadWsCancelParentAsync(db,tx,cancel,ct);
         var native=(await OmsPostgresFixCommandEvidenceV1.ViewsAsync(db,tx,cancel.Scope,ct)).Where(x=>
-            x.Command.Payload.Kind==OmsJournalCommandKind.Place&&x.Command.LocalOrderId==cancel.LocalOrderId&&
+            x.Command.Payload.Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace&&x.Command.LocalOrderId==cancel.LocalOrderId&&
+            x.Command.ExpectedAggregateVersion.Value+1==cancel.ExpectedAggregateVersion.Value&&
             x.Order.ExchangeOrderId==cancel.Payload.TargetExchangeOrderId).ToArray();
         if(native.Length+(ws is null?0:1)!=1)return null;
         if(ws is not null)return DeribitNativeCommandView.FromWs(ws);
@@ -233,7 +239,7 @@ AND s.command_id IS NULL AND octet_length(c.request_json::text)<=16384 AND octet
                 candidates.Add(DeribitNativeCommandView.FromWs(receipt));
             }
         }
-        foreach(var native in (await OmsPostgresFixCommandEvidenceV1.ViewsAsync(db,tx,scope,ct)).Where(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Place))
+        foreach(var native in (await OmsPostgresFixCommandEvidenceV1.ViewsAsync(db,tx,scope,ct)).Where(x=>x.Command.Payload.Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace))
             if(await HasReservation(db,tx,native,ct))candidates.Add(native);
         foreach (var receipt in candidates.Where(x => OmsRiskSettlementV1.CanRetire(baseline, x)))
         {

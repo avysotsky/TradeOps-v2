@@ -1,5 +1,10 @@
 # Deribit FIX execution v1 — B4/B5 integration
 
+2026-11-07: this document preserves the original B6 `c1ac85b` boundary.
+The additive [price-only mutation v2](DERIBIT_FIX_PRICE_AMEND_V2.md) extends it with
+native G and Cancel-after-G. Its separate owner qualification procedure remains
+LIVE NOT RUN; the historical 2351-case B6 acceptance does not certify that extension.
+
 The opt-in FIX transport uses the existing B4 live recovery capability, durable B5
 policy/admission/reservation, dispatch revalidation and the same provisioned OS
 physical owner as WS. The connector depends on Application/Domain only. No FIX

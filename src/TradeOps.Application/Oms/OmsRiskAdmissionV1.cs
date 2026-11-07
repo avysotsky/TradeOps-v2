@@ -34,13 +34,13 @@ public static class OmsRiskLimitsV1
         decimal pendingUsd, decimal pendingMarginUsd, long pendingCount, DateTimeOffset now)
     {
         var p = inputs.Policy; var v = inputs.Valuation;
-        if (p.SchemaVersion != 1 || v.SchemaVersion != 1 || p.Scope != command.Scope || v.Scope != command.Scope ||
+        if (p.SchemaVersion != 1 || v.SchemaVersion != (command.Payload.Kind==OmsJournalCommandKind.Replace?2:1) || p.Scope != command.Scope || v.Scope != command.Scope ||
             string.IsNullOrWhiteSpace(p.Revision) || p.Revision.Length > 128 ||
             v.StateSha256 != stateSha || v.CommandSha256 != Convert.ToHexString(OmsJournalCanonical.EncodeCommand(command).Sha256) ||
             v.ObservedAtUtc.Offset != TimeSpan.Zero || v.ValidThroughUtc.Offset != TimeSpan.Zero ||
             now < v.ObservedAtUtc || now > v.ValidThroughUtc || v.ValidThroughUtc - v.ObservedAtUtc > TimeSpan.FromSeconds(5) ||
             !v.InstrumentEligible || !v.AccountEligible || !v.UnitsVerified || command.Payload.ReduceOnly && !v.ReduceOnlyVerified ||
-            command.Payload.Kind != OmsJournalCommandKind.Place ||
+            command.Payload.Kind is not(OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace) ||
             p.MaxOrderUsd <= 0 || p.MaxPositionDeltaUsd <= 0 || p.MaxPortfolioUsd <= 0 || p.MaxLeverage <= 0 ||
             p.MaxMarginUsd <= 0 || p.MaxInstrumentUsd <= 0 || p.MaxDailyLossUsd <= 0 || p.MaxPendingUsd <= 0 || p.MaxPendingCommands <= 0 ||
             v.OrderNotionalUsd <= 0 || v.PositionDeltaUsd < 0 || v.PortfolioGrossUsd < 0 || v.InstrumentGrossUsd < 0 ||

@@ -16,9 +16,10 @@ public static class DeribitOmsExecutionStartup
 {
     public const string Mode="DeribitOmsExecution";
     public const string FixMode="DeribitOmsFixExecution";
+    public const string QualificationMode="DeribitFixOwnerQualification";
     public static bool TryConfigure(HostApplicationBuilder builder)
     {
-        if(builder.Configuration["Worker:Mode"] is not(Mode or FixMode)) return false;
+        if(builder.Configuration["Worker:Mode"] is not(Mode or FixMode or QualificationMode)) return false;
         if(!builder.Configuration.GetValue<bool>("DeribitOms:Enabled")) throw new InvalidOperationException("Explicit Deribit OMS activation required.");
         var root=builder.Configuration["DeribitOms:LockRoot"];
         if(string.IsNullOrWhiteSpace(root)||!Path.IsPathFullyQualified(root)||!Directory.Exists(root)) throw new InvalidOperationException("Provisioned physical owner root required.");
@@ -38,7 +39,7 @@ public static class DeribitOmsExecutionStartup
         }
         catch(Exception error) when(error is ArgumentException or InvalidOperationException)
         {throw new InvalidOperationException("Invalid execution database identity or authority binding; startup refused.");}
-        if(builder.Configuration["Worker:Mode"]==FixMode)
+        if(builder.Configuration["Worker:Mode"] is FixMode or QualificationMode)
         {
             try
             {
@@ -59,12 +60,22 @@ public static class DeribitOmsExecutionStartup
             catch(Exception error) when(error is ArgumentException or InvalidOperationException or FormatException)
             {throw new InvalidOperationException("Invalid FIX activation, session or database identity; startup refused.");}
         }
+        if(builder.Configuration["Worker:Mode"]==QualificationMode)
+        {
+            var pin=DeribitCaptureStartup.ReadBinding(builder.Configuration);
+            if(!builder.Configuration.GetValue<bool>("DeribitFixQualification:OwnerLaunch")||pin.Scope.Environment!=TradeOps.Domain.Oms.OmsEnvironment.Mainnet||pin.Plan.IsSubaccount||
+                builder.Configuration["DeribitFixQualification:ExpectedSourceCommit"] is not{} expected||expected.Length!=40||!expected.All(Uri.IsHexDigit)||
+                builder.Configuration["DeribitFixQualification:ObservedSourceCommit"]!=expected)
+                throw new InvalidOperationException("Explicit owner launch and exact source binding required.");
+            builder.Services.AddSingleton(new DeribitFixQualificationHostOptions(pin));
+        }
         builder.Services.AddSingleton(new DeribitOmsExecutionOptions(root));
         builder.Services.AddSingleton(_=>new DeribitOmsExecutionSource(NpgsqlDataSource.Create(execution.ConnectionString)));
         builder.Services.AddSingleton<IOmsExecutionRecoverySource>(sp=>sp.GetRequiredService<DeribitAccountRecoveryWorker>());
         builder.Services.AddSingleton<DeribitOmsExecutionWorker>();
         builder.Services.AddSingleton<IOmsOrderIntentGateway>(sp=>sp.GetRequiredService<DeribitOmsExecutionWorker>());
         builder.Services.AddHostedService(sp=>sp.GetRequiredService<DeribitOmsExecutionWorker>());
+        if(builder.Configuration["Worker:Mode"]==QualificationMode)builder.Services.AddHostedService<DeribitFixQualificationWorker>();
         return true;
     }
 }
@@ -74,6 +85,7 @@ public sealed class DeribitOmsExecutionWorker(DeribitOmsExecutionSource store,ID
     IHostApplicationLifetime lifetime,DeribitAccountRecoveryWorker accountRecovery,IServiceProvider services):BackgroundService,IOmsOrderIntentGateway
 {
     private OmsPostgresExecutionGateway? gateway;
+    public bool IsAvailable=>Volatile.Read(ref gateway) is not null;
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         OmsPostgresExecutionGateway? owned=null;

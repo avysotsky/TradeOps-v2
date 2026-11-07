@@ -118,6 +118,11 @@ AND command_id NOT IN(SELECT command_id FROM oms_risk_settlements_v1 WHERE tenan
                         allowed=parent is not null&&OmsAddressedCancelPolicyV1.Allows(command,parent,state,policy,clock.GetUtcNow());
                     }
                     else allowed=risk is not null&&OmsRiskLimitsV1.Allows(command,live.Publication.StateSha256,risk,pending,margin,count,clock.GetUtcNow());
+                    if(command.Payload.Kind==OmsJournalCommandKind.Replace)
+                    {
+                        var parent=await OmsPostgresRiskAdmission.ReadCancelParentAsync(db,tx,command,token);
+                        allowed=allowed&&parent is not null&&DeribitFixPriceAmendPolicyV2.Allows(command,parent,state);
+                    }
                     if(!allowed)
                         throw new InvalidOperationException("Risk changed before physical send.");
                     var permit=live.Qualified.CreatePhysicalWritePermit(command,()=>fence.IsCurrent);

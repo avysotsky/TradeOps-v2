@@ -74,10 +74,11 @@ public sealed class DeribitRiskInputsReader(IOmsRiskPolicyReader policies, IDeri
         {
             command.Validate(); var p = command.Payload;
             if (command.Scope != baseline.Scope || command.Scope != policy.Limits.Scope || input.Scope != baseline.Scope || input.Epoch != baseline.Epoch ||
-                command.Scope.Venue.Value != "DERIBIT" || p.Kind != OmsJournalCommandKind.Place || command.ExpectedAggregateVersion.Value != 0 ||
+                command.Scope.Venue.Value != "DERIBIT" || p.Kind is not(OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace) ||
+                (p.Kind==OmsJournalCommandKind.Place?command.ExpectedAggregateVersion.Value!=0:command.ExpectedAggregateVersion.Value<1) ||
                 p.OrderType != OrderType.Limit || p.LimitPrice is not { } price || p.TriggerPrice is not null ||
                 p.QuantityUnit != OmsQuantityUnit.QuoteAsset || p.TimeInForce is not ("GTC" or "good_til_cancelled") ||
-                p.TargetClientOrderId is null ||p.TargetClientOrderId.Length>64||p.TargetClientOrderId.Any(char.IsControl)|| p.TargetExchangeOrderId is not null || p.FixOrigClOrdId is not null ||
+                p.TargetClientOrderId is null ||p.TargetClientOrderId.Length>64||p.TargetClientOrderId.Any(char.IsControl)|| (p.Kind==OmsJournalCommandKind.Place?p.TargetExchangeOrderId is not null:p.TargetExchangeOrderId is null) || p.FixOrigClOrdId is not null ||
                 policy.SchemaVersion != 1 || policy.Limits.SchemaVersion != 1 || policy.FxStressFactor < 1 || policy.MarginMultiplier < 1 ||
                 policy.MaxLimitDeviationFraction is <= 0 or >= 1 || now < policy.ValidFromUtc || now > policy.ValidThroughUtc ||
                 policy.ValidFromUtc.Offset != TimeSpan.Zero || policy.ValidThroughUtc.Offset != TimeSpan.Zero ||
@@ -156,7 +157,7 @@ public sealed class DeribitRiskInputsReader(IOmsRiskPolicyReader policies, IDeri
             if(!foundTarget)return null;
             gross+=Math.Max(0,deltaBound-p.Quantity);concentration+=Math.Max(0,deltaBound-p.Quantity);
             var reduce = p.Side == OrderSide.Buy ? signedPosition < 0 && p.Quantity <= -signedPosition : signedPosition > 0 && p.Quantity <= signedPosition;
-            var value = new OmsRiskValuationV1(1, command.Scope, Convert.ToHexString(OmsRecoveryRunCodec.Encode(baseline).Sha256),
+            var value = new OmsRiskValuationV1(p.Kind==OmsJournalCommandKind.Replace?2:1, command.Scope, Convert.ToHexString(OmsRecoveryRunCodec.Encode(baseline).Sha256),
                 Convert.ToHexString(OmsJournalCanonical.EncodeCommand(command).Sha256), input.StartedUtc,
                 new[] { input.StartedUtc.AddSeconds(5), baseline.UsableThroughUtc, policy.ValidThroughUtc }.Min(),
                 true, true, true, reduce, p.Quantity, deltaBound, gross, concentration, equity, margin,

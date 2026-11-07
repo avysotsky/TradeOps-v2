@@ -18,9 +18,9 @@ public sealed class OmsFixRuntimeRolePostgresTests
         await using(var q=db.Source.CreateCommand($"""
 CREATE ROLE "{role}" NOLOGIN; COMMENT ON ROLE "{role}" IS 'tradeops-tests:role:v1:{db.Name}';
 GRANT USAGE ON SCHEMA public TO "{role}";
-GRANT SELECT ON oms_fix_sessions_v1,oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,
+GRANT SELECT ON oms_fix_amend_messages_v2,oms_fix_sessions_v1,oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,
  oms_deribit_fix_native_events_v1,oms_deribit_fix_report_incidents_v1,oms_evidence_versions_v1 TO "{role}";
-GRANT INSERT ON oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,
+GRANT INSERT ON oms_fix_amend_messages_v2,oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,
  oms_deribit_fix_native_events_v1,oms_deribit_fix_report_incidents_v1 TO "{role}";
 GRANT UPDATE(next_sender,next_target,last_logon_ms) ON oms_fix_sessions_v1 TO "{role}";
 GRANT INSERT(tenant_id,venue_id,environment,account_id,subaccount_id) ON oms_evidence_versions_v1 TO "{role}";

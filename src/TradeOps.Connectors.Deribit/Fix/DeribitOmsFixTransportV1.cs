@@ -89,14 +89,15 @@ public sealed class DeribitOmsFixTransportV1:IOmsFixAccountOrderTransport
             allowed.AmountUnit!=OmsPrivateAmountUnit.Usd||allowed.AmountCurrency!="USD")throw new InvalidOperationException("Unsupported native FIX instrument metadata.");
         DeribitFixCancelBindingV1? cancel=null;
         OmsJournalCommandRequest? parentCommand=null;
-        if(command.Payload.Kind==OmsJournalCommandKind.Cancel)
+        if(command.Payload.Kind is OmsJournalCommandKind.Cancel or OmsJournalCommandKind.Replace)
         {
             var p=await parent(command,ct);
             if(p?.FixReport is null)throw new InvalidOperationException("FIX cancellation needs its native placement binding.");
             p.Validate();parentCommand=p.Command;cancel=new(p.Command,p.FixReport);
         }
         _=DeribitFixCommandEncoderV1.Encode(command,options.Session,metadata,observed,cancel);
-        var dispatch=new DeribitFixCommandBindingV1(1,command,options.Session,engine.Epoch,observed,metadata.Currency,metadata.ContractUsd,
+        var version=command.Payload.Kind==OmsJournalCommandKind.Replace||parentCommand?.Payload.Kind==OmsJournalCommandKind.Replace?2:1;
+        var dispatch=new DeribitFixCommandBindingV1(version,command,options.Session,engine.Epoch,observed,metadata.Currency,metadata.ContractUsd,
             DeribitFixCommandBindingV1.ClientId(command),cancel?.Acknowledgement);dispatch.Validate();
         lock(sync)
         {if(response is not null)throw new InvalidOperationException("FIX dispatch already active.");prepared=dispatch;instrument=metadata;original=parentCommand;}
@@ -117,6 +118,14 @@ public sealed class DeribitOmsFixTransportV1:IOmsFixAccountOrderTransport
         }
         try
         {
+            if(command.Payload.Provenance==DeribitFixQualificationScenarioV1.Provenance&&command.Payload.Kind!=OmsJournalCommandKind.Cancel)
+            {
+                var quote=await new DeribitFixQualificationMarketV1(binding,http).ReadAsync(ct);
+                _=DeribitFixQualificationScenarioV1.Price(quote,DateTimeOffset.UtcNow);
+                if(quote.Scope!=command.Scope||command.Payload.Quantity!=1||!command.Payload.PostOnly||command.Payload.ReduceOnly||command.Payload.Side!=TradeOps.Domain.Enums.OrderSide.Buy||
+                    command.Payload.LimitPrice>quote.Bid*.90m||command.Payload.LimitPrice<quote.MinPrice||command.Payload.LimitPrice>quote.MaxPrice)
+                    throw new InvalidOperationException("Qualification distance/size changed before physical I/O.");
+            }
             engine.SendCommand(command,permit,metadata,owner is null?null:new(owner,dispatch.Parent!));
             return await waiting.WaitAsync(ct);
         }

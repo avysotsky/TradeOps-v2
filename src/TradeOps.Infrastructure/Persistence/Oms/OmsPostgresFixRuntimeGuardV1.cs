@@ -14,10 +14,10 @@ SELECT NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user
 AND NOT has_database_privilege(current_user,current_database(),'CREATE')
 AND NOT has_schema_privilege(current_user,'public','CREATE')
 AND (SELECT bool_and(has_table_privilege(current_user,'public.'||relation,'SELECT')) FROM (VALUES
- ('oms_fix_sessions_v1'),('oms_fix_outbound_messages_v1'),('oms_deribit_fix_reports_v1'),
+ ('oms_fix_sessions_v1'),('oms_fix_amend_messages_v2'),('oms_fix_amend_messages_v2'),('oms_fix_outbound_messages_v1'),('oms_deribit_fix_reports_v1'),
  ('oms_deribit_fix_native_events_v1'),('oms_deribit_fix_report_incidents_v1'),('oms_evidence_versions_v1')) t(relation))
 AND (SELECT bool_and(has_table_privilege(current_user,'public.'||relation,'INSERT')) FROM (VALUES
- ('oms_fix_outbound_messages_v1'),('oms_deribit_fix_reports_v1'),
+ ('oms_fix_amend_messages_v2'),('oms_fix_outbound_messages_v1'),('oms_deribit_fix_reports_v1'),
  ('oms_deribit_fix_native_events_v1'),('oms_deribit_fix_report_incidents_v1')) t(relation))
 AND (SELECT bool_and(has_column_privilege(current_user,'public.oms_fix_sessions_v1',col,'UPDATE'))
  FROM (VALUES ('next_sender'),('next_target'),('last_logon_ms')) t(col))
@@ -32,7 +32,7 @@ AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamesp
  WHERE n.nspname='public' AND c.relkind IN('r','p') AND
  (has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') OR
   c.relname NOT IN('oms_fix_sessions_v1') AND has_any_column_privilege(current_user,c.oid,'UPDATE') OR
-  c.relname NOT IN('oms_fix_outbound_messages_v1','oms_deribit_fix_reports_v1','oms_deribit_fix_native_events_v1',
+  c.relname NOT IN('oms_fix_amend_messages_v2','oms_fix_outbound_messages_v1','oms_deribit_fix_reports_v1','oms_deribit_fix_native_events_v1',
    'oms_deribit_fix_report_incidents_v1','oms_evidence_versions_v1') AND has_any_column_privilege(current_user,c.oid,'INSERT')))
 """);
         if(await q.ExecuteScalarAsync(ct) is not true)

@@ -97,7 +97,7 @@ public sealed partial class DeribitRecoveryEvidenceGate
                     if (facts.Any(x => x.NativeInstrument != native.NativeInstrument || x.Side != native.Side ||
                         x.AmountUnit != native.AmountUnit || x.AmountCurrency != native.AmountCurrency ||
                         (x.Kind == OmsJournalEventKind.Order && (x.NativeAmount != native.NativeAmount ||
-                         x.PriceKind != native.PriceKind || x.Price != native.Price))) ||
+                         !DeribitNativePriceHistoryV2.Matches(receipts,receipt,x)))) ||
                         reports.Length != 0 && (!reports[^1].FilledNativeAmount.HasValue ||
                          reports[^1].FilledNativeAmount < native.FilledNativeAmount ||
                          (native.OrderState is "filled" or "cancelled" or "rejected") && reports[^1].OrderState != native.OrderState))

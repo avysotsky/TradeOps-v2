@@ -31,9 +31,9 @@ internal static class OmsPostgresFixCommandEvidenceV1
             if((long)(await count.ExecuteScalarAsync(ct))!>=10000)throw new InvalidOperationException("FIX binding capacity exceeded.");
         await using var q=Query(db,tx,binding.Command.Scope,"""
 INSERT INTO oms_deribit_fix_command_bindings_v1(tenant_id,venue_id,environment,account_id,subaccount_id,command_id,schema_version,binding_json,binding_sha256,command_sha256)
-VALUES(@t,@v,@e,@a,@s,@command,1,@json,@sha,@commandSha)
+VALUES(@t,@v,@e,@a,@s,@command,@version,@json,@sha,@commandSha)
 """);
-        q.Parameters.AddWithValue("command",binding.Command.CommandId.Value);q.Parameters.AddWithValue("json",NpgsqlDbType.Jsonb,encoded.Json);
+        q.Parameters.AddWithValue("version",binding.SchemaVersion);q.Parameters.AddWithValue("command",binding.Command.CommandId.Value);q.Parameters.AddWithValue("json",NpgsqlDbType.Jsonb,encoded.Json);
         q.Parameters.AddWithValue("sha",encoded.Sha256);q.Parameters.AddWithValue("commandSha",OmsJournalCanonical.EncodeCommand(binding.Command).Sha256);
         await q.ExecuteNonQueryAsync(ct);
     }
@@ -51,7 +51,7 @@ VALUES(@t,@v,@e,@a,@s,@command,1,@json,@sha,@commandSha)
                 if(bindings.Count==maximum)throw new ArgumentOutOfRangeException(nameof(maximum));
                 var raw=rows.GetString(2);bytes=checked(bytes+System.Text.Encoding.UTF8.GetByteCount(raw));if(bytes>16*1024*1024)throw new ArgumentOutOfRangeException(nameof(maximum));
                 var binding=OmsRecoveryRunCodec.Decode<DeribitFixCommandBindingV1>(raw,rows.GetFieldValue<byte[]>(3));binding.Validate();
-                if(rows.GetInt32(1)!=1||binding.Command.Scope!=scope||binding.Command.CommandId.Value!=rows.GetGuid(0)||
+                if(rows.GetInt32(1)!=binding.SchemaVersion||binding.Command.Scope!=scope||binding.Command.CommandId.Value!=rows.GetGuid(0)||
                     !OmsJournalCanonical.EncodeCommand(binding.Command).Sha256.SequenceEqual(rows.GetFieldValue<byte[]>(4))||
                     !rows.GetFieldValue<byte[]>(4).SequenceEqual(rows.GetFieldValue<byte[]>(6))||
                     OmsJournalRecoveryCommandCodec.Decode(rows.GetString(7),scope)!=binding.Command||rows.GetDateTime(5)>readAt.UtcDateTime)
@@ -107,7 +107,7 @@ VALUES(@t,@v,@e,@a,@s,@command,1,@json,@sha,@commandSha)
         {
             var matches=reports.Where(x=>x.Execution is not null).Select(x=>binding.Match(x.Execution!)).Where(x=>x is not null)
                 .OrderBy(x=>x!.Order.VenueTimestampUtc).ThenBy(x=>x!.ReceivedAtUtc).ToArray();
-            if(matches.Length>0)views.Add(matches[0]!);
+            if(matches.Length>0)views.Add(matches[^1]!);
         }
         return views;
     }

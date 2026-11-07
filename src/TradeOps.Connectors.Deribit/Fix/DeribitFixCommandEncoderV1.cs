@@ -34,8 +34,29 @@ internal static class DeribitFixCommandEncoderV1
             var flags=(p.PostOnly?"6A":"")+(p.ReduceOnly?"E":"");if(flags.Length>0)m.SetField(new QuickFix.Fields.ExecInst(flags));
             m.SetField(new QuickFix.Fields.StringField(100010,p.TargetClientOrderId));return m;
         }
-        if(p.Kind!=OmsJournalCommandKind.Cancel||parent is null)throw new InvalidOperationException("FIX replace and unbound cancel refused.");
+        if(p.Kind is not(OmsJournalCommandKind.Cancel or OmsJournalCommandKind.Replace)||parent is null)throw new InvalidOperationException("Unbound native mutation refused.");
         var original=parent.Original;var o=original.Payload;var ack=parent.Acknowledgement;ack.Validate();original.Validate();
+        if(p.Kind==OmsJournalCommandKind.Replace||original.Payload.Kind==OmsJournalCommandKind.Replace)
+        {
+            var binding=new DeribitFixCommandBindingV1(2,command,session,ack.ConnectionEpoch,now,metadata.Currency,metadata.ContractUsd,
+                DeribitFixCommandBindingV1.ClientId(command),ack);
+            try{binding.Validate();}catch(ArgumentException){throw new InvalidOperationException("Unsupported native FIX mutation terms.");}
+            if(original.Scope!=command.Scope||original.LocalOrderId!=command.LocalOrderId||original.IntentId!=command.IntentId||
+                command.ExpectedAggregateVersion.Value!=original.ExpectedAggregateVersion.Value+1||
+                p.TargetClientOrderId!=o.TargetClientOrderId||p.Instrument!=o.Instrument||p.Side!=o.Side||p.Quantity!=o.Quantity||
+                p.QuantityUnit!=o.QuantityUnit||p.OrderType!=o.OrderType||p.PostOnly!=o.PostOnly||p.ReduceOnly!=o.ReduceOnly||p.TimeInForce!=o.TimeInForce||
+                ack.Price!=o.LimitPrice)throw new InvalidOperationException("FIX mutation does not follow the current own revision.");
+            m.Header.SetField(new QuickFix.Fields.MsgType(p.Kind==OmsJournalCommandKind.Replace?"G":"F"));
+            m.SetField(new QuickFix.Fields.OrigClOrdID(ack.ServerAssignedClOrdId!));
+            if(p.Kind==OmsJournalCommandKind.Replace)
+            {
+                m.SetField(new QuickFix.Fields.Symbol(p.Instrument));m.SetField(new QuickFix.Fields.Side(p.Side==OrderSide.Buy?'1':'2'));
+                m.SetField(new QuickFix.Fields.OrderQty(p.Quantity));m.SetField(new QuickFix.Fields.IntField(854,0));
+                m.SetField(new QuickFix.Fields.OrdType('2'));m.SetField(new QuickFix.Fields.Price(p.LimitPrice!.Value));
+                var flags=(p.PostOnly?"6A":"")+(p.ReduceOnly?"E":"");if(flags.Length>0)m.SetField(new QuickFix.Fields.ExecInst(flags));
+            }
+            return m;
+        }
         if(original.Scope!=command.Scope||original.LocalOrderId!=command.LocalOrderId||original.IntentId!=command.IntentId||
             original.Payload.Kind!=OmsJournalCommandKind.Place||command.ExpectedAggregateVersion.Value!=1||ack.Session.Scope!=command.Scope||
             ack.NativeOrderId is null||ack.ServerAssignedClOrdId is null||ack.NativeOrderId!=p.TargetExchangeOrderId||ack.OriginalClientClOrdId!=ClientId(original)||

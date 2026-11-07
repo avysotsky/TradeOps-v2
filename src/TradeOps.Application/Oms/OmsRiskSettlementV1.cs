@@ -11,7 +11,7 @@ public static class OmsRiskSettlementV1
         try
         {
             placement.Validate(); var command = placement.Command;
-            if (command.Scope != baseline.Scope || command.Payload.Kind != OmsJournalCommandKind.Place ||
+            if (command.Scope != baseline.Scope || command.Payload.Kind is not(OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace) ||
                 placement.ReceivedAtUtc > baseline.NativeThroughUtc) return false;
             var matches = baseline.Orders.Where(x => x.LocalOrderId == command.LocalOrderId &&
                 x.State.Currency == placement.Order.Currency && x.State.ExchangeOrderId == placement.Order.ExchangeOrderId).ToArray();

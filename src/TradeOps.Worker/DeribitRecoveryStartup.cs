@@ -22,7 +22,7 @@ public static class DeribitRecoveryStartup
     public const string Mode = "DeribitAccountRecovery";
     public static bool TryConfigure(HostApplicationBuilder builder)
     {
-        if (builder.Configuration["Worker:Mode"] is not (Mode or DeribitOmsExecutionStartup.Mode or DeribitOmsExecutionStartup.FixMode)) return false;
+        if (builder.Configuration["Worker:Mode"] is not (Mode or DeribitOmsExecutionStartup.Mode or DeribitOmsExecutionStartup.FixMode or DeribitOmsExecutionStartup.QualificationMode)) return false;
         if (builder.Services.Any(d => d.ServiceType == typeof(IHostedService) ||
             d.ServiceType == typeof(IExchangeClient) || d.ServiceType == typeof(IExchangeEventStream)))
             throw new InvalidOperationException("Account recovery requires exclusive host composition.");

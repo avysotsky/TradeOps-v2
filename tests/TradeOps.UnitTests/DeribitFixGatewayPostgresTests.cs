@@ -41,7 +41,7 @@ public sealed class DeribitFixGatewayPostgresTests
     {
         private readonly Channel<byte[]> incoming=Channel.CreateBounded<byte[]>(32);
         private ulong sequence=firstSequence;private Message? placement;
-        internal int Placements,Cancels;internal bool IgnorePlace,IgnoreCancel,Partial;internal Func<Message,Task>? BeforeWrite;
+        internal int Placements,Cancels,Amendments;internal bool IgnorePlace,IgnoreCancel,Partial,IgnoreAmend,RejectAmend,PartialAmend;internal Func<Message,Task>? BeforeWrite;
         internal string? LastFrame;
         public async Task WriteAsync(ReadOnlyMemory<byte> bytes,CancellationToken ct)
         {
@@ -51,14 +51,16 @@ public sealed class DeribitFixGatewayPostgresTests
             reply.Header.SetField(new QuickFix.Fields.MsgSeqNum(sequence++));reply.Header.SetField(new QuickFix.Fields.SendingTime(DateTime.UtcNow));
             if(type=="A")
             {reply.Header.SetField(new QuickFix.Fields.MsgType("A"));reply.SetField(new QuickFix.Fields.EncryptMethod(0));reply.SetField(new QuickFix.Fields.HeartBtInt(30));}
-            else if(type is "D" or "F")
+            else if(type is "D" or "F" or "G")
             {
-                if(type=="D"){Placements++;placement=m;if(IgnorePlace)return;}else{Cancels++;if(IgnoreCancel)return;}
+                if(type=="D"){Placements++;placement=m;if(IgnorePlace)return;}
+                else if(type=="F"){Cancels++;if(IgnoreCancel)return;}
+                else {Amendments++;if(IgnoreAmend)return;Assert.Equal(placement!.GetString(38),m.GetString(38));placement.SetField(new QuickFix.Fields.Price(m.GetDecimal(44)));if(PartialAmend)Partial=true;}
                 var p=placement!;reply.Header.SetField(new QuickFix.Fields.MsgType("8"));
                 var now=DateTime.UtcNow.ToString("yyyyMMdd-HH:mm:ss.fff",System.Globalization.CultureInfo.InvariantCulture);
-                foreach(var(tag,value)in new(int,string)[]{(37,"native-order"),(11,"native-server-client"),(41,p.GetString(11)),(527,"change-"+sequence),(39,type=="F"?"4":Partial?"1":"0"),
-                    (54,p.GetString(54)),(60,now),(151,type=="F"?"0":Partial?"0.5":p.GetString(38)),(14,Partial?"0.5":"0"),(38,p.GetString(38)),(152,p.GetString(38)),
-                    (40,"2"),(44,p.GetString(44)),(103,"0"),(55,p.GetString(55)),(231,"1"),(854,"1"),(59,"1"),(18,p.IsSetField(18)?p.GetString(18):""),(100010,p.GetString(100010))})
+                foreach(var(tag,value)in new(int,string)[]{(37,"native-order"),(11,"native-server-client"),(41,p.GetString(11)),(527,"change-"+sequence),(39,type=="G"&&RejectAmend?"8":type=="F"?"4":Partial?"1":"0"),
+                    (54,p.GetString(54)),(60,now),(151,type=="F"||type=="G"&&RejectAmend?"0":Partial?"0.5":p.GetString(38)),(14,Partial?"0.5":"0"),(38,p.GetString(38)),(152,p.GetString(38)),
+                    (40,"2"),(44,p.GetString(44)),(103,type=="G"&&RejectAmend?"100":"0"),(55,p.GetString(55)),(231,"1"),(854,"1"),(59,"1"),(18,p.IsSetField(18)?p.GetString(18):""),(100010,p.GetString(100010))})
                     if(value!="")reply.SetField(new QuickFix.Fields.StringField(tag,value));
             }
             else return;
@@ -83,28 +85,42 @@ public sealed class DeribitFixGatewayPostgresTests
         [new("ETH-PERPETUAL","future","ETH",OmsPrivateAmountUnit.Usd,"USD")]));
 
     [Theory]
-    [InlineData("normal")][InlineData("lost-ack")][InlineData("unknown")][InlineData("partial")][InlineData("cancel-unknown")][InlineData("restricted")][InlineData("ingress-race")][InlineData("cancel-under-kill")]
+    [InlineData("amend-restricted")][InlineData("amend-unknown")][InlineData("amend-reject")][InlineData("amend-partial")][InlineData("amend-kill")]
+    [InlineData("amend")][InlineData("normal")][InlineData("lost-ack")][InlineData("unknown")][InlineData("partial")][InlineData("cancel-unknown")][InlineData("restricted")][InlineData("ingress-race")][InlineData("cancel-under-kill")]
     public async Task ActualEngineUsesDurableAdmissionNativeEvidenceRecoveryAndAddressedCancelWithoutWsReceiptFabrication(string mode)
     {
         await using var db=await OmsPostgresTestDatabase.CreateAsync();using var root=new OmsExecutionGatewayPostgresTests.Root();await root.Bind(db.Source);
         await using var live=await Live.Open(db);var recovery=new OmsExecutionGatewayPostgresTests.Recovery();
+
         var key=OmsFixSessionStorePostgresTests.Key("gateway-"+Guid.NewGuid().ToString("N"));await OmsFixSessionStorePostgresTests.Seed(db.Source,key);
-        await using var roles=mode=="restricted"?await Roles.Open(db):null;
+        await using var roles=mode is "restricted" or "amend-restricted"?await Roles.Open(db):null;
         var execution=roles?.Execution??db.Source;var protocolSource=roles?.Protocol??db.Source;
         using var protocol=new OmsPostgresFixSessionStoreV1(protocolSource,key);using var handler=new Http();using var http=new HttpClient(handler);
-        var wire=new Wire(key){IgnorePlace=mode=="unknown",IgnoreCancel=mode=="cancel-unknown",Partial=mode=="partial"};
+        var wire=new Wire(key){IgnorePlace=mode=="unknown",IgnoreCancel=mode=="cancel-unknown",Partial=mode=="partial",
+            IgnoreAmend=mode=="amend-unknown",RejectAmend=mode=="amend-reject",PartialAmend=mode=="amend-partial"};
         wire.BeforeWrite=async m=>
-        {if(m.Header.GetString(35) is "D" or "F"){Assert.True(await OmsExecutionGatewayPostgresTests.Count(db,"oms_deribit_fix_command_bindings_v1")>=1);Assert.Equal(1,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_reservations_v1"));}};
+        {if(m.Header.GetString(35) is "D" or "F" or "G"){Assert.True(await OmsExecutionGatewayPostgresTests.Count(db,"oms_deribit_fix_command_bindings_v1")>=1);Assert.InRange(await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_reservations_v1"),1,2);}};
         DeribitOmsFixTransportV1? transport=null;
-        await using var gateway=await OmsPostgresExecutionGateway.OpenAsync(Scope(),execution,recovery,new OmsRiskAdmissionPostgresTests.Inputs(),root.PathName,
+        await using var gateway=await OmsPostgresExecutionGateway.OpenAsync(Scope(),execution,recovery,new AmendmentInputs(),root.PathName,
             async(authority,ct)=>transport=await DeribitOmsFixTransportV1.OpenCoreAsync(Binding(),new(key),protocol,
                 new Journal(new OmsPostgresDeribitFixReportJournalV1(protocolSource,key),mode=="lost-ack"),authority,
                 ()=>live.Coordinator.BeginExternalIngress(live.Session),http,(c,t)=>OmsPostgresFixParentReaderV1.ReadAsync(execution,c,t),
                 recovery.RequestRecovery,_=>Task.FromResult<IDeribitFixWireV1>(wire),ct),cancelPolicies:new Policies());
         async Task Refresh()
         {
-            var r=await live.Recover(true);Assert.True(r.Coherence.EvidenceSufficient,string.Join(",",r.Coherence.Problems));
-            recovery.Current=r.ExecutionBaseline;Assert.NotNull(recovery.Current);
+            DeribitRecoveryRunOutcome? r=null;
+            for(var attempt=0;attempt<3;attempt++)
+            {
+                r=await live.Recover(true);
+                if(r.Coherence.EvidenceSufficient){recovery.Current=r.ExecutionBaseline;Assert.NotNull(recovery.Current);return;}
+                // The native logon/report ingress can still be draining when a cut begins.
+                // Require another real recovery cut; never reuse the overlapped baseline.
+                if(r.Coherence.Problems.Any(p=>p is not(DeribitRecoveryCoherenceProblem.MissingLiveCapture or
+                    DeribitRecoveryCoherenceProblem.ActivityDuringRecovery or DeribitRecoveryCoherenceProblem.InventoryUnavailable or
+                    DeribitRecoveryCoherenceProblem.NativeClockUnavailable or DeribitRecoveryCoherenceProblem.StaleEvidence)))break;
+                await Task.Delay(25);
+            }
+            Assert.True(r!.Coherence.EvidenceSufficient,string.Join(",",r.Coherence.Problems));
         }
         await Refresh();OmsExternalEconomicIngress? ingress=null;
         if(mode=="ingress-race")handler.OnMetadata=()=>ingress=live.Coordinator.BeginExternalIngress(live.Session);
@@ -148,26 +164,54 @@ public sealed class DeribitFixGatewayPostgresTests
             Assert.Equal(OmsExecutionResultKind.Denied,(await nextGateway.SubmitAsync(command)).Kind);Assert.Equal(0,nextWire.Placements);return;
         }
         await Refresh();
-        if(mode=="cancel-under-kill")
+        if(mode is "cancel-under-kill" or "amend-kill")
         {
             await using(var q=db.Source.CreateCommand("INSERT INTO oms_risk_control_permissions_v1 VALUES(3,'tenant','DERIBIT',3,'account','',1,current_user,true,false)"))await q.ExecuteNonQueryAsync();
             await new OmsPostgresRiskControls(db.Source).SetAsync(new(OmsRiskControlScopeV1.ForAccount(Scope()),OmsRiskControlKind.KillSwitch,Guid.NewGuid(),0,true,"Operator test stop"));
         }
-        var cancel=DeribitCommandReceiptFixtures.Cancel(command,view.Order.ExchangeOrderId);
+        OmsJournalCommandRequest? amendedCommand=null;
+        if(mode.StartsWith("amend",StringComparison.Ordinal))
+        {
+            amendedCommand=command with{CommandId=new(Guid.NewGuid()),ExpectedAggregateVersion=new(1),Payload=command.Payload with{
+                Kind=OmsJournalCommandKind.Replace,TargetExchangeOrderId=view.Order.ExchangeOrderId,LimitPrice=command.Payload.LimitPrice-1,RequestedAtUtc=DateTimeOffset.UtcNow}};
+            var outcome=await gateway.SubmitAsync(amendedCommand);
+            if(mode=="amend-kill"){Assert.Equal(OmsExecutionResultKind.Denied,outcome.Kind);Assert.Equal(0,wire.Amendments);return;}
+            if(mode is "amend-unknown" or "amend-reject" or "amend-partial")
+            {
+                Assert.Equal(OmsExecutionResultKind.Unknown,outcome.Kind);Assert.Equal(1,wire.Amendments);Assert.Equal(0,wire.Cancels);
+                Assert.Null((await live.Recover(true)).ExecutionBaseline);Assert.Equal(2,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_reservations_v1"));
+                Assert.Equal(0,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));return;
+            }
+            Assert.Equal(OmsExecutionResultKind.Acknowledged,outcome.Kind);
+            Assert.Equal(1,wire.Amendments);ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(Scope());
+            Assert.True(ledger.IsUsable,string.Join(",",ledger.Problems));
+            var changed=DeribitNativeCommandEvidenceV1.Read(ledger).Single(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Replace);
+            live.NativeReport=changed.Order;await Refresh();
+        }
+        var cancel=DeribitCommandReceiptFixtures.Cancel(amendedCommand??command,view.Order.ExchangeOrderId);
+        if(amendedCommand is not null)cancel=cancel with{ExpectedAggregateVersion=new(2)};
         var cancelled=await gateway.SubmitAsync(cancel);
         Assert.Equal(mode=="cancel-unknown"?OmsExecutionResultKind.Unknown:OmsExecutionResultKind.Acknowledged,cancelled.Kind);Assert.Equal(1,wire.Cancels);
         if(mode=="cancel-unknown")
         {Assert.Null((await live.Recover(true)).ExecutionBaseline);Assert.Equal(0,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));return;}
         ledger=await new OmsPostgresRecoveryLedgerReader(db.Source,true).ReadAsync(Scope());
-        var views=DeribitNativeCommandEvidenceV1.Read(ledger);Assert.Equal(2,views.Count);live.NativeReport=views.Single(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Cancel).Order;
+        var views=DeribitNativeCommandEvidenceV1.Read(ledger);Assert.Equal(amendedCommand is not null?3:2,views.Count);live.NativeReport=views.Single(x=>x.Command.Payload.Kind==OmsJournalCommandKind.Cancel).Order;
         await Refresh();Assert.True(OmsRiskSettlementV1.CanRetire((await live.Store.ReadPublishedAsync(Scope()))!.State,view));
         if(mode=="cancel-under-kill")
         {Assert.Equal(OmsExecutionResultKind.Denied,(await gateway.SubmitAsync(OmsExecutionGatewayPostgresTests.Command())).Kind);Assert.Equal(1,wire.Placements);return;}
         Assert.Equal(OmsRiskAdmissionResult.Reserved,await new OmsPostgresRiskAdmission(db.Source,new OmsRiskAdmissionPostgresTests.Inputs()).AdmitAsync(
             OmsExecutionGatewayPostgresTests.Command(),recovery.Current!.Publication,recovery.Current.Qualified));
-        Assert.Equal(1,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));
+        Assert.Equal(amendedCommand is not null?2:1,await OmsExecutionGatewayPostgresTests.Count(db,"oms_risk_settlements_v1"));
     }
 
+    private sealed class AmendmentInputs:IOmsRiskInputsReader
+    {
+        public async Task<OmsRiskInputsV1?> ReadAsync(OmsJournalCommandRequest command,OmsRecoveredAccountStateV1 baseline,CancellationToken ct=default)
+        {
+            var risk=(await new OmsRiskAdmissionPostgresTests.Inputs().ReadAsync(command,baseline,ct))!;
+            return risk with{Valuation=risk.Valuation with{SchemaVersion=command.Payload.Kind==OmsJournalCommandKind.Replace?2:1}};
+        }
+    }
     private sealed class Roles(OmsPostgresTestDatabase db):IAsyncDisposable
     {
         private readonly string execution="to_fixexec_"+Guid.NewGuid().ToString("N"),protocol="to_fixproto_"+Guid.NewGuid().ToString("N");
@@ -187,9 +231,9 @@ GRANT USAGE ON SEQUENCE oms_risk_reservations_v1_reservation_id_seq TO "{r.execu
 GRANT EXECUTE ON FUNCTION public.oms_lock_evidence_version_v1(text,text,smallint,text,text),
  public.oms_lock_risk_recovery_head_v1(text,text,smallint,text,text),public.oms_risk_control_lock_key_v1(smallint,text,text,smallint,text,text),
  public.oms_set_risk_control_v1(smallint,text,text,smallint,text,text,smallint,uuid,bigint,boolean,text) TO "{r.execution}";
-GRANT SELECT ON oms_fix_sessions_v1,oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,
+GRANT SELECT ON oms_fix_amend_messages_v2,oms_fix_sessions_v1,oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,
  oms_deribit_fix_native_events_v1,oms_deribit_fix_report_incidents_v1,oms_evidence_versions_v1 TO "{r.protocol}";
-GRANT INSERT ON oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,oms_deribit_fix_native_events_v1,oms_deribit_fix_report_incidents_v1 TO "{r.protocol}";
+GRANT INSERT ON oms_fix_amend_messages_v2,oms_fix_outbound_messages_v1,oms_deribit_fix_reports_v1,oms_deribit_fix_native_events_v1,oms_deribit_fix_report_incidents_v1 TO "{r.protocol}";
 GRANT UPDATE(next_sender,next_target,last_logon_ms) ON oms_fix_sessions_v1 TO "{r.protocol}";
 GRANT INSERT(tenant_id,venue_id,environment,account_id,subaccount_id) ON oms_evidence_versions_v1 TO "{r.protocol}","{r.execution}";
 """))await q.ExecuteNonQueryAsync();

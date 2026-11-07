@@ -176,7 +176,7 @@ public static class DeribitRecoveryCoherencePolicy
                 nativeOrder.LastReport.Side != receipt.Order.Side || nativeOrder.LastReport.NativeAmount != receipt.Order.NativeAmount ||
                 nativeOrder.LastReport.AmountUnit != receipt.Order.AmountUnit || nativeOrder.LastReport.AmountCurrency != receipt.Order.AmountCurrency ||
                 nativeOrder.LastReport.VenueTimestampUtc < receipt.Order.VenueTimestampUtc ||
-                nativeOrder.LastReport.Price != receipt.Order.Price || nativeOrder.LastReport.PriceKind != receipt.Order.PriceKind ||
+                !DeribitNativePriceHistoryV2.Matches(receipts,receipt,nativeOrder.LastReport) ||
                 nativeOrder.LastReport.FilledNativeAmount < receipt.Order.FilledNativeAmount ||
                 (receipt.Order.OrderState is "cancelled" or "filled" or "rejected") && nativeOrder.LastReport.OrderState != receipt.Order.OrderState)
                 problems.Add(DeribitRecoveryCoherenceProblem.UnresolvedCommand);
@@ -189,13 +189,13 @@ public static class DeribitRecoveryCoherencePolicy
         {
             if(envelope.Execution is not{} report)continue;
             var binding=(document.Ledger.FixBindings??[]).FirstOrDefault(x=>x.Match(report) is not null);
-            var view=binding?.Match(report);
+            var view=binding?.Match(report)??DeribitNativePriceHistoryV2.FollowUp(receipts,report);
             var order=view is null?null:orders.SingleOrDefault(x=>x.State.Currency==view.Order.Currency&&x.State.ExchangeOrderId==view.Order.ExchangeOrderId);
             if(view is null||order is null||report.TransactTimeUtc>document.VenueClock?.VenueTimeUtc||
                 order.State.NativeInstrument!=report.Instrument||order.State.Side!=report.Side||order.State.NativeAmount!=report.OrderQty||
-                order.State.KnownFilledNativeAmount<report.CumQty||order.LastReport.Price!=report.Price||
+                order.State.KnownFilledNativeAmount<report.CumQty||!DeribitNativePriceHistoryV2.Matches(receipts,view,order.LastReport)||
                 order.LastReport.VenueTimestampUtc<report.TransactTimeUtc||
-                report.OrderStatus is "2" or "4" or "8"&&order.State.NativeState!=view.Order.OrderState)
+                report.OrderStatus is "2" or "4" or "8"&&order.State.NativeState!=(report.OrderStatus switch{"2"=>"filled","4"=>"cancelled",_=>"rejected"}))
                 problems.Add(DeribitRecoveryCoherenceProblem.InconsistentOrderLedger);
         }
         var projectedOpen = orders.Where(x => x.State.NativeState is "open" or "triggered" or "untriggered")

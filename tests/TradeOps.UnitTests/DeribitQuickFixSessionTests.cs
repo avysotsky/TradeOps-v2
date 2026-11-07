@@ -146,16 +146,17 @@ public sealed class DeribitQuickFixSessionTests
         Assert.Contains(r.Sent,x=>x.Header.GetString(35)=="2"&&x.GetULong(7)==2);
         r.Engine.Receive(Encoding.ASCII.GetBytes(r.Peer("0",2)));Assert.False(r.Engine.HasGap);Assert.Equal(4UL,r.Store.NextTarget);
     }
-    [Fact]
-    public void ReplayOfAnOldBusinessOrderUsesGapFillAndNeverReissuesIt()
+    [Theory]
+    [InlineData("D")][InlineData("F")][InlineData("G")]
+    public void ReplayOfAnOldBusinessOrderUsesGapFillAndNeverReissuesIt(string type)
     {
         var store=new MemoryStore();store.SaveAndAdvance(1,"A",null);
-        var old=new Message();old.Header.SetField(new QuickFix.Fields.BeginString("FIX.4.4"));old.Header.SetField(new QuickFix.Fields.MsgType("D"));
+        var old=new Message();old.Header.SetField(new QuickFix.Fields.BeginString("FIX.4.4"));old.Header.SetField(new QuickFix.Fields.MsgType(type));
         old.Header.SetField(new QuickFix.Fields.MsgSeqNum(2UL));old.Header.SetField(new QuickFix.Fields.SenderCompID("old-owner"));old.Header.SetField(new QuickFix.Fields.TargetCompID("DERIBITSERVER"));
         old.Header.SetField(new QuickFix.Fields.SendingTime(DateTime.UtcNow.AddMinutes(-1)));old.SetField(new QuickFix.Fields.ClOrdID("possibly-sent"));
-        store.SaveAndAdvance(2,"D",old.ConstructString());
+        store.SaveAndAdvance(2,type,old.ConstructString());
         using var r=new Rig(store);r.Logon();r.Engine.Receive(Encoding.ASCII.GetBytes(r.Peer("2",2,(7,"1"),(16,"3"))));
-        Assert.DoesNotContain(r.Sent,x=>x.Header.GetString(35) is "D" or "F");Assert.Contains(r.Sent,x=>x.Header.GetString(35)=="4"&&x.GetBoolean(123));
+        Assert.DoesNotContain(r.Sent,x=>x.Header.GetString(35) is "D" or "F" or "G");Assert.Contains(r.Sent,x=>x.Header.GetString(35)=="4"&&x.GetBoolean(123));
         Assert.Equal("possibly-sent",Parse(store.Rows[1].ApplicationMessage!).GetString(11));
     }
     [Theory]
