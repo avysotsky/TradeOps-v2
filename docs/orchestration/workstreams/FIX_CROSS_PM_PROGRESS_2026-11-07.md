@@ -72,3 +72,11 @@ business messages или live authority. Это проверка реальны�
 диагностическую предпосылку; реальные DB reservations не создаются/не читаются.
 Адресный host diagnostic4/4 и PS AST/Status PASS; это замена прежних3 diagnostic
 cases, не новый full run и не разрешение финансового запуска.
+
+После commit `7bc6afc` `ReadPmStress` на том же pin дал реальный native observation
+PASS:7 сценариев,3604ms. Private evidence — `.tradeops/fix-host/latest-readpmstress.json`;
+DB/business writes0, TradingReady=false. Максимальный read plan укладывается в5s.
+
+Следующий checkpoint — [административный FIX probe](../../architecture/DERIBIT_FIX_NONTRADING_CONNECTION_V1.md),
+проверенный только на unit/owned DB fixtures. Реальный FIX logon, encrypted profile,
+остаточное provisioning и разрешение long-outage gate остаются невыполненными.

@@ -13,6 +13,20 @@ public sealed class DeribitFixQualificationScenarioTests
         Assert.Equal(1800,DeribitFixQualificationScenarioV1.Price(q,DeribitRiskInputsTests.Now));
         Assert.Equal(1799.5m,DeribitFixQualificationScenarioV1.Price(q,DeribitRiskInputsTests.Now,1800));
     }
+    [Theory]
+    [InlineData("valid")][InlineData("near")][InlineData("sell")][InlineData("size")][InlineData("scope")][InlineData("grid")][InlineData("stale")]
+    public void FinalPhysicalCheckUsesFreshDirectionalBandsWithoutRelaxingQualificationTerms(string problem)
+    {
+        var q=new Rig().Quote with{MinPrice=1980,MaxPrice=2020};var c=DeribitFixCommandTests.Command();
+        c=c with{Scope=q.Scope,Payload=c.Payload with{LimitPrice=1800,Provenance=DeribitFixQualificationScenarioV1.Provenance}};
+        if(problem=="near")c=c with{Payload=c.Payload with{LimitPrice=1800.5m}};
+        if(problem=="sell")c=c with{Payload=c.Payload with{Side=TradeOps.Domain.Enums.OrderSide.Sell}};
+        if(problem=="size")c=c with{Payload=c.Payload with{Quantity=2}};
+        if(problem=="scope")q=q with{Scope=new(new("foreign"),q.Scope.Venue,q.Scope.Environment,q.Scope.Account,q.Scope.Subaccount)};
+        if(problem=="grid")c=c with{Payload=c.Payload with{LimitPrice=1799.9m}};
+        if(problem=="stale")q=q with{ReceivedUtc=q.ReceivedUtc.AddSeconds(-6)};
+        Assert.Equal(problem=="valid",DeribitFixQualificationScenarioV1.AllowsCurrentBuy(c,q,DeribitRiskInputsTests.Now));
+    }
     private sealed class Clock:TimeProvider { public override DateTimeOffset GetUtcNow()=>DeribitRiskInputsTests.Now; }
     private sealed class Rig:IOmsOrderIntentGateway,IDeribitFixQualificationMarketV1,IOmsFixQualificationLeaseV1
     {

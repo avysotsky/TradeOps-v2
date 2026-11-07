@@ -121,9 +121,7 @@ public sealed class DeribitOmsFixTransportV1:IOmsFixAccountOrderTransport
             if(command.Payload.Provenance==DeribitFixQualificationScenarioV1.Provenance&&command.Payload.Kind!=OmsJournalCommandKind.Cancel)
             {
                 var quote=await new DeribitFixQualificationMarketV1(binding,http).ReadAsync(ct);
-                _=DeribitFixQualificationScenarioV1.Price(quote,DateTimeOffset.UtcNow);
-                if(quote.Scope!=command.Scope||command.Payload.Quantity!=1||!command.Payload.PostOnly||command.Payload.ReduceOnly||command.Payload.Side!=TradeOps.Domain.Enums.OrderSide.Buy||
-                    command.Payload.LimitPrice>quote.Bid*.90m||command.Payload.LimitPrice<quote.MinPrice||command.Payload.LimitPrice>quote.MaxPrice)
+                if(!DeribitFixQualificationScenarioV1.AllowsCurrentBuy(command,quote,DateTimeOffset.UtcNow))
                     throw new InvalidOperationException("Qualification distance/size changed before physical I/O.");
             }
             engine.SendCommand(command,permit,metadata,owner is null?null:new(owner,dispatch.Parent!));

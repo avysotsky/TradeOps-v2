@@ -6,6 +6,8 @@ using TradeOps.Application.Oms;
 
 namespace TradeOps.Connectors.Deribit.Fix;
 
+internal sealed record DeribitFixAdminObservationV1(string Type,ulong Sequence,string? TestRequestId);
+
 /// <summary>Actual QuickFIX/n session with an immediate owned responder. No engine socket queue,
 /// reconnect thread, raw logger, automatic reset, or business-message replay.</summary>
 internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDisposable
@@ -25,6 +27,7 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
     private readonly HashSet<ulong> queued=[];
     private readonly DeribitFixFramerV1 framer;
     private readonly Func<OmsExternalEconomicIngress>? beginIngress;
+    private readonly Action<DeribitFixAdminObservationV1>? adminObserver;
     private readonly List<OmsExternalEconomicIngress> ingress = [];
     private OmsJournalCommandRequest? sending;
     private OmsPhysicalWritePermit? permit;
@@ -38,7 +41,7 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
     internal DeribitQuickFixSessionV1(DeribitFixOptionsV1 options,IOmsFixSessionStoreV1 store,
         OmsPhysicalSessionAuthority authority,string clientId,string secret,Func<ReadOnlyMemory<byte>,Task> physicalWrite,
         Action<string,Guid,DateTimeOffset> report,Action recoveryRequired,Action abort,
-        Func<OmsExternalEconomicIngress>? beginIngress=null)
+        Func<OmsExternalEconomicIngress>? beginIngress=null,Action<DeribitFixAdminObservationV1>? adminObserver=null)
     {
         options.Validate();
         if(string.IsNullOrWhiteSpace(clientId)||clientId.Length>512||clientId.Any(c=>c<33||c>126)||
@@ -46,6 +49,7 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
         this.options=options;this.store=store;this.authority=authority;this.clientId=clientId;this.secret=secret;
         this.physicalWrite=physicalWrite;this.report=report;this.recoveryRequired=recoveryRequired;this.abort=abort;
         this.beginIngress=beginIngress;
+        this.adminObserver=adminObserver;
         framer=new(options.MaximumFrameBytes);id=new("FIX.4.4",options.Session.SenderCompId,options.Session.TargetCompId);
         if(Session.LookupSession(id) is not null)throw new InvalidOperationException("FIX session identity already active in this process.");
         var path=Path.Combine(AppContext.BaseDirectory,"Fix","DeribitFix44ProfileV1.xml");
@@ -75,6 +79,13 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
 
     internal void Tick()
     {lock(sync){EnsureRunning();try{session.Next();}catch{Fail();throw;}}}
+    internal void RequestTest(string requestId)
+    {
+        if(requestId.Length is <1 or >64||requestId.Any(c=>!char.IsAsciiLetterOrDigit(c)))throw new ArgumentException("Bounded FIX test request required.");
+        lock(sync){EnsureRunning();if(!LoggedOn||queued.Count!=0)throw new InvalidOperationException("Coherent FIX logon required.");session.GenerateTestRequest(requestId);}
+    }
+    internal void RequestLogout()
+    {lock(sync){EnsureRunning();if(!LoggedOn||queued.Count!=0)throw new InvalidOperationException("Coherent FIX logon required.");session.Logout("Nontrading connection probe finished");}}
     internal void Receive(ReadOnlySpan<byte> bytes)
     {
         // Must precede engine sync: a writer can own that lock while still awaiting I/O.
@@ -169,6 +180,9 @@ internal sealed class DeribitQuickFixSessionV1:IApplicationExt,IResponder,IDispo
                 message.IsSetField(9001)&&message.GetBoolean(9001))throw new RejectLogon("Unexpected FIX logon profile.");
         }
         else if(message.Header.GetString(35)=="3"){Fail();throw new InvalidOperationException("FIX session reject.");}
+        var test=message.IsSetField(112)?message.GetString(112):null;
+        if(test is not null&&(test.Length is <1 or >128||test.Any(char.IsControl)))throw new InvalidOperationException("Unqualified FIX test correlation.");
+        adminObserver?.Invoke(new(message.Header.GetString(35),message.Header.GetULong(34),test));
     }
     public void FromApp(Message message,SessionID sessionId)
     {

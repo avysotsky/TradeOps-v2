@@ -78,6 +78,18 @@ public sealed class DeribitFixQualificationScenarioV1(IOmsOrderIntentGateway gat
             throw new InvalidOperationException("No price satisfies distance and venue limits.");
         return price;
     }
+    public static bool AllowsCurrentBuy(OmsJournalCommandRequest command,DeribitFixQualificationQuoteV1 quote,DateTimeOffset now)
+    {
+        try
+        {
+            command.Validate();_=Price(quote,now);var p=command.Payload;
+            return quote.Scope==command.Scope&&p.Provenance==Provenance&&p.Instrument==quote.Instrument&&p.Kind is OmsJournalCommandKind.Place or OmsJournalCommandKind.Replace&&
+                p.Quantity==1&&p.QuantityUnit==OmsQuantityUnit.QuoteAsset&&p.PostOnly&&!p.ReduceOnly&&p.Side==OrderSide.Buy&&p.OrderType==OrderType.Limit&&
+                p.TimeInForce is "GTC" or "good_til_cancelled"&&p.TriggerPrice is null&&p.LimitPrice is>0&&p.LimitPrice%quote.PriceStep==0&&
+                p.LimitPrice<=quote.Bid*.90m&&p.LimitPrice<quote.Ask&&p.LimitPrice<=quote.MaxPrice;
+        }
+        catch(Exception e)when(e is ArgumentException or InvalidOperationException or OverflowException){return false;}
+    }
     private static DeribitRecoveredNativeOrder Own(OmsRecoveredAccountStateV1 state,OmsJournalCommandRequest c)
     {var row=state.Orders.Single(x=>x.LocalOrderId==c.LocalOrderId);if(row.State.NativeInstrument!=c.Payload.Instrument||row.State.NativeAmount!=1||row.State.Side!=OrderSide.Buy)throw new InvalidOperationException("Own order proof mismatch.");return row;}
     private static bool HasFill(OmsRecoveredAccountStateV1 s,OmsLocalOrderId id)=>s.Orders.Any(x=>x.LocalOrderId==id&&x.State.KnownFilledNativeAmount is >0)||

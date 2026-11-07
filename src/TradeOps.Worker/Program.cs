@@ -10,6 +10,15 @@ using TradeOps.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// No execution gateway or hosted service is composed for the administrative connection probe.
+if(builder.Configuration["Worker:Mode"]==DeribitFixNontradingConnection.Mode)
+{
+    var result=await DeribitFixNontradingConnection.RunAsync(builder.Configuration);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
+    if(result.Status!="FIX_NONTRADING_CONNECTION_PASS")Environment.ExitCode=1;
+    return;
+}
+
 // This branch returns before any hosted service, exchange client or execution owner is composed.
 if(builder.Configuration["Worker:Mode"]==DeribitFixConfigurationCheck.Mode)
 {

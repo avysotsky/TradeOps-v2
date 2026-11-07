@@ -210,6 +210,7 @@ capture_paths=(
   scripts/deribit/Deribit-TestnetOrderLocal.ps1
   scripts/deribit/Deribit-PrivateSessionReadOnlyLocal.ps1
   src/TradeOps.Infrastructure/TradeOps.Infrastructure.csproj
+  src/TradeOps.Infrastructure/Properties
   src/TradeOps.Infrastructure/Exchange/ExchangeServiceRegistration.cs
   src/TradeOps.Application/Oms
   src/TradeOps.Infrastructure/Persistence
