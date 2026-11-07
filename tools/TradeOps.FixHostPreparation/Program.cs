@@ -15,7 +15,7 @@ internal static class EntryPoint
 {
     public static async Task<int> Main(string[] args)
     {
-        if(args.Length!=2||args[0] is not("--read-account" or "--prepare-node" or "--read-cross-pm" or "--read-pm-risk"))
+        if(args.Length!=2||args[0] is not("--read-account" or "--prepare-node" or "--read-cross-pm" or "--read-pm-risk" or "--read-pm-risk-stress"))
         {Console.WriteLine("{\"Status\":\"PREPARATION_MODE_REQUIRED\",\"TradingStarted\":false}");return 1;}
         AccountInput? input=null;using var bytes=new MemoryStream();
         try
@@ -35,14 +35,14 @@ internal static class EntryPoint
                 Console.WriteLine(JsonSerializer.Serialize(node));return 0;
             }
             var path=Path.GetFullPath(args[1]);var folder=Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,".tradeops","fix-host"));
-            var prefix=args[0] switch{"--read-cross-pm"=>"crosspm","--read-pm-risk"=>"pmrisk",_=>"account"};
+            var prefix=args[0] switch{"--read-cross-pm"=>"crosspm","--read-pm-risk"=>"pmrisk","--read-pm-risk-stress"=>"pmstress",_=>"account"};
             if(Path.GetDirectoryName(path)!=folder||!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(path),"^"+prefix+"-[a-f0-9]{32}\\.private\\.json$"))throw new ArgumentException();
             for(DirectoryInfo? d=new(folder);d is not null;d=d.Parent)if(!d.Exists||(d.Attributes&FileAttributes.ReparsePoint)!=0)throw new ArgumentException();
             using var handler=new HttpClientHandler{AllowAutoRedirect=false,UseCookies=false,UseDefaultCredentials=false,AutomaticDecompression=DecompressionMethods.None};
             using var http=new HttpClient(handler){Timeout=TimeSpan.FromSeconds(10)};
-            if(args[0]=="--read-pm-risk")
+            if(args[0] is "--read-pm-risk" or "--read-pm-risk-stress")
             {
-                var observed=await PmRiskInspection.CollectAsync(input,http,ct);
+                var observed=await PmRiskInspection.CollectAsync(input,http,ct,args[0]=="--read-pm-risk-stress"?2:0);
                 using(var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None))await JsonSerializer.SerializeAsync(file,observed,cancellationToken:ct);
                 Console.WriteLine(JsonSerializer.Serialize(new{SchemaVersion=2,Status=observed.Observation is null?"NATIVE_PM_RISK_OBSERVATION_REFUSED":"NATIVE_PM_RISK_OBSERVATION_PASS",
                     DiagnosticOnly=true,ObservationMilliseconds=observed.ObservationMilliseconds,ScenarioCount=observed.Observation?.Scenarios.Count??0,

@@ -59,3 +59,16 @@ subaccount. Исходный B6/offline завершён отдельно; main 
 неторговый FIX TLS/logon/heartbeat/logout с запретом business writes/replay;
 готовый owner launcher и финальная общая приёмка. Затем владелец запускает
 ограниченный live D→G→F; ассистент реальные финансовые order writes не выполняет.
+
+## Реальное чтение risk inputs
+
+После commit `98f5291` выполнен `ReadPmRisk` на существующем native pin:
+`NATIVE_PM_RISK_OBSERVATION_PASS`,3 сценария,2933ms. Private artifact и source/DLL
+hashes сохранены в `.tradeops/fix-host/latest-readpmrisk.json`. Нет DB writes,
+business messages или live authority. Это проверка реальных источников, не READY.
+
+Дополнительный `ReadPmStress` использует два **явно гипотетических** pending USD
+и читает семь native сценариев[-3,+3]. Private artifact отдельно сохраняет эту
+диагностическую предпосылку; реальные DB reservations не создаются/не читаются.
+Адресный host diagnostic4/4 и PS AST/Status PASS; это замена прежних3 diagnostic
+cases, не новый full run и не разрешение финансового запуска.

@@ -1,10 +1,10 @@
 #requires -Version 7.5
 [CmdletBinding()]
-param([ValidateSet('Status','ReadAccount','ReadCrossPm','ReadPmRisk','PrepareNode')][string]$Action='Status')
+param([ValidateSet('Status','ReadAccount','ReadCrossPm','ReadPmRisk','ReadPmStress','PrepareNode')][string]$Action='Status')
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if($Action -eq 'Status'){
-    [ordered]@{Status='HOST_PREPARATION_ONLY';Actions=@('ReadAccount','ReadCrossPm','ReadPmRisk','PrepareNode');DatabaseUsed=$false;TradingStarted=$false}|ConvertTo-Json -Compress
+    [ordered]@{Status='HOST_PREPARATION_ONLY';Actions=@('ReadAccount','ReadCrossPm','ReadPmRisk','ReadPmStress','PrepareNode');DatabaseUsed=$false;TradingStarted=$false}|ConvertTo-Json -Compress
     return
 }
 $head=(& git -C $repo rev-parse HEAD).Trim();if($LASTEXITCODE -ne 0){throw 'SOURCE_REQUIRED'}
@@ -42,11 +42,11 @@ try{
     if(!$inventory.readonly -or @($inventory.scopes).Count -ne 1){throw 'RETAINED_SCOPE_REFUSED'}
     $scope=$inventory.scopes[0];$label='observed-native:'+[string]$pin.expectedAccountId
     if($scope.environment -ne 4 -or $scope.venue_id -cne 'DERIBIT' -or $scope.account_id -cne $label -or $scope.subaccount_id -cne $(if($pin.accountType -ceq 'subaccount'){$label}else{''})){throw 'RETAINED_SCOPE_REFUSED'}
-    $isRead=$Action -in @('ReadAccount','ReadCrossPm','ReadPmRisk');$prefix=switch($Action){'ReadCrossPm'{'crosspm'}'ReadPmRisk'{'pmrisk'}default{'account'}}
+    $isRead=$Action -in @('ReadAccount','ReadCrossPm','ReadPmRisk','ReadPmStress');$prefix=switch($Action){'ReadCrossPm'{'crosspm'}'ReadPmRisk'{'pmrisk'}'ReadPmStress'{'pmstress'}default{'account'}}
     $private=Join-Path $folder ($prefix+'-'+[Guid]::NewGuid().ToString('N')+'.private.json')
     $target=if($isRead){$private}else{Join-Path $repo '.tradeops/oms-execution'}
-    $purpose=switch($Action){'ReadAccount'{'READ_ONLY_FIX_ACCOUNT_INVENTORY_V1'}'ReadCrossPm'{'READ_ONLY_FIX_CROSS_PM_V1'}'ReadPmRisk'{'READ_ONLY_FIX_PM_RISK_OBSERVATION_V2'}default{'PREPARE_FIX_LOCAL_NODE_V1'}}
-    $mode=switch($Action){'ReadAccount'{'--read-account'}'ReadCrossPm'{'--read-cross-pm'}'ReadPmRisk'{'--read-pm-risk'}default{'--prepare-node'}}
+    $purpose=switch($Action){'ReadAccount'{'READ_ONLY_FIX_ACCOUNT_INVENTORY_V1'}'ReadCrossPm'{'READ_ONLY_FIX_CROSS_PM_V1'}'ReadPmRisk'{'READ_ONLY_FIX_PM_RISK_OBSERVATION_V2'}'ReadPmStress'{'READ_ONLY_FIX_PM_STRESS_OBSERVATION_V2'}default{'PREPARE_FIX_LOCAL_NODE_V1'}}
+    $mode=switch($Action){'ReadAccount'{'--read-account'}'ReadCrossPm'{'--read-cross-pm'}'ReadPmRisk'{'--read-pm-risk'}'ReadPmStress'{'--read-pm-risk-stress'}default{'--prepare-node'}}
     $secret='';if($isRead){$secretSecure=ConvertTo-SecureString $saved.client_secret_dpapi;$secret=([Management.Automation.PSCredential]::new('local',$secretSecure)).GetNetworkCredential().Password}
     $payload=@{Purpose=$purpose;Environment='Mainnet';Tenant=$scope.tenant_id;ExpectedAccountId=$pin.expectedAccountId;AccountType=$pin.accountType;
         ClientId=$(if($isRead){$id}else{''});ClientSecret=$secret}|ConvertTo-Json -Compress
@@ -62,7 +62,7 @@ try{
     if(!$process.WaitForExit(75000)){throw 'PREPARATION_TIMEOUT'}
     $null=$stderr.GetAwaiter().GetResult();$raw=$stdout.GetAwaiter().GetResult();if($raw.Length -gt 16384){throw 'PREPARATION_REFUSED'}
     $result=$raw|ConvertFrom-Json -Depth 8 -DateKind String
-    if($process.ExitCode -ne 0 -and !($Action -eq 'ReadPmRisk' -and $result.Status -ceq 'NATIVE_PM_RISK_OBSERVATION_REFUSED')){
+    if($process.ExitCode -ne 0 -and !($Action -in @('ReadPmRisk','ReadPmStress') -and $result.Status -ceq 'NATIVE_PM_RISK_OBSERVATION_REFUSED')){
         if($Action -eq 'ReadCrossPm' -and $result.Status -ceq 'NATIVE_CROSS_PM_PREVIEW_REFUSED' -and @($result.PSObject.Properties).Count -eq 5 -and
             $result.Stage -cin @('Authentication','NativeAccount','ContractUnits','NativeRiskMatrix','NativeSimulation','NativeAccountRecheck') -and
             $result.TradingStarted -ceq $false -and $result.DatabaseUsed -ceq $false -and ($null -eq $result.VenueCode -or $result.VenueCode -is [long] -or $result.VenueCode -is [int])){
@@ -78,13 +78,14 @@ try{
         if($result.SchemaVersion -ne 1 -or $result.Status -cne 'NATIVE_CROSS_PM_PREVIEW_PASS' -or $result.MarginModel -cne 'cross_pm' -or
             $result.NativeBindingVerified -cne $true -or $result.ScenarioCount -ne 3 -or $result.BusinessMessagesSent -ne 0 -or $result.AccountReady -cne $false -or
             $result.TradingReady -cne $false -or $result.TradingStarted -cne $false -or $result.DatabaseUsed -cne $false){throw 'CROSS_PM_PREVIEW_OUTPUT_REFUSED'}
-    }elseif($Action -eq 'ReadPmRisk'){
+    }elseif($Action -in @('ReadPmRisk','ReadPmStress')){
         $keys=@('SchemaVersion','Status','DiagnosticOnly','ObservationMilliseconds','ScenarioCount','AccountReady','TradingReady','TradingStarted','DatabaseUsed','BusinessMessagesSent')
+        $expectedScenarios=if($Action -eq 'ReadPmStress'){7}else{3}
         if($result.SchemaVersion -ne 2 -or $result.Status -cnotin @('NATIVE_PM_RISK_OBSERVATION_PASS','NATIVE_PM_RISK_OBSERVATION_REFUSED') -or
             $result.DiagnosticOnly -cne $true -or $result.AccountReady -cne $false -or $result.TradingReady -cne $false -or $result.TradingStarted -cne $false -or
-            $result.DatabaseUsed -cne $false -or $result.BusinessMessagesSent -ne 0 -or $result.ScenarioCount -notin @(0,3) -or
+            $result.DatabaseUsed -cne $false -or $result.BusinessMessagesSent -ne 0 -or $result.ScenarioCount -notin @(0,$expectedScenarios) -or
             $result.ObservationMilliseconds -isnot [long] -and $result.ObservationMilliseconds -isnot [int] -or $result.ObservationMilliseconds -lt 0 -or $result.ObservationMilliseconds -gt 10000 -or
-            ($result.Status -ceq 'NATIVE_PM_RISK_OBSERVATION_PASS') -ne ($result.ScenarioCount -eq 3) -or
+            ($result.Status -ceq 'NATIVE_PM_RISK_OBSERVATION_PASS') -ne ($result.ScenarioCount -eq $expectedScenarios) -or
             ($result.Status -ceq 'NATIVE_PM_RISK_OBSERVATION_PASS') -ne ($process.ExitCode -eq 0)){throw 'PM_RISK_OBSERVATION_OUTPUT_REFUSED'}
     }else{
         $keys=@('SchemaVersion','NodeSha256','LockRoot','RootSha256','LockSha256')

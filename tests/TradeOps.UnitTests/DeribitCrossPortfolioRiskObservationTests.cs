@@ -13,14 +13,16 @@ public sealed class DeribitCrossPortfolioRiskObservationTests
 {
     private static readonly DateTimeOffset Now=DeribitRiskInputsTests.Now;
     [Theory]
-    [InlineData("valid")][InlineData("wrong-account")][InlineData("unknown-funded")]
-    public async Task HostDiagnosticUsesNativeInventoryAndPublicUnitsWithoutCreatingLiveAuthority(string mode)
+    [InlineData("valid",0)][InlineData("valid",2)][InlineData("wrong-account",0)][InlineData("unknown-funded",0)]
+    public async Task HostDiagnosticUsesNativeInventoryAndPublicUnitsWithoutCreatingLiveAuthority(string mode,int hypotheticalPending)
     {
-        using var venue=new Venue(mode,true);using var http=new HttpClient(venue);var input=FixHostAccountInspectionTests.Input();input.Purpose="READ_ONLY_FIX_PM_RISK_OBSERVATION_V2";
-        var result=await PmRiskInspection.CollectAsync(input,http,default);
+        using var venue=new Venue(mode,true);using var http=new HttpClient(venue);var input=FixHostAccountInspectionTests.Input();input.Purpose=hypotheticalPending==0?"READ_ONLY_FIX_PM_RISK_OBSERVATION_V2":"READ_ONLY_FIX_PM_STRESS_OBSERVATION_V2";
+        var result=await PmRiskInspection.CollectAsync(input,http,default,hypotheticalPending);
         Assert.True(result.DiagnosticOnly);Assert.False(result.AccountReady||result.TradingReady||result.DatabaseUsed);
         Assert.Equal("diagnostic-unqualified-v2",result.InventoryReference.Policy);Assert.Single(result.InventoryReference.Positions);
         Assert.Equal(mode=="valid",result.Observation is not null);
+        Assert.Equal(hypotheticalPending,result.HypotheticalPendingNativeUsd);
+        if(mode=="valid")Assert.Equal(hypotheticalPending==0?3:7,result.Observation!.Scenarios.Count);
         Assert.DoesNotContain("synthetic-secret",JsonSerializer.Serialize(result));Assert.DoesNotContain("synthetic-token",JsonSerializer.Serialize(result));
     }
     [Theory]

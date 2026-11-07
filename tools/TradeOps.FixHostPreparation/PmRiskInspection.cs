@@ -9,16 +9,17 @@ using TradeOps.Domain.Oms;
 namespace TradeOps.FixHostPreparation;
 
 internal sealed record PmRiskInspectionResult(bool DiagnosticOnly,OmsRecoveredAccountStateV1 InventoryReference,
-    DeribitCrossPmRiskObservationV2? Observation,long ObservationMilliseconds)
+    DeribitCrossPmRiskObservationV2? Observation,long ObservationMilliseconds,int HypotheticalPendingNativeUsd)
 {public bool AccountReady=>false;public bool TradingReady=>false;public bool DatabaseUsed=>false;}
 
 internal static class PmRiskInspection
 {
     // A diagnostic reference assembled from actual native inventory and public units. It has no
     // coordinator revision, publication or physical permit, and cannot authorize any command.
-    internal static async Task<PmRiskInspectionResult> CollectAsync(AccountInput input,HttpClient http,CancellationToken ct)
+    internal static async Task<PmRiskInspectionResult> CollectAsync(AccountInput input,HttpClient http,CancellationToken ct,int hypotheticalPendingNativeUsd=0)
     {
-        AccountInspection.ValidateInput(input,"READ_ONLY_FIX_PM_RISK_OBSERVATION_V2");var binding=AccountInspection.Binding(input);
+        if(hypotheticalPendingNativeUsd is not(0 or 2))throw new ArgumentException("Bounded hypothetical read plan required.");
+        AccountInspection.ValidateInput(input,hypotheticalPendingNativeUsd==0?"READ_ONLY_FIX_PM_RISK_OBSERVATION_V2":"READ_ONLY_FIX_PM_STRESS_OBSERVATION_V2");var binding=AccountInspection.Binding(input);
         var catalog=await new DeribitInstrumentCatalog(http).ReadAsync(binding.Scope.Environment,"ETH","future",ct);
         var instruments=DeribitEthFutureAccountManifest.Create(catalog,binding.Scope.Environment,DateTimeOffset.UtcNow);
         var terms=DeribitRecoveryInstrumentManifest.Create(binding.Scope.Environment,[catalog],DateTimeOffset.UtcNow).ToDictionary(x=>x.NativeInstrument,StringComparer.Ordinal);
@@ -38,9 +39,11 @@ internal static class PmRiskInspection
         var command=new OmsJournalCommandRequest(binding.Scope,new(Guid.NewGuid()),new(Guid.NewGuid()),new(Guid.NewGuid()),new(0),
             new(OmsJournalCommandKind.Place,"ETH-PERPETUAL",OrderSide.Buy,OrderType.Limit,1,OmsQuantityUnit.QuoteAsset,price,null,"GTC",false,true,
                 "read-only-pm-risk-probe","diagnostic","no-execution-authority",at,"read-probe-"+Guid.NewGuid().ToString("N")));
-        var timer=Stopwatch.StartNew();var native=await new DeribitCrossPortfolioRiskObservationReaderV2(binding,http,new NoPending()).ReadAsync(command,reference,ct);
-        return new(true,reference,native,timer.ElapsedMilliseconds);
+        var timer=Stopwatch.StartNew();var native=await new DeribitCrossPortfolioRiskObservationReaderV2(binding,http,new HypotheticalPending(hypotheticalPendingNativeUsd,price)).ReadAsync(command,reference,ct);
+        return new(true,reference,native,timer.ElapsedMilliseconds,hypotheticalPendingNativeUsd);
     }
-    private sealed class NoPending:IOmsPendingRiskReader
-    {public Task<IReadOnlyList<OmsPendingNativeRiskV1>> ReadAsync(AccountKey s,OmsCommandId except,CancellationToken ct=default)=>Task.FromResult<IReadOnlyList<OmsPendingNativeRiskV1>>([]);}
+    // Explicit diagnostic assumptions, never database commands/reservations or an execution reader.
+    private sealed class HypotheticalPending(int count,decimal price):IOmsPendingRiskReader
+    {public Task<IReadOnlyList<OmsPendingNativeRiskV1>> ReadAsync(AccountKey s,OmsCommandId except,CancellationToken ct=default)=>
+        Task.FromResult<IReadOnlyList<OmsPendingNativeRiskV1>>(Enumerable.Range(0,count).Select(_=>new OmsPendingNativeRiskV1("ETH-PERPETUAL",1,price)).ToArray());}
 }
